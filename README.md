@@ -14,5 +14,16 @@ X == external releases and releases ready for production use
 
 ## 3.1 T4 i3000 Maser
 As of 2025-06-05 this is the only maser with scripts in the repository (repo).
+- [OEM: Safran Group](<https://safran-navigation-timing.com/>)
+- [Product Page](<https://safran-navigation-timing.com/product/imaser-3000/>)
+
+### 3.1.1 Scrips and how to use them
+- T4_Maser_Comms_1p0p0.py
+  - script to communicate and pass commands via UDP on inrtanet for site control
+  - can be imported or run on the command line, an example is given within the scrip header
+- T4_Comms_Import.py
+  - import T4_Maser_Comms current version to create a human readable return of the MONIT command.
+- T4_fromOEM.py
+  - provided by Safran Group / iScience as an example for UDP Comms
 
 ## 3.2 Microsemi / Michrochip Maser
