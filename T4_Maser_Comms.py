@@ -1,27 +1,38 @@
 # -*- coding: utf-8 -*-
 # =============================================================================
+# %% Heading Info
+# %%% Author Info
 # Author: William W. Wallace
 # Author Phone: +1-(304) 456-2216
-# Authore Email: wwallace@nrao.edu
+# Author Email: wwallace@nrao.edu
+# %%% Versioning
 # Date of Creation: 2025-05-29
-# Date of last Edit:
-# Purpose Of Script:
-# Function Definitions:
-#   Func1
+# Date of last Edit: 2025-06-05
+# Purpose Of Script: to communicate with an i3000 T4 maser and return the
+# resonce. In addition to decode the response from a MONIT command
 # Update Log:
-#     Entry 1
-#     Text here
-# Command Line Entry Format
-#   T4_Maser_Comms_1p0p0.py 10.16.98.16 14000 "MONIT;\r\n" --retries 5 --timeout 2 --backoff 2
+# %%%% v1.0.0
+#   Ready for distrobution
+# %%%% V1.0.1
+#   Values with LSB gain of NaN are not installed in this maser model.
+#   Removing them from creating a dict entry
+#   in addition adding an option to return detailed or channel_values only in
+#   the dict.
+# %% Command Line Entry Format
+#   T4_Maser_Comms.py 10.16.98.16 14000 "MONIT;\r\n" --retries 5 --timeout 2 --backoff 2 -C
 #
+# %% Module Imports
 # =============================================================================
 import argparse
 import logging
 import socket
 import sys
 import tkinter as tk
+import numpy as np
 from typing import Optional
 from tkinter import messagebox
+
+# %% Function & Class Definitions
 
 
 def configure_logging(verbose: bool) -> None:
@@ -106,7 +117,7 @@ def udp_communicate(
     return None
 
 
-def decodeMONIT(input_str: str):
+def decodeMONIT(input_str: str, channelValOnly: bool) -> Optional[dict]:
     """Take the received string from MONIT command and decodit it."""
     # Tuples utilized in calculations from T4 Maser Operation Manual
     # See page 47 of said manual
@@ -155,49 +166,49 @@ def decodeMONIT(input_str: str):
 
     )
 
-    t4_ADC_fs_counts = (
-        4096,
-        4096,
-        4096,
-        4096,
-        4096,
-        4096,
-        4096,
-        4096,
-        4096,
-        4096,
-        4096,
-        4096,
-        4096,
-        4096,
-        4096,
-        4096,
-        4096,
-        4096,
-        4096,
-        4096,
-        4096,
-        4096,
-        4096,
-        4096,
-        4096,
-        4096,
-        4096,
-        4096,
-        4096,
-        4096,
-        4096,
-        4096,
-        256,
-        256,
-        256,
-        256,
-        256,
-        256,
-        256,
-        256,
-        1
-    )
+    # t4_ADC_fs_counts = (
+    #     4096,
+    #     4096,
+    #     4096,
+    #     4096,
+    #     4096,
+    #     4096,
+    #     4096,
+    #     4096,
+    #     4096,
+    #     4096,
+    #     4096,
+    #     4096,
+    #     4096,
+    #     4096,
+    #     4096,
+    #     4096,
+    #     4096,
+    #     4096,
+    #     4096,
+    #     4096,
+    #     4096,
+    #     4096,
+    #     4096,
+    #     4096,
+    #     4096,
+    #     4096,
+    #     4096,
+    #     4096,
+    #     4096,
+    #     4096,
+    #     4096,
+    #     4096,
+    #     256,
+    #     256,
+    #     256,
+    #     256,
+    #     256,
+    #     256,
+    #     256,
+    #     256,
+    #     1
+    # )
 
     t4_LSB_Gains = (
         0.02441,
@@ -244,7 +255,7 @@ def decodeMONIT(input_str: str):
     )
 
     # Extract hex data after '$'
-    if input_str[0] == 'b' and len(input_str) == 116:
+    if input_str[0] == 'b' and len(input_str) == 118:
         cleaned_str = input_str[2:-2]  # Remove b' and trailing \r\n
     elif input_str[0] == '$' and len(input_str) == 116:
         cleaned_str = input_str[0:-2]  # Remove \r\n
@@ -273,14 +284,17 @@ def decodeMONIT(input_str: str):
                     decimalVal * t4_LSB_Gains[channel]
                 )
 
-                decoded_dict[t4_channel_names[channel]] = {
-                    'Original_Hex_Code': code,
-                    'Binary_Value': binaryVal,
-                    'Decimal_Value': decimalVal,
-                    'Channel_Value': channelVal
-
-                }
-
+                if np.isnan(channelVal):
+                    pass
+                elif channelValOnly:
+                    decoded_dict[t4_channel_names[channel]] = channelVal
+                else:
+                    decoded_dict[t4_channel_names[channel]] = {
+                        'Original_Hex_Code': code,
+                        'Binary_Value': binaryVal,
+                        'Decimal_Value': decimalVal,
+                        'Channel_Value': channelVal
+                    }
             # Process channels 32-39 (8 bits = 2 hex characters each)
             for idx, channel in enumerate(range(32, 40)):
                 start = 96 + (idx * 2)
@@ -295,15 +309,20 @@ def decodeMONIT(input_str: str):
                     decimalVal * t4_LSB_Gains[channel]
                 )
 
-                decoded_dict[t4_channel_names[channel]] = {
-                    'Original_Hex_Code': code,
-                    'Binary_Value': binaryVal,
-                    'Decimal_Value': decimalVal,
-                    'Channel_Value': channelVal
+                if np.isnan(channelVal):
+                    pass
+                elif channelValOnly:
+                    decoded_dict[t4_channel_names[channel]] = channelVal
+                else:
+                    decoded_dict[t4_channel_names[channel]] = {
+                        'Original_Hex_Code': code,
+                        'Binary_Value': binaryVal,
+                        'Decimal_Value': decimalVal,
+                        'Channel_Value': channelVal
 
-                }
+                    }
             # Process channel 40 (1 bit from first hex character's MSB)
-            if len(hex_data) >= 113:
+            if len(hex_data) == 113:
                 code = hex_data[112]
                 # bit = str((int(code, 16) >> 3) & 0b1)
                 channel = 40
@@ -317,14 +336,15 @@ def decodeMONIT(input_str: str):
                     decimalVal * t4_LSB_Gains[channel]
                 )
 
-                decoded_dict[t4_channel_names[channel]] = {
-                    'Original_Hex_Code': code,
-                    'Binary_Value': binaryVal,
-                    'Decimal_Value': decimalVal,
-                    'Channel_Value': channelVal
-
-                }
-
+                if channelValOnly:
+                    decoded_dict[t4_channel_names[channel]] = channelVal
+                else:
+                    decoded_dict[t4_channel_names[channel]] = {
+                        'Original_Hex_Code': code,
+                        'Binary_Value': binaryVal,
+                        'Decimal_Value': decimalVal,
+                        'Channel_Value': channelVal
+                    }
             # print(decoded_dict)
 
             return decoded_dict
@@ -359,6 +379,9 @@ def main() -> Optional[str]:
                         help="Timeout multiplier between attempts")
     parser.add_argument("-v", "--verbose", action="store_true",
                         help="Enable debug logging")
+    parser.add_argument("-C", "--channelValOnly", action="store_true",
+                        help="Only store the calculated channel " +
+                        "value in the returned dictionary.")
 
     args = parser.parse_args()
     configure_logging(args.verbose)
@@ -386,7 +409,8 @@ def main() -> Optional[str]:
 # =============================================================================
 
         # Now lets make it human readable
-        channelVal_dict = decodeMONIT(response.decode('utf-8'))
+        channelVal_dict = decodeMONIT(response.decode('utf-8'),
+                                      args.channelValOnly)
 
         return channelVal_dict
 
