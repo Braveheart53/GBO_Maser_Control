@@ -1,5 +1,5 @@
 # 1 General GBO_Maser_Control
-Scripts and methods utilize to communicate and control various masers at GBO with Python 3.8
+Scripts and methods utilized to communicate and control various masers at GBO with Python 3.8
 
 # 2 Repository Organization
 This repository will have a project created for each maser utilized at GBO with python control. It was initiated on 2025-06-05. All revision schemas will 
@@ -27,3 +27,5 @@ As of 2025-06-05 this is the only maser with scripts in the repository (repo).
   - provided by Safran Group / iScience as an example for UDP Comms
 
 ## 3.2 Microsemi / Michrochip Maser
+
+# 4 Other Timing Related Scripts and Repos
