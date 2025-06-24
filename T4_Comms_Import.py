@@ -1,4 +1,4 @@
-import T4_Maser_Comms_1p0p1 as T4M
+import T4_Maser_Comms as T4M
 
 monitstr = T4M.udp_communicate('10.16.98.16', 14000, 'MONIT;\r\n',
                                5, 2, 2)
