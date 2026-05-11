@@ -2035,3 +2035,1167 @@
     #32      General Purpose Status Bits                      2
     #33      BT Error Status Word (Block Size ID)             0
     #34      BT Error Status Word (Parameter Number)          0
+
+========================================================================
+  Poll timestamp: 2026-05-11T18:32:57Z
+  Device IP     : 10.16.130.51
+========================================================================
+
+  TABLE: Device_Configuration_Table
+  ------------------------------------------------------------
+    #1       Voltage Mode                                     4 [V]
+    #2       Present Unit Password                            ####
+    #3       New Password                                     ####
+    #4       Voltage Scale-PT Primary                         2399.999756 [V]
+    #5       Voltage Scale-PT Secondary                       120 [V]
+    #6       Current Scale-CT Primary                         200.0 [A]
+    #7       Current Scale-CT Secondary                       5 [A]
+    #8       Analog Input Scale-PT Primary                    1.0
+    #9       Analog Input Scale-PT Secondary                  1
+    #10      I4 Neutral Current Scale-CT Primary              5.0 [A]
+    #11      I4 Neutral Current Scale-CT Secondary            5 [A]
+    #12      Demand Period Length                             15 [min]
+    #13      Number Of Demand Periods                         1 [min]
+    #15      Snapshot Interval-Hours                          0 [s]
+    #16      Snapshot Interval-Minutes                        15 [s]
+    #17      Snapshot Interval-Seconds                        0 [s]
+    #18      Snapshot Buffer Type                             1
+    #24      Output Pulse Relay #                             0
+    #25      Output Pulse Parameter                           0
+    #26      Output Pulse Increment                           1
+    #27      Output Pulse Width (ms)                          100 [ms]
+    #28      CH A 12 Cycle Oscillograph                       1
+    #29      CH B 12 Cycle Oscillograph                       2
+    #30      Oscillography Type                               0
+    #31      Number of Pretrigger Cycles                      3
+    #32      IEEE 519 Max. Short Circuit Current              0.0 [A]
+    #33      IEEE 519 Max. Demand/Load Current                0.0 [A]
+    #34      Save Status Changes To Event Log                 1
+    #35      Vaux Voltage Mode                                0 [V]
+    #36      Filter Mode                                      2
+    #37      Enable Min_Max Log                               1
+
+  TABLE: Communications_Configuration_Table
+  ------------------------------------------------------------
+    #1       IP Address Byte a                                10
+    #2       IP Address Byte b                                16
+    #3       IP Address Byte c                                130
+    #4       IP Address Byte d                                51
+    #5       Gateway IP Address Byte a                        10
+    #6       Gateway IP Address Byte b                        16
+    #7       Gateway IP Address Byte c                        130
+    #8       Gateway IP Address Byte d                        1
+    #9       Subnet Mask Byte a                               255
+    #10      Subnet Mask Byte b                               255
+    #11      Subnet Mask Byte c                               255
+    #12      Subnet Mask Byte d                               0
+    #13      Physical Ethernet Port                           0
+    #14      CSP Keep Alive Interval                          30 [s]
+    #21      Present Unit Password                            ####
+
+  TABLE: Voltage_Current_Table
+  ------------------------------------------------------------
+    #1       Date                                             6/7/2022
+    #2       Time                                             14:47:06
+    #3       L1 Current                                       30.343452 [A]
+    #4       L2 Current                                       30.539612 [A]
+    #5       L3 Current                                       23.159103 [A]
+    #6       L4(Neutral) Current                              0.004904 [A]
+    #7       3 Phase Average Current                          28.014055 [A]
+    #8       Pos. Seq. Current                                12.37032 [A]
+    #9       Neg. Seq. Current                                20.265749 [A]
+    #10      Current Unbalanced                               163.825577 [A]
+    #11      L1-L2 Voltage                                    4321.552734 [V]
+    #12      L2-L3 Voltage                                    4288.181152 [V]
+    #13      L3-L1 Voltage                                    4310.498535 [V]
+    #14      AUX Voltage                                      0.0 [V]
+    #15      3 Phase Average Voltage L-L                      4306.744141 [V]
+    #16      Pos. Seq. Voltage                                4305.946289 [V]
+    #17      Neg. Seq. Voltage                                31.931202 [V]
+    #18      Voltage Unbalanced                               0.741561 [V]
+    #19      L1-N Voltage                                     2498.020752 [V]
+    #20      L2-N Voltage                                     2483.127441 [V]
+    #21      L3-N Voltage                                     2477.527588 [V]
+    #22      3 Phase Average Voltage L-N                      2486.225342 [V]
+    #25      Last Cycle Frequency                             59.971676 [Hz]
+    #26      Phase Rotation                                   2
+
+  TABLE: Real_Time_Power_Table
+  ------------------------------------------------------------
+    #1       Date                                             6/7/2022
+    #2       Time                                             14:47:06
+    #3       L1 Real Power                                    15188.517578 [W]
+    #4       L2 Real Power                                    34189.707031 [W]
+    #5       L3 Real Power                                    -17558.408203 [W]
+    #6       Total Real Power                                 31819.818359 [W]
+    #7       L1 Reactive Power                                70810.914062 [VAR]
+    #8       L2 Reactive Power                                61582.550781 [VAR]
+    #9       L3 Reactive Power                                -49510.132812 [VAR]
+    #10      Total Reactive Power                             82883.335938 [VAR]
+    #11      L1 Apparent Power                                72576.40625 [VA]
+    #12      L2 Apparent Power                                70682.085938 [VA]
+    #13      L3 Apparent Power                                52813.582031 [VA]
+    #14      Total Apparent Power                             196072.078125 [VA]
+    #15      L1 True PF                                       -20.927624 [%]
+    #16      L2 True PF                                       -48.371105 [%]
+    #17      L3 True PF                                       -33.246006 [%]
+    #18      Total True PF                                    -16.689953 [%]
+    #19      L1 Displacement PF                               -30.698156 [%]
+    #20      L2 Displacement PF                               -56.545521 [%]
+    #21      L3 Displacement PF                               -45.198112 [%]
+    #22      Total Displacement PF                            -99.802025 [%]
+    #23      L1 Distortion PF                                 99.934593 [%]
+    #24      L2 Distortion PF                                 99.895615 [%]
+    #25      L3 Distortion PF                                 99.737404 [%]
+    #26      Total Distortion PF                              99.855865 [%]
+
+  TABLE: Cumulative_Power_Table
+  ------------------------------------------------------------
+    #1       Date                                             6/7/2022
+    #2       Time                                             14:47:07
+    #3       KW Hours Forward                                 7693058.468843 [kWh]
+    #4       KW Hours Reverse                                 -185.540567 [kWh]
+    #5       KW Hours Net                                     7692872.922199 [kWh]
+    #6       KVAR Hours Forward                               19604139.360091 [kVARh]
+    #7       KVAR Hours Reverse                               -3.179442 [kVARh]
+    #8       KVAR Hours Net                                   19604136.177933 [kVARh]
+
+  TABLE: Demand_Data_Table
+  ------------------------------------------------------------
+    #1       Date                                             6/7/2022
+    #2       Time                                             14:47:07
+    #3       Demand Current                                   25.375259 [A]
+    #4       Demand Power                                     39238.050781 [W]
+    #5       Demand Apparent Power                            77481.046875 [VA]
+    #6       Projected #1 Demand Current                      189545.734375 [A]
+    #7       Projected #1 Demand Power                        27.960163 [W]
+    #8       Projected #1 Demand Reactive Power               37518.277344 [VAR]
+    #9       Projected #1 Demand Apparent Power               85169.984375 [VA]
+    #10      Projected #2 Demand Current                      208875.375 [A]
+    #11      Projected #2 Demand Power                        27.798742 [W]
+    #12      Projected #2 Demand Reactive Power               37121.828125 [VAR]
+    #13      Projected #2 Demand Apparent Power               84941.875 [VA]
+    #14      Projected #3 Demand Current                      207448.046875 [A]
+    #15      Projected #3 Demand Power                        27.777229 [W]
+    #16      Projected #3 Demand Reactive Power               46506.832031 [VAR]
+    #17      Projected #3 Demand Apparent Power               78129.210938 [VA]
+    #18      Elapsed Time                                     205559.671875 [s]
+
+  TABLE: Diagnostic_Table
+  ------------------------------------------------------------
+    #1       Date                                             6/7/2022
+    #2       Time                                             14:47:07
+    #3       Bulletin Number                                  1403
+    #4       MMFRN                                            304
+    #5       Options Bit Field                                9
+    #6       Overall Status                                   0
+    #7       MM ROM Status                                    0
+    #8       MM RAM Status                                    0
+    #9       NV RAM Status                                    0
+    #10      Power Supply Check                               0
+    #11      Data Acquisition                                 0
+    #12      MM Watchdog Timer                                0
+    #13      Real Time Clock Status                           0
+    #16      Battery Usage                                    0
+    #17      SCC Status                                       128
+    #19      SCC Type                                         2
+    #20      SCC FRN                                          202
+    #21      Number of DMs                                    1
+    #22      DM Status                                        0
+    #23      DM Self Test Results Word 1                      0
+    #24      DM Self Test Results Word 2                      0
+    #25      DM #1 FRN                                        110
+    #26      DM #2 FRN                                        0
+    #27      DM #3 FRN                                        0
+    #28      Aux. Freq.                                       0.0
+    #29      Fiber Loop Back Test Results                     64
+    #30      EEPROM Status                                    0
+    #31      Device ID                                        154
+    #32      General Purpose Status Bits                      2
+    #33      BT Error Status Word (Block Size ID)             0
+    #34      BT Error Status Word (Parameter Number)          0
+
+  TABLE: Voltage_Current_Snapshot_Log_Table
+  ------------------------------------------------------------
+    #1       Date                                             0/0/0
+    #2       Time                                             0:00:00
+    #4       L1 Current                                       0.0 [A]
+    #5       L2 Current                                       0.0 [A]
+    #6       L3 Current                                       0.0 [A]
+    #7       L4(Neutral) Current                              0.0 [A]
+    #8       3 Phase Average Current                          0.0 [A]
+    #9       Pos. Seq. Current                                0.0 [A]
+    #10      Neg. Seq. Current                                0.0 [A]
+    #11      Current Unbalanced                               0.0 [A]
+    #12      L1-L2 Voltage                                    0.0 [V]
+    #13      L2-L3 Voltage                                    0.0 [V]
+    #14      L3-L1 Voltage                                    0.0 [V]
+    #15      AUX Voltage                                      0.0 [V]
+    #16      3 Phase Average Voltage L-L                      0.0 [V]
+    #17      Pos. Seq. Voltage                                0.0 [V]
+    #18      Neg. Seq. Voltage                                0.0 [V]
+    #19      Voltage Unbalanced                               0.0 [V]
+    #20      L1-N Voltage                                     0.0 [V]
+    #21      L2-N Voltage                                     0.0 [V]
+    #22      L3-N Voltage                                     0.0 [V]
+    #23      3 Phase Average Voltage L-N                      0.0 [V]
+    #26      Last Cycle Frequency                             0 [Hz]
+    #27      Phase Rotation                                   0
+    #28      Number Of Snapshot Logs Requested                0
+    #29      Number Of Snapshot Logs Recieved (Counter)       0
+    #30      Number Of Snapshot Log Being Returned            0
+
+  TABLE: Power_Snapshot_Log_Table
+  ------------------------------------------------------------
+    #1       Date                                             0/0/0
+    #2       Time                                             0:00:00
+    #4       L1 Real Power                                    0.0 [W]
+    #5       L2 Real Power                                    0.0 [W]
+    #6       L3 Real Power                                    0.0 [W]
+    #7       Total Real Power                                 0.0 [W]
+    #8       L1 Reactive Power                                0.0 [VAR]
+    #9       L2 Reactive Power                                0.0 [VAR]
+    #10      L3 Reactive Power                                0.0 [VAR]
+    #11      Total Reactive Power                             0.0 [VAR]
+    #12      L1 Apparent Power                                0.0 [VA]
+    #13      L2 Apparent Power                                0.0 [VA]
+    #14      L3 Apparent Power                                0.0 [VA]
+    #15      Total Apparent Power                             0.0 [VA]
+    #16      L1 True PF                                       0.0 [%]
+    #17      L2 True PF                                       0.0 [%]
+    #18      L3 True PF                                       0.0 [%]
+    #19      Total True PF                                    0.0 [%]
+    #20      L1 Displacement PF                               0.0 [%]
+    #21      L2 Displacement PF                               0.0 [%]
+    #22      L3 Displacement PF                               0.0 [%]
+    #23      Total Displacement PF                            0.0 [%]
+    #24      L1 Distortion PF                                 0.0 [%]
+    #25      L2 Distortion PF                                 0.0 [%]
+    #26      L3 Distortion PF                                 0.0 [%]
+    #27      Total Distortion PF                              0.0 [%]
+    #28      Number Of Snapshot Logs Requested                0
+    #29      Number Of Snapshot Logs Recieved (Counter)       0
+    #30      Number Of Snapshot Log Being Returned            0
+    #31      Internal Identifier                              0
+
+  TABLE: MinMax_Log_Table
+  ------------------------------------------------------------
+    #1       Date                                             0/0/0
+    #2       Time                                             0:00:00
+    #3       Date of MIN                                      0/0/0
+    #4       Time of MIN                                      0:00:00
+    #5       MIN Value For Parameter                          0.0
+    #6       Date of MAX                                      0/0/0
+    #7       Time of MAX                                      0:00:00
+    #8       MAX Value For Parameter                          0.0
+    #9       Number Of MIN_MAX Logs Requested                 0
+    #10      Number Of MIN_MAX Logs Recieved (Counter)        0
+    #11      Number Of MIN_MAX Log Being Returned             0
+    #12      Internal Identifier                              0
+
+  TABLE: Diagnostic_Table_Extended
+  ------------------------------------------------------------
+    #1       Date                                             6/7/2022
+    #2       Time                                             14:47:08
+    #3       Bulletin Number                                  1403
+    #4       MMFRN                                            304
+    #5       Options Bit Field                                9
+    #6       Overall Status                                   0
+    #7       MM ROM Status                                    0
+    #8       MM RAM Status                                    0
+    #9       NV RAM Status                                    0
+    #10      Power Supply Check                               0
+    #11      Data Acquisition                                 0
+    #12      MM Watchdog Timer                                0
+    #13      Real Time Clock Status                           0
+    #16      Battery Usage                                    0
+    #17      SCC Status                                       128
+    #19      SCC Type                                         2
+    #20      SCC FRN                                          202
+    #21      Number of DMs                                    1
+    #22      DM Status                                        0
+    #23      DM Self Test Results Word 1                      0
+    #24      DM Self Test Results Word 2                      0
+    #25      DM #1 FRN                                        110
+    #26      DM #2 FRN                                        0
+    #27      DM #3 FRN                                        0
+    #28      Aux. Freq.                                       0.0
+    #29      Fiber Loop Back Test Results                     64
+    #30      EEPROM Status                                    0
+    #31      Device ID                                        154
+    #32      General Purpose Status Bits                      2
+    #33      BT Error Status Word (Block Size ID)             0
+    #34      BT Error Status Word (Parameter Number)          0
+
+========================================================================
+  Poll timestamp: 2026-05-11T18:33:32Z
+  Device IP     : 10.16.130.51
+========================================================================
+
+  TABLE: Device_Configuration_Table
+  ------------------------------------------------------------
+    #1       Voltage Mode                                     4 [V]
+    #2       Present Unit Password                            ####
+    #3       New Password                                     ####
+    #4       Voltage Scale-PT Primary                         2399.999756 [V]
+    #5       Voltage Scale-PT Secondary                       120 [V]
+    #6       Current Scale-CT Primary                         200.0 [A]
+    #7       Current Scale-CT Secondary                       5 [A]
+    #8       Analog Input Scale-PT Primary                    1.0
+    #9       Analog Input Scale-PT Secondary                  1
+    #10      I4 Neutral Current Scale-CT Primary              5.0 [A]
+    #11      I4 Neutral Current Scale-CT Secondary            5 [A]
+    #12      Demand Period Length                             15 [min]
+    #13      Number Of Demand Periods                         1 [min]
+    #15      Snapshot Interval-Hours                          0 [s]
+    #16      Snapshot Interval-Minutes                        15 [s]
+    #17      Snapshot Interval-Seconds                        0 [s]
+    #18      Snapshot Buffer Type                             1
+    #24      Output Pulse Relay #                             0
+    #25      Output Pulse Parameter                           0
+    #26      Output Pulse Increment                           1
+    #27      Output Pulse Width (ms)                          100 [ms]
+    #28      CH A 12 Cycle Oscillograph                       1
+    #29      CH B 12 Cycle Oscillograph                       2
+    #30      Oscillography Type                               0
+    #31      Number of Pretrigger Cycles                      3
+    #32      IEEE 519 Max. Short Circuit Current              0.0 [A]
+    #33      IEEE 519 Max. Demand/Load Current                0.0 [A]
+    #34      Save Status Changes To Event Log                 1
+    #35      Vaux Voltage Mode                                0 [V]
+    #36      Filter Mode                                      2
+    #37      Enable Min_Max Log                               1
+
+  TABLE: Communications_Configuration_Table
+  ------------------------------------------------------------
+    #1       IP Address Byte a                                10
+    #2       IP Address Byte b                                16
+    #3       IP Address Byte c                                130
+    #4       IP Address Byte d                                51
+    #5       Gateway IP Address Byte a                        10
+    #6       Gateway IP Address Byte b                        16
+    #7       Gateway IP Address Byte c                        130
+    #8       Gateway IP Address Byte d                        1
+    #9       Subnet Mask Byte a                               255
+    #10      Subnet Mask Byte b                               255
+    #11      Subnet Mask Byte c                               255
+    #12      Subnet Mask Byte d                               0
+    #13      Physical Ethernet Port                           0
+    #14      CSP Keep Alive Interval                          30 [s]
+    #21      Present Unit Password                            ####
+
+  TABLE: Voltage_Current_Table
+  ------------------------------------------------------------
+    #1       Date                                             6/7/2022
+    #2       Time                                             14:47:42
+    #3       L1 Current                                       29.240053 [A]
+    #4       L2 Current                                       29.252314 [A]
+    #5       L3 Current                                       21.749207 [A]
+    #6       L4(Neutral) Current                              0.004904 [A]
+    #7       3 Phase Average Current                          26.747192 [A]
+    #8       Pos. Seq. Current                                12.027041 [A]
+    #9       Neg. Seq. Current                                19.44433 [A]
+    #10      Current Unbalanced                               161.671768 [A]
+    #11      L1-L2 Voltage                                    4324.644531 [V]
+    #12      L2-L3 Voltage                                    4293.191406 [V]
+    #13      L3-L1 Voltage                                    4313.12207 [V]
+    #14      AUX Voltage                                      0.0 [V]
+    #15      3 Phase Average Voltage L-L                      4310.319336 [V]
+    #16      Pos. Seq. Voltage                                4309.401367 [V]
+    #17      Neg. Seq. Voltage                                30.858885 [V]
+    #18      Voltage Unbalanced                               0.716083 [V]
+    #19      L1-N Voltage                                     2499.331299 [V]
+    #20      L2-N Voltage                                     2485.748779 [V]
+    #21      L3-N Voltage                                     2479.672119 [V]
+    #22      3 Phase Average Voltage L-N                      2488.250732 [V]
+    #25      Last Cycle Frequency                             59.957027 [Hz]
+    #26      Phase Rotation                                   2
+
+  TABLE: Real_Time_Power_Table
+  ------------------------------------------------------------
+    #1       Date                                             6/7/2022
+    #2       Time                                             14:47:42
+    #3       L1 Real Power                                    23008.78125 [W]
+    #4       L2 Real Power                                    42851.632812 [W]
+    #5       L3 Real Power                                    -26608.208984 [W]
+    #6       Total Real Power                                 39252.203125 [W]
+    #7       L1 Reactive Power                                71801.59375 [VAR]
+    #8       L2 Reactive Power                                63496.878906 [VAR]
+    #9       L3 Reactive Power                                -50213.808594 [VAR]
+    #10      Total Reactive Power                             85084.65625 [VAR]
+    #11      L1 Apparent Power                                75762.53125 [VA]
+    #12      L2 Apparent Power                                76958.226562 [VA]
+    #13      L3 Apparent Power                                57382.75 [VA]
+    #14      Total Apparent Power                             210103.5 [VA]
+    #15      L1 True PF                                       -30.369604 [%]
+    #16      L2 True PF                                       -55.681675 [%]
+    #17      L3 True PF                                       -46.369701 [%]
+    #18      Total True PF                                    -18.201216 [%]
+    #19      L1 Displacement PF                               -19.397442 [%]
+    #20      L2 Displacement PF                               -46.725266 [%]
+    #21      L3 Displacement PF                               -31.138447 [%]
+    #22      Total Displacement PF                            -98.183044 [%]
+    #23      L1 Distortion PF                                 99.832573 [%]
+    #24      L2 Distortion PF                                 99.685326 [%]
+    #25      L3 Distortion PF                                 99.507957 [%]
+    #26      Total Distortion PF                              99.675285 [%]
+
+  TABLE: Cumulative_Power_Table
+  ------------------------------------------------------------
+    #1       Date                                             6/7/2022
+    #2       Time                                             14:47:42
+    #3       KW Hours Forward                                 7693058.839901 [kWh]
+    #4       KW Hours Reverse                                 -185.540567 [kWh]
+    #5       KW Hours Net                                     7692873.293257 [kWh]
+    #6       KVAR Hours Forward                               19604140.210483 [kVARh]
+    #7       KVAR Hours Reverse                               -3.179442 [kVARh]
+    #8       KVAR Hours Net                                   19604137.028325 [kVARh]
+
+  TABLE: Demand_Data_Table
+  ------------------------------------------------------------
+    #1       Date                                             6/7/2022
+    #2       Time                                             14:47:42
+    #3       Demand Current                                   25.375259 [A]
+    #4       Demand Power                                     39238.050781 [W]
+    #5       Demand Apparent Power                            77481.046875 [VA]
+    #6       Projected #1 Demand Current                      189545.734375 [A]
+    #7       Projected #1 Demand Power                        27.992035 [W]
+    #8       Projected #1 Demand Reactive Power               37492.539062 [VAR]
+    #9       Projected #1 Demand Apparent Power               85294.804688 [VA]
+    #10      Projected #2 Demand Current                      209057.703125 [A]
+    #11      Projected #2 Demand Power                        27.791794 [W]
+    #12      Projected #2 Demand Reactive Power               37696.34375 [VAR]
+    #13      Projected #2 Demand Apparent Power               84562.625 [VA]
+    #14      Projected #3 Demand Current                      207494.34375 [A]
+    #15      Projected #3 Demand Power                        18.94772 [W]
+    #16      Projected #3 Demand Reactive Power               41798.519531 [VAR]
+    #17      Projected #3 Demand Apparent Power               56435.898438 [VA]
+    #18      Elapsed Time                                     143121.375 [s]
+
+  TABLE: Diagnostic_Table
+  ------------------------------------------------------------
+    #1       Date                                             6/7/2022
+    #2       Time                                             14:47:43
+    #3       Bulletin Number                                  1403
+    #4       MMFRN                                            304
+    #5       Options Bit Field                                9
+    #6       Overall Status                                   0
+    #7       MM ROM Status                                    0
+    #8       MM RAM Status                                    0
+    #9       NV RAM Status                                    0
+    #10      Power Supply Check                               0
+    #11      Data Acquisition                                 0
+    #12      MM Watchdog Timer                                0
+    #13      Real Time Clock Status                           0
+    #16      Battery Usage                                    0
+    #17      SCC Status                                       128
+    #19      SCC Type                                         2
+    #20      SCC FRN                                          202
+    #21      Number of DMs                                    1
+    #22      DM Status                                        0
+    #23      DM Self Test Results Word 1                      0
+    #24      DM Self Test Results Word 2                      0
+    #25      DM #1 FRN                                        110
+    #26      DM #2 FRN                                        0
+    #27      DM #3 FRN                                        0
+    #28      Aux. Freq.                                       0.0
+    #29      Fiber Loop Back Test Results                     64
+    #30      EEPROM Status                                    0
+    #31      Device ID                                        154
+    #32      General Purpose Status Bits                      2
+    #33      BT Error Status Word (Block Size ID)             0
+    #34      BT Error Status Word (Parameter Number)          0
+
+  TABLE: Voltage_Current_Snapshot_Log_Table
+  ------------------------------------------------------------
+    #1       Date                                             0/0/0
+    #2       Time                                             0:00:00
+    #4       L1 Current                                       0.0 [A]
+    #5       L2 Current                                       0.0 [A]
+    #6       L3 Current                                       0.0 [A]
+    #7       L4(Neutral) Current                              0.0 [A]
+    #8       3 Phase Average Current                          0.0 [A]
+    #9       Pos. Seq. Current                                0.0 [A]
+    #10      Neg. Seq. Current                                0.0 [A]
+    #11      Current Unbalanced                               0.0 [A]
+    #12      L1-L2 Voltage                                    0.0 [V]
+    #13      L2-L3 Voltage                                    0.0 [V]
+    #14      L3-L1 Voltage                                    0.0 [V]
+    #15      AUX Voltage                                      0.0 [V]
+    #16      3 Phase Average Voltage L-L                      0.0 [V]
+    #17      Pos. Seq. Voltage                                0.0 [V]
+    #18      Neg. Seq. Voltage                                0.0 [V]
+    #19      Voltage Unbalanced                               0.0 [V]
+    #20      L1-N Voltage                                     0.0 [V]
+    #21      L2-N Voltage                                     0.0 [V]
+    #22      L3-N Voltage                                     0.0 [V]
+    #23      3 Phase Average Voltage L-N                      0.0 [V]
+    #26      Last Cycle Frequency                             0 [Hz]
+    #27      Phase Rotation                                   0
+    #28      Number Of Snapshot Logs Requested                0
+    #29      Number Of Snapshot Logs Recieved (Counter)       0
+    #30      Number Of Snapshot Log Being Returned            0
+
+  TABLE: Power_Snapshot_Log_Table
+  ------------------------------------------------------------
+    #1       Date                                             0/0/0
+    #2       Time                                             0:00:00
+    #4       L1 Real Power                                    0.0 [W]
+    #5       L2 Real Power                                    0.0 [W]
+    #6       L3 Real Power                                    0.0 [W]
+    #7       Total Real Power                                 0.0 [W]
+    #8       L1 Reactive Power                                0.0 [VAR]
+    #9       L2 Reactive Power                                0.0 [VAR]
+    #10      L3 Reactive Power                                0.0 [VAR]
+    #11      Total Reactive Power                             0.0 [VAR]
+    #12      L1 Apparent Power                                0.0 [VA]
+    #13      L2 Apparent Power                                0.0 [VA]
+    #14      L3 Apparent Power                                0.0 [VA]
+    #15      Total Apparent Power                             0.0 [VA]
+    #16      L1 True PF                                       0.0 [%]
+    #17      L2 True PF                                       0.0 [%]
+    #18      L3 True PF                                       0.0 [%]
+    #19      Total True PF                                    0.0 [%]
+    #20      L1 Displacement PF                               0.0 [%]
+    #21      L2 Displacement PF                               0.0 [%]
+    #22      L3 Displacement PF                               0.0 [%]
+    #23      Total Displacement PF                            0.0 [%]
+    #24      L1 Distortion PF                                 0.0 [%]
+    #25      L2 Distortion PF                                 0.0 [%]
+    #26      L3 Distortion PF                                 0.0 [%]
+    #27      Total Distortion PF                              0.0 [%]
+    #28      Number Of Snapshot Logs Requested                0
+    #29      Number Of Snapshot Logs Recieved (Counter)       0
+    #30      Number Of Snapshot Log Being Returned            0
+    #31      Internal Identifier                              0
+
+  TABLE: MinMax_Log_Table
+  ------------------------------------------------------------
+    #1       Date                                             0/0/0
+    #2       Time                                             0:00:00
+    #3       Date of MIN                                      0/0/0
+    #4       Time of MIN                                      0:00:00
+    #5       MIN Value For Parameter                          0.0
+    #6       Date of MAX                                      0/0/0
+    #7       Time of MAX                                      0:00:00
+    #8       MAX Value For Parameter                          0.0
+    #9       Number Of MIN_MAX Logs Requested                 0
+    #10      Number Of MIN_MAX Logs Recieved (Counter)        0
+    #11      Number Of MIN_MAX Log Being Returned             0
+    #12      Internal Identifier                              0
+
+  TABLE: Diagnostic_Table_Extended
+  ------------------------------------------------------------
+    #1       Date                                             6/7/2022
+    #2       Time                                             14:47:44
+    #3       Bulletin Number                                  1403
+    #4       MMFRN                                            304
+    #5       Options Bit Field                                9
+    #6       Overall Status                                   0
+    #7       MM ROM Status                                    0
+    #8       MM RAM Status                                    0
+    #9       NV RAM Status                                    0
+    #10      Power Supply Check                               0
+    #11      Data Acquisition                                 0
+    #12      MM Watchdog Timer                                0
+    #13      Real Time Clock Status                           0
+    #16      Battery Usage                                    0
+    #17      SCC Status                                       128
+    #19      SCC Type                                         2
+    #20      SCC FRN                                          202
+    #21      Number of DMs                                    1
+    #22      DM Status                                        0
+    #23      DM Self Test Results Word 1                      0
+    #24      DM Self Test Results Word 2                      0
+    #25      DM #1 FRN                                        110
+    #26      DM #2 FRN                                        0
+    #27      DM #3 FRN                                        0
+    #28      Aux. Freq.                                       0.0
+    #29      Fiber Loop Back Test Results                     64
+    #30      EEPROM Status                                    0
+    #31      Device ID                                        154
+    #32      General Purpose Status Bits                      2
+    #33      BT Error Status Word (Block Size ID)             0
+    #34      BT Error Status Word (Parameter Number)          0
+
+========================================================================
+  Poll timestamp: 2026-05-11T18:34:08Z
+  Device IP     : 10.16.130.51
+========================================================================
+
+  TABLE: Device_Configuration_Table
+  ------------------------------------------------------------
+    #1       Voltage Mode                                     4 [V]
+    #2       Present Unit Password                            ####
+    #3       New Password                                     ####
+    #4       Voltage Scale-PT Primary                         2399.999756 [V]
+    #5       Voltage Scale-PT Secondary                       120 [V]
+    #6       Current Scale-CT Primary                         200.0 [A]
+    #7       Current Scale-CT Secondary                       5 [A]
+    #8       Analog Input Scale-PT Primary                    1.0
+    #9       Analog Input Scale-PT Secondary                  1
+    #10      I4 Neutral Current Scale-CT Primary              5.0 [A]
+    #11      I4 Neutral Current Scale-CT Secondary            5 [A]
+    #12      Demand Period Length                             15 [min]
+    #13      Number Of Demand Periods                         1 [min]
+    #15      Snapshot Interval-Hours                          0 [s]
+    #16      Snapshot Interval-Minutes                        15 [s]
+    #17      Snapshot Interval-Seconds                        0 [s]
+    #18      Snapshot Buffer Type                             1
+    #24      Output Pulse Relay #                             0
+    #25      Output Pulse Parameter                           0
+    #26      Output Pulse Increment                           1
+    #27      Output Pulse Width (ms)                          100 [ms]
+    #28      CH A 12 Cycle Oscillograph                       1
+    #29      CH B 12 Cycle Oscillograph                       2
+    #30      Oscillography Type                               0
+    #31      Number of Pretrigger Cycles                      3
+    #32      IEEE 519 Max. Short Circuit Current              0.0 [A]
+    #33      IEEE 519 Max. Demand/Load Current                0.0 [A]
+    #34      Save Status Changes To Event Log                 1
+    #35      Vaux Voltage Mode                                0 [V]
+    #36      Filter Mode                                      2
+    #37      Enable Min_Max Log                               1
+
+  TABLE: Communications_Configuration_Table
+  ------------------------------------------------------------
+    #1       IP Address Byte a                                10
+    #2       IP Address Byte b                                16
+    #3       IP Address Byte c                                130
+    #4       IP Address Byte d                                51
+    #5       Gateway IP Address Byte a                        10
+    #6       Gateway IP Address Byte b                        16
+    #7       Gateway IP Address Byte c                        130
+    #8       Gateway IP Address Byte d                        1
+    #9       Subnet Mask Byte a                               255
+    #10      Subnet Mask Byte b                               255
+    #11      Subnet Mask Byte c                               255
+    #12      Subnet Mask Byte d                               0
+    #13      Physical Ethernet Port                           0
+    #14      CSP Keep Alive Interval                          30 [s]
+    #21      Present Unit Password                            ####
+
+  TABLE: Voltage_Current_Table
+  ------------------------------------------------------------
+    #1       Date                                             6/7/2022
+    #2       Time                                             14:48:18
+    #3       L1 Current                                       25.709179 [A]
+    #4       L2 Current                                       27.388796 [A]
+    #5       L3 Current                                       19.566929 [A]
+    #6       L4(Neutral) Current                              0.004904 [A]
+    #7       3 Phase Average Current                          24.221634 [A]
+    #8       Pos. Seq. Current                                10.997203 [A]
+    #9       Neg. Seq. Current                                17.629852 [A]
+    #10      Current Unbalanced                               160.312149 [A]
+    #11      L1-L2 Voltage                                    4339.010254 [V]
+    #12      L2-L3 Voltage                                    4305.488281 [V]
+    #13      L3-L1 Voltage                                    4328.760742 [V]
+    #14      AUX Voltage                                      0.0 [V]
+    #15      3 Phase Average Voltage L-L                      4324.419434 [V]
+    #16      Pos. Seq. Voltage                                4323.580078 [V]
+    #17      Neg. Seq. Voltage                                31.931202 [V]
+    #18      Voltage Unbalanced                               0.738536 [V]
+    #19      L1-N Voltage                                     2508.505615 [V]
+    #20      L2-N Voltage                                     2492.897461 [V]
+    #21      L3-N Voltage                                     2487.77417 [V]
+    #22      3 Phase Average Voltage L-N                      2496.392578 [V]
+    #25      Last Cycle Frequency                             59.995113 [Hz]
+    #26      Phase Rotation                                   2
+
+  TABLE: Real_Time_Power_Table
+  ------------------------------------------------------------
+    #1       Date                                             6/7/2022
+    #2       Time                                             14:48:18
+    #3       L1 Real Power                                    27573.460938 [W]
+    #4       L2 Real Power                                    45873.59375 [W]
+    #5       L3 Real Power                                    -29695.517578 [W]
+    #6       Total Real Power                                 43751.539062 [W]
+    #7       L1 Reactive Power                                57061.621094 [VAR]
+    #8       L2 Reactive Power                                48157.285156 [VAR]
+    #9       L3 Reactive Power                                -36396.742188 [VAR]
+    #10      Total Reactive Power                             68822.164062 [VAR]
+    #11      L1 Apparent Power                                63565.964844 [VA]
+    #12      L2 Apparent Power                                66649.34375 [VA]
+    #13      L3 Apparent Power                                47284.121094 [VA]
+    #14      Total Apparent Power                             177499.4375 [VA]
+    #15      L1 True PF                                       -43.377708 [%]
+    #16      L2 True PF                                       -68.82827 [%]
+    #17      L3 True PF                                       -62.802303 [%]
+    #18      Total True PF                                    -24.936226 [%]
+    #19      L1 Displacement PF                               -19.397442 [%]
+    #20      L2 Displacement PF                               -46.725266 [%]
+    #21      L3 Displacement PF                               -31.138447 [%]
+    #22      Total Displacement PF                            -98.183044 [%]
+    #23      L1 Distortion PF                                 99.832573 [%]
+    #24      L2 Distortion PF                                 99.685326 [%]
+    #25      L3 Distortion PF                                 99.507957 [%]
+    #26      Total Distortion PF                              99.675285 [%]
+
+  TABLE: Cumulative_Power_Table
+  ------------------------------------------------------------
+    #1       Date                                             6/7/2022
+    #2       Time                                             14:48:18
+    #3       KW Hours Forward                                 7693059.219146 [kWh]
+    #4       KW Hours Reverse                                 -185.540567 [kWh]
+    #5       KW Hours Net                                     7692873.672502 [kWh]
+    #6       KVAR Hours Forward                               19604141.048338 [kVARh]
+    #7       KVAR Hours Reverse                               -3.179442 [kVARh]
+    #8       KVAR Hours Net                                   19604137.86618 [kVARh]
+
+  TABLE: Demand_Data_Table
+  ------------------------------------------------------------
+    #1       Date                                             6/7/2022
+    #2       Time                                             14:48:18
+    #3       Demand Current                                   25.375259 [A]
+    #4       Demand Power                                     39238.050781 [W]
+    #5       Demand Apparent Power                            77481.046875 [VA]
+    #6       Projected #1 Demand Current                      189545.734375 [A]
+    #7       Projected #1 Demand Power                        27.954653 [W]
+    #8       Projected #1 Demand Reactive Power               37615.277344 [VAR]
+    #9       Projected #1 Demand Apparent Power               85129.867188 [VA]
+    #10      Projected #2 Demand Current                      208774.484375 [A]
+    #11      Projected #2 Demand Power                        24.163132 [W]
+    #12      Projected #2 Demand Reactive Power               40750.460938 [VAR]
+    #13      Projected #2 Demand Apparent Power               72261.203125 [VA]
+    #14      Projected #3 Demand Current                      180895.40625 [A]
+    #15      Projected #3 Demand Power                        -20.423271 [W]
+    #16      Projected #3 Demand Reactive Power               73755.257812 [VAR]
+    #17      Projected #3 Demand Apparent Power               -80681.25 [VA]
+    #18      Elapsed Time                                     -146603.265625 [s]
+
+  TABLE: Diagnostic_Table
+  ------------------------------------------------------------
+    #1       Date                                             6/7/2022
+    #2       Time                                             14:48:18
+    #3       Bulletin Number                                  1403
+    #4       MMFRN                                            304
+    #5       Options Bit Field                                9
+    #6       Overall Status                                   0
+    #7       MM ROM Status                                    0
+    #8       MM RAM Status                                    0
+    #9       NV RAM Status                                    0
+    #10      Power Supply Check                               0
+    #11      Data Acquisition                                 0
+    #12      MM Watchdog Timer                                0
+    #13      Real Time Clock Status                           0
+    #16      Battery Usage                                    0
+    #17      SCC Status                                       128
+    #19      SCC Type                                         2
+    #20      SCC FRN                                          202
+    #21      Number of DMs                                    1
+    #22      DM Status                                        0
+    #23      DM Self Test Results Word 1                      0
+    #24      DM Self Test Results Word 2                      0
+    #25      DM #1 FRN                                        110
+    #26      DM #2 FRN                                        0
+    #27      DM #3 FRN                                        0
+    #28      Aux. Freq.                                       0.0
+    #29      Fiber Loop Back Test Results                     64
+    #30      EEPROM Status                                    0
+    #31      Device ID                                        154
+    #32      General Purpose Status Bits                      2
+    #33      BT Error Status Word (Block Size ID)             0
+    #34      BT Error Status Word (Parameter Number)          0
+
+  TABLE: Voltage_Current_Snapshot_Log_Table
+  ------------------------------------------------------------
+    #1       Date                                             0/0/0
+    #2       Time                                             0:00:00
+    #4       L1 Current                                       0.0 [A]
+    #5       L2 Current                                       0.0 [A]
+    #6       L3 Current                                       0.0 [A]
+    #7       L4(Neutral) Current                              0.0 [A]
+    #8       3 Phase Average Current                          0.0 [A]
+    #9       Pos. Seq. Current                                0.0 [A]
+    #10      Neg. Seq. Current                                0.0 [A]
+    #11      Current Unbalanced                               0.0 [A]
+    #12      L1-L2 Voltage                                    0.0 [V]
+    #13      L2-L3 Voltage                                    0.0 [V]
+    #14      L3-L1 Voltage                                    0.0 [V]
+    #15      AUX Voltage                                      0.0 [V]
+    #16      3 Phase Average Voltage L-L                      0.0 [V]
+    #17      Pos. Seq. Voltage                                0.0 [V]
+    #18      Neg. Seq. Voltage                                0.0 [V]
+    #19      Voltage Unbalanced                               0.0 [V]
+    #20      L1-N Voltage                                     0.0 [V]
+    #21      L2-N Voltage                                     0.0 [V]
+    #22      L3-N Voltage                                     0.0 [V]
+    #23      3 Phase Average Voltage L-N                      0.0 [V]
+    #26      Last Cycle Frequency                             0 [Hz]
+    #27      Phase Rotation                                   0
+    #28      Number Of Snapshot Logs Requested                0
+    #29      Number Of Snapshot Logs Recieved (Counter)       0
+    #30      Number Of Snapshot Log Being Returned            0
+
+  TABLE: Power_Snapshot_Log_Table
+  ------------------------------------------------------------
+    #1       Date                                             0/0/0
+    #2       Time                                             0:00:00
+    #4       L1 Real Power                                    0.0 [W]
+    #5       L2 Real Power                                    0.0 [W]
+    #6       L3 Real Power                                    0.0 [W]
+    #7       Total Real Power                                 0.0 [W]
+    #8       L1 Reactive Power                                0.0 [VAR]
+    #9       L2 Reactive Power                                0.0 [VAR]
+    #10      L3 Reactive Power                                0.0 [VAR]
+    #11      Total Reactive Power                             0.0 [VAR]
+    #12      L1 Apparent Power                                0.0 [VA]
+    #13      L2 Apparent Power                                0.0 [VA]
+    #14      L3 Apparent Power                                0.0 [VA]
+    #15      Total Apparent Power                             0.0 [VA]
+    #16      L1 True PF                                       0.0 [%]
+    #17      L2 True PF                                       0.0 [%]
+    #18      L3 True PF                                       0.0 [%]
+    #19      Total True PF                                    0.0 [%]
+    #20      L1 Displacement PF                               0.0 [%]
+    #21      L2 Displacement PF                               0.0 [%]
+    #22      L3 Displacement PF                               0.0 [%]
+    #23      Total Displacement PF                            0.0 [%]
+    #24      L1 Distortion PF                                 0.0 [%]
+    #25      L2 Distortion PF                                 0.0 [%]
+    #26      L3 Distortion PF                                 0.0 [%]
+    #27      Total Distortion PF                              0.0 [%]
+    #28      Number Of Snapshot Logs Requested                0
+    #29      Number Of Snapshot Logs Recieved (Counter)       0
+    #30      Number Of Snapshot Log Being Returned            0
+    #31      Internal Identifier                              0
+
+  TABLE: MinMax_Log_Table
+  ------------------------------------------------------------
+    #1       Date                                             0/0/0
+    #2       Time                                             0:00:00
+    #3       Date of MIN                                      0/0/0
+    #4       Time of MIN                                      0:00:00
+    #5       MIN Value For Parameter                          0.0
+    #6       Date of MAX                                      0/0/0
+    #7       Time of MAX                                      0:00:00
+    #8       MAX Value For Parameter                          0.0
+    #9       Number Of MIN_MAX Logs Requested                 0
+    #10      Number Of MIN_MAX Logs Recieved (Counter)        0
+    #11      Number Of MIN_MAX Log Being Returned             0
+    #12      Internal Identifier                              0
+
+  TABLE: Diagnostic_Table_Extended
+  ------------------------------------------------------------
+    #1       Date                                             6/7/2022
+    #2       Time                                             14:48:19
+    #3       Bulletin Number                                  1403
+    #4       MMFRN                                            304
+    #5       Options Bit Field                                9
+    #6       Overall Status                                   0
+    #7       MM ROM Status                                    0
+    #8       MM RAM Status                                    0
+    #9       NV RAM Status                                    0
+    #10      Power Supply Check                               0
+    #11      Data Acquisition                                 0
+    #12      MM Watchdog Timer                                0
+    #13      Real Time Clock Status                           0
+    #16      Battery Usage                                    0
+    #17      SCC Status                                       128
+    #19      SCC Type                                         2
+    #20      SCC FRN                                          202
+    #21      Number of DMs                                    1
+    #22      DM Status                                        0
+    #23      DM Self Test Results Word 1                      0
+    #24      DM Self Test Results Word 2                      0
+    #25      DM #1 FRN                                        110
+    #26      DM #2 FRN                                        0
+    #27      DM #3 FRN                                        0
+    #28      Aux. Freq.                                       0.0
+    #29      Fiber Loop Back Test Results                     64
+    #30      EEPROM Status                                    0
+    #31      Device ID                                        154
+    #32      General Purpose Status Bits                      2
+    #33      BT Error Status Word (Block Size ID)             0
+    #34      BT Error Status Word (Parameter Number)          0
+
+========================================================================
+  Poll timestamp: 2026-05-11T18:34:44Z
+  Device IP     : 10.16.130.51
+========================================================================
+
+  TABLE: Device_Configuration_Table
+  ------------------------------------------------------------
+    #1       Voltage Mode                                     4 [V]
+    #2       Present Unit Password                            ####
+    #3       New Password                                     ####
+    #4       Voltage Scale-PT Primary                         2399.999756 [V]
+    #5       Voltage Scale-PT Secondary                       120 [V]
+    #6       Current Scale-CT Primary                         200.0 [A]
+    #7       Current Scale-CT Secondary                       5 [A]
+    #8       Analog Input Scale-PT Primary                    1.0
+    #9       Analog Input Scale-PT Secondary                  1
+    #10      I4 Neutral Current Scale-CT Primary              5.0 [A]
+    #11      I4 Neutral Current Scale-CT Secondary            5 [A]
+    #12      Demand Period Length                             15 [min]
+    #13      Number Of Demand Periods                         1 [min]
+    #15      Snapshot Interval-Hours                          0 [s]
+    #16      Snapshot Interval-Minutes                        15 [s]
+    #17      Snapshot Interval-Seconds                        0 [s]
+    #18      Snapshot Buffer Type                             1
+    #24      Output Pulse Relay #                             0
+    #25      Output Pulse Parameter                           0
+    #26      Output Pulse Increment                           1
+    #27      Output Pulse Width (ms)                          100 [ms]
+    #28      CH A 12 Cycle Oscillograph                       1
+    #29      CH B 12 Cycle Oscillograph                       2
+    #30      Oscillography Type                               0
+    #31      Number of Pretrigger Cycles                      3
+    #32      IEEE 519 Max. Short Circuit Current              0.0 [A]
+    #33      IEEE 519 Max. Demand/Load Current                0.0 [A]
+    #34      Save Status Changes To Event Log                 1
+    #35      Vaux Voltage Mode                                0 [V]
+    #36      Filter Mode                                      2
+    #37      Enable Min_Max Log                               1
+
+  TABLE: Communications_Configuration_Table
+  ------------------------------------------------------------
+    #1       IP Address Byte a                                10
+    #2       IP Address Byte b                                16
+    #3       IP Address Byte c                                130
+    #4       IP Address Byte d                                51
+    #5       Gateway IP Address Byte a                        10
+    #6       Gateway IP Address Byte b                        16
+    #7       Gateway IP Address Byte c                        130
+    #8       Gateway IP Address Byte d                        1
+    #9       Subnet Mask Byte a                               255
+    #10      Subnet Mask Byte b                               255
+    #11      Subnet Mask Byte c                               255
+    #12      Subnet Mask Byte d                               0
+    #13      Physical Ethernet Port                           0
+    #14      CSP Keep Alive Interval                          30 [s]
+    #21      Present Unit Password                            ####
+
+  TABLE: Voltage_Current_Table
+  ------------------------------------------------------------
+    #1       Date                                             6/7/2022
+    #2       Time                                             14:48:53
+    #3       L1 Current                                       26.138279 [A]
+    #4       L2 Current                                       27.928236 [A]
+    #5       L3 Current                                       20.265749 [A]
+    #6       L4(Neutral) Current                              0.004904 [A]
+    #7       3 Phase Average Current                          24.77742 [A]
+    #8       Pos. Seq. Current                                11.119802 [A]
+    #9       Neg. Seq. Current                                17.973131 [A]
+    #10      Current Unbalanced                               161.63176 [A]
+    #11      L1-L2 Voltage                                    4335.447266 [V]
+    #12      L2-L3 Voltage                                    4303.578613 [V]
+    #13      L3-L1 Voltage                                    4324.822266 [V]
+    #14      AUX Voltage                                      0.0 [V]
+    #15      3 Phase Average Voltage L-L                      4321.282715 [V]
+    #16      Pos. Seq. Voltage                                4320.481934 [V]
+    #17      Neg. Seq. Voltage                                30.978031 [V]
+    #18      Voltage Unbalanced                               0.717004 [V]
+    #19      L1-N Voltage                                     2506.003662 [V]
+    #20      L2-N Voltage                                     2491.706055 [V]
+    #21      L3-N Voltage                                     2486.106201 [V]
+    #22      3 Phase Average Voltage L-N                      2494.605469 [V]
+    #25      Last Cycle Frequency                             59.992184 [Hz]
+    #26      Phase Rotation                                   2
+
+  TABLE: Real_Time_Power_Table
+  ------------------------------------------------------------
+    #1       Date                                             6/7/2022
+    #2       Time                                             14:48:53
+    #3       L1 Real Power                                    26163.304688 [W]
+    #4       L2 Real Power                                    44529.160156 [W]
+    #5       L3 Real Power                                    -28298.263672 [W]
+    #6       Total Real Power                                 42394.203125 [W]
+    #7       L1 Reactive Power                                56755.359375 [VAR]
+    #8       L2 Reactive Power                                47817.460938 [VAR]
+    #9       L3 Reactive Power                                -36000.453125 [VAR]
+    #10      Total Reactive Power                             68572.367188 [VAR]
+    #11      L1 Apparent Power                                62690.929688 [VA]
+    #12      L2 Apparent Power                                65450.003906 [VA]
+    #13      L3 Apparent Power                                46067.859375 [VA]
+    #14      Total Apparent Power                             174208.796875 [VA]
+    #15      L1 True PF                                       -41.733795 [%]
+    #16      L2 True PF                                       -68.035378 [%]
+    #17      L3 True PF                                       -61.427349 [%]
+    #18      Total True PF                                    -24.60631 [%]
+    #19      L1 Displacement PF                               -21.506721 [%]
+    #20      L2 Displacement PF                               -50.281483 [%]
+    #21      L3 Displacement PF                               -35.522995 [%]
+    #22      Total Displacement PF                            -98.806168 [%]
+    #23      L1 Distortion PF                                 99.841515 [%]
+    #24      L2 Distortion PF                                 99.702751 [%]
+    #25      L3 Distortion PF                                 99.512543 [%]
+    #26      Total Distortion PF                              99.685608 [%]
+
+  TABLE: Cumulative_Power_Table
+  ------------------------------------------------------------
+    #1       Date                                             6/7/2022
+    #2       Time                                             14:48:53
+    #3       KW Hours Forward                                 7693059.625184 [kWh]
+    #4       KW Hours Reverse                                 -185.540567 [kWh]
+    #5       KW Hours Net                                     7692874.07854 [kWh]
+    #6       KVAR Hours Forward                               19604141.719602 [kVARh]
+    #7       KVAR Hours Reverse                               -3.179442 [kVARh]
+    #8       KVAR Hours Net                                   19604138.537444 [kVARh]
+
+  TABLE: Demand_Data_Table
+  ------------------------------------------------------------
+    #1       Date                                             6/7/2022
+    #2       Time                                             14:48:53
+    #3       Demand Current                                   25.375259 [A]
+    #4       Demand Power                                     39238.050781 [W]
+    #5       Demand Apparent Power                            77481.046875 [VA]
+    #6       Projected #1 Demand Current                      189545.734375 [A]
+    #7       Projected #1 Demand Power                        27.237064 [W]
+    #8       Projected #1 Demand Reactive Power               38129.664062 [VAR]
+    #9       Projected #1 Demand Apparent Power               82733.453125 [VA]
+    #10      Projected #2 Demand Current                      203490.09375 [A]
+    #11      Projected #2 Demand Power                        24.167858 [W]
+    #12      Projected #2 Demand Reactive Power               40552.984375 [VAR]
+    #13      Projected #2 Demand Apparent Power               71830.523438 [VA]
+    #14      Projected #3 Demand Current                      180833.453125 [A]
+    #15      Projected #3 Demand Power                        26.992083 [W]
+    #16      Projected #3 Demand Reactive Power               48056.316406 [VAR]
+    #17      Projected #3 Demand Apparent Power               73111.671875 [VA]
+    #18      Elapsed Time                                     201258.140625 [s]
+
+  TABLE: Diagnostic_Table
+  ------------------------------------------------------------
+    #1       Date                                             6/7/2022
+    #2       Time                                             14:48:54
+    #3       Bulletin Number                                  1403
+    #4       MMFRN                                            304
+    #5       Options Bit Field                                9
+    #6       Overall Status                                   0
+    #7       MM ROM Status                                    0
+    #8       MM RAM Status                                    0
+    #9       NV RAM Status                                    0
+    #10      Power Supply Check                               0
+    #11      Data Acquisition                                 0
+    #12      MM Watchdog Timer                                0
+    #13      Real Time Clock Status                           0
+    #16      Battery Usage                                    0
+    #17      SCC Status                                       128
+    #19      SCC Type                                         2
+    #20      SCC FRN                                          202
+    #21      Number of DMs                                    1
+    #22      DM Status                                        0
+    #23      DM Self Test Results Word 1                      0
+    #24      DM Self Test Results Word 2                      0
+    #25      DM #1 FRN                                        110
+    #26      DM #2 FRN                                        0
+    #27      DM #3 FRN                                        0
+    #28      Aux. Freq.                                       0.0
+    #29      Fiber Loop Back Test Results                     64
+    #30      EEPROM Status                                    0
+    #31      Device ID                                        154
+    #32      General Purpose Status Bits                      2
+    #33      BT Error Status Word (Block Size ID)             0
+    #34      BT Error Status Word (Parameter Number)          0
+
+  TABLE: Voltage_Current_Snapshot_Log_Table
+  ------------------------------------------------------------
+    #1       Date                                             0/0/0
+    #2       Time                                             0:00:00
+    #4       L1 Current                                       0.0 [A]
+    #5       L2 Current                                       0.0 [A]
+    #6       L3 Current                                       0.0 [A]
+    #7       L4(Neutral) Current                              0.0 [A]
+    #8       3 Phase Average Current                          0.0 [A]
+    #9       Pos. Seq. Current                                0.0 [A]
+    #10      Neg. Seq. Current                                0.0 [A]
+    #11      Current Unbalanced                               0.0 [A]
+    #12      L1-L2 Voltage                                    0.0 [V]
+    #13      L2-L3 Voltage                                    0.0 [V]
+    #14      L3-L1 Voltage                                    0.0 [V]
+    #15      AUX Voltage                                      0.0 [V]
+    #16      3 Phase Average Voltage L-L                      0.0 [V]
+    #17      Pos. Seq. Voltage                                0.0 [V]
+    #18      Neg. Seq. Voltage                                0.0 [V]
+    #19      Voltage Unbalanced                               0.0 [V]
+    #20      L1-N Voltage                                     0.0 [V]
+    #21      L2-N Voltage                                     0.0 [V]
+    #22      L3-N Voltage                                     0.0 [V]
+    #23      3 Phase Average Voltage L-N                      0.0 [V]
+    #26      Last Cycle Frequency                             0 [Hz]
+    #27      Phase Rotation                                   0
+    #28      Number Of Snapshot Logs Requested                0
+    #29      Number Of Snapshot Logs Recieved (Counter)       0
+    #30      Number Of Snapshot Log Being Returned            0
+
+  TABLE: Power_Snapshot_Log_Table
+  ------------------------------------------------------------
+    #1       Date                                             0/0/0
+    #2       Time                                             0:00:00
+    #4       L1 Real Power                                    0.0 [W]
+    #5       L2 Real Power                                    0.0 [W]
+    #6       L3 Real Power                                    0.0 [W]
+    #7       Total Real Power                                 0.0 [W]
+    #8       L1 Reactive Power                                0.0 [VAR]
+    #9       L2 Reactive Power                                0.0 [VAR]
+    #10      L3 Reactive Power                                0.0 [VAR]
+    #11      Total Reactive Power                             0.0 [VAR]
+    #12      L1 Apparent Power                                0.0 [VA]
+    #13      L2 Apparent Power                                0.0 [VA]
+    #14      L3 Apparent Power                                0.0 [VA]
+    #15      Total Apparent Power                             0.0 [VA]
+    #16      L1 True PF                                       0.0 [%]
+    #17      L2 True PF                                       0.0 [%]
+    #18      L3 True PF                                       0.0 [%]
+    #19      Total True PF                                    0.0 [%]
+    #20      L1 Displacement PF                               0.0 [%]
+    #21      L2 Displacement PF                               0.0 [%]
+    #22      L3 Displacement PF                               0.0 [%]
+    #23      Total Displacement PF                            0.0 [%]
+    #24      L1 Distortion PF                                 0.0 [%]
+    #25      L2 Distortion PF                                 0.0 [%]
+    #26      L3 Distortion PF                                 0.0 [%]
+    #27      Total Distortion PF                              0.0 [%]
+    #28      Number Of Snapshot Logs Requested                0
+    #29      Number Of Snapshot Logs Recieved (Counter)       0
+    #30      Number Of Snapshot Log Being Returned            0
+    #31      Internal Identifier                              0
+
+  TABLE: MinMax_Log_Table
+  ------------------------------------------------------------
+    #1       Date                                             0/0/0
+    #2       Time                                             0:00:00
+    #3       Date of MIN                                      0/0/0
+    #4       Time of MIN                                      0:00:00
+    #5       MIN Value For Parameter                          0.0
+    #6       Date of MAX                                      0/0/0
+    #7       Time of MAX                                      0:00:00
+    #8       MAX Value For Parameter                          0.0
+    #9       Number Of MIN_MAX Logs Requested                 0
+    #10      Number Of MIN_MAX Logs Recieved (Counter)        0
+    #11      Number Of MIN_MAX Log Being Returned             0
+    #12      Internal Identifier                              0
+
+  TABLE: Diagnostic_Table_Extended
+  ------------------------------------------------------------
+    #1       Date                                             6/7/2022
+    #2       Time                                             14:48:55
+    #3       Bulletin Number                                  1403
+    #4       MMFRN                                            304
+    #5       Options Bit Field                                9
+    #6       Overall Status                                   0
+    #7       MM ROM Status                                    0
+    #8       MM RAM Status                                    0
+    #9       NV RAM Status                                    0
+    #10      Power Supply Check                               0
+    #11      Data Acquisition                                 0
+    #12      MM Watchdog Timer                                0
+    #13      Real Time Clock Status                           0
+    #16      Battery Usage                                    0
+    #17      SCC Status                                       128
+    #19      SCC Type                                         2
+    #20      SCC FRN                                          202
+    #21      Number of DMs                                    1
+    #22      DM Status                                        0
+    #23      DM Self Test Results Word 1                      0
+    #24      DM Self Test Results Word 2                      0
+    #25      DM #1 FRN                                        110
+    #26      DM #2 FRN                                        0
+    #27      DM #3 FRN                                        0
+    #28      Aux. Freq.                                       0.0
+    #29      Fiber Loop Back Test Results                     64
+    #30      EEPROM Status                                    0
+    #31      Device ID                                        154
+    #32      General Purpose Status Bits                      2
+    #33      BT Error Status Word (Block Size ID)             0
+    #34      BT Error Status Word (Parameter Number)          0
