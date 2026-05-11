@@ -470,3 +470,141 @@
 2026-05-11T14:04:56 | INFO     | ABMonitor | XLSX written: c:\users\wwallace\onedrive - national radio astronomy observatory\documents\github\gbo_maser_control\ab_meter_output\xlsx\ABMeter_10_16_130_51_20260511T180456.xlsx
 2026-05-11T14:04:56 | DEBUG    | ABMonitor | Log appended: c:\users\wwallace\onedrive - national radio astronomy observatory\documents\github\gbo_maser_control\ab_meter_output\logs\ABMeter_10_16_130_50.log
 2026-05-11T14:04:56 | DEBUG    | ABMonitor | Log appended: c:\users\wwallace\onedrive - national radio astronomy observatory\documents\github\gbo_maser_control\ab_meter_output\logs\ABMeter_10_16_130_51.log
+2026-05-11T14:11:12 | INFO     | ABMonitor | Logger initialised — output: c:\users\wwallace\onedrive - national radio astronomy observatory\documents\github\gbo_maser_control\ab_meter_output\logs\ab_monitor.log
+2026-05-11T14:11:12 | INFO     | ABMonitor | AB Power Meter Monitor starting up.
+2026-05-11T14:11:12 | INFO     | ABMonitor | Configuration: {
+  "ip_base": "10.16.130",
+  "octet_start": 50,
+  "octet_end": 51,
+  "sample_period": 30,
+  "enable_gui": 1,
+  "enable_fits": 1,
+  "enable_csv": 1,
+  "enable_xlsx": 1,
+  "enable_log_append": 1,
+  "output_base_dir": "c:\\users\\wwallace\\onedrive - national radio astronomy observatory\\documents\\github\\gbo_maser_control\\ab_meter_output",
+  "fits_dir": "c:\\users\\wwallace\\onedrive - national radio astronomy observatory\\documents\\github\\gbo_maser_control\\ab_meter_output\\fits",
+  "csv_dir": "c:\\users\\wwallace\\onedrive - national radio astronomy observatory\\documents\\github\\gbo_maser_control\\ab_meter_output\\csv",
+  "xlsx_dir": "c:\\users\\wwallace\\onedrive - national radio astronomy observatory\\documents\\github\\gbo_maser_control\\ab_meter_output\\xlsx",
+  "veusz_dir": "c:\\users\\wwallace\\onedrive - national radio astronomy observatory\\documents\\github\\gbo_maser_control\\ab_meter_output\\veusz",
+  "log_dir": "c:\\users\\wwallace\\onedrive - national radio astronomy observatory\\documents\\github\\gbo_maser_control\\ab_meter_output\\logs"
+}
+2026-05-11T14:11:21 | INFO     | ABMonitor | Polling device 10.16.130.50 …
+2026-05-11T14:11:21 | DEBUG    | ABMonitor | Fetched http://10.16.130.50/0 — 2461 bytes
+2026-05-11T14:11:21 | DEBUG    | ABMonitor | Parsed table 'Device_Configuration_Table' — 31 rows
+2026-05-11T14:11:21 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.50_Device_Configuration_Table
+2026-05-11T14:11:21 | DEBUG    | ABMonitor | Fetched http://10.16.130.50/1 — 1351 bytes
+2026-05-11T14:11:21 | DEBUG    | ABMonitor | Parsed table 'Communications_Configuration_Table' — 15 rows
+2026-05-11T14:11:22 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.50_Communications_Configuration_Table
+2026-05-11T14:11:22 | DEBUG    | ABMonitor | Fetched http://10.16.130.50/2 — 1930 bytes
+2026-05-11T14:11:22 | DEBUG    | ABMonitor | Parsed table 'Voltage_Current_Table' — 24 rows
+2026-05-11T14:11:22 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.50_Voltage_Current_Table
+2026-05-11T14:11:22 | DEBUG    | ABMonitor | Fetched http://10.16.130.50/3 — 2102 bytes
+2026-05-11T14:11:22 | DEBUG    | ABMonitor | Parsed table 'Real_Time_Power_Table' — 26 rows
+2026-05-11T14:11:22 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.50_Real_Time_Power_Table
+2026-05-11T14:11:22 | DEBUG    | ABMonitor | Fetched http://10.16.130.50/4 — 925 bytes
+2026-05-11T14:11:22 | DEBUG    | ABMonitor | Parsed table 'Cumulative_Power_Table' — 8 rows
+2026-05-11T14:11:22 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.50_Cumulative_Power_Table
+2026-05-11T14:11:22 | DEBUG    | ABMonitor | Fetched http://10.16.130.50/5 — 1747 bytes
+2026-05-11T14:11:22 | DEBUG    | ABMonitor | Parsed table 'Demand_Data_Table' — 18 rows
+2026-05-11T14:11:22 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.50_Demand_Data_Table
+2026-05-11T14:11:22 | DEBUG    | ABMonitor | Fetched http://10.16.130.50/6 — 2158 bytes
+2026-05-11T14:11:22 | DEBUG    | ABMonitor | Parsed table 'Diagnostic_Table' — 31 rows
+2026-05-11T14:11:22 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.50_Diagnostic_Table
+2026-05-11T14:11:23 | DEBUG    | ABMonitor | Fetched http://10.16.130.50/7 — 2129 bytes
+2026-05-11T14:11:23 | DEBUG    | ABMonitor | Parsed table 'Voltage_Current_Snapshot_Log_Table' — 27 rows
+2026-05-11T14:11:23 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.50_Voltage_Current_Snapshot_Log_Table
+2026-05-11T14:11:23 | DEBUG    | ABMonitor | Fetched http://10.16.130.50/8 — 2316 bytes
+2026-05-11T14:11:23 | DEBUG    | ABMonitor | Parsed table 'Power_Snapshot_Log_Table' — 30 rows
+2026-05-11T14:11:23 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.50_Power_Snapshot_Log_Table
+2026-05-11T14:11:23 | DEBUG    | ABMonitor | Fetched http://10.16.130.50/9 — 1159 bytes
+2026-05-11T14:11:23 | DEBUG    | ABMonitor | Parsed table 'MinMax_Log_Table' — 12 rows
+2026-05-11T14:11:23 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.50_MinMax_Log_Table
+2026-05-11T14:11:23 | DEBUG    | ABMonitor | Fetched http://10.16.130.50/10 — 2158 bytes
+2026-05-11T14:11:23 | DEBUG    | ABMonitor | Parsed table 'Diagnostic_Table_Extended' — 31 rows
+2026-05-11T14:11:23 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.50_Diagnostic_Table_Extended
+2026-05-11T14:11:23 | INFO     | ABMonitor | Polling device 10.16.130.51 …
+2026-05-11T14:11:24 | DEBUG    | ABMonitor | Fetched http://10.16.130.51/0 — 2461 bytes
+2026-05-11T14:11:24 | DEBUG    | ABMonitor | Parsed table 'Device_Configuration_Table' — 31 rows
+2026-05-11T14:11:24 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.51_Device_Configuration_Table
+2026-05-11T14:11:24 | DEBUG    | ABMonitor | Fetched http://10.16.130.51/1 — 1351 bytes
+2026-05-11T14:11:24 | DEBUG    | ABMonitor | Parsed table 'Communications_Configuration_Table' — 15 rows
+2026-05-11T14:11:24 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.51_Communications_Configuration_Table
+2026-05-11T14:11:24 | DEBUG    | ABMonitor | Fetched http://10.16.130.51/2 — 1930 bytes
+2026-05-11T14:11:24 | DEBUG    | ABMonitor | Parsed table 'Voltage_Current_Table' — 24 rows
+2026-05-11T14:11:24 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.51_Voltage_Current_Table
+2026-05-11T14:11:24 | DEBUG    | ABMonitor | Fetched http://10.16.130.51/3 — 2095 bytes
+2026-05-11T14:11:24 | DEBUG    | ABMonitor | Parsed table 'Real_Time_Power_Table' — 26 rows
+2026-05-11T14:11:24 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.51_Real_Time_Power_Table
+2026-05-11T14:11:24 | DEBUG    | ABMonitor | Fetched http://10.16.130.51/4 — 923 bytes
+2026-05-11T14:11:24 | DEBUG    | ABMonitor | Parsed table 'Cumulative_Power_Table' — 8 rows
+2026-05-11T14:11:24 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.51_Cumulative_Power_Table
+2026-05-11T14:11:24 | DEBUG    | ABMonitor | Fetched http://10.16.130.51/5 — 1738 bytes
+2026-05-11T14:11:24 | DEBUG    | ABMonitor | Parsed table 'Demand_Data_Table' — 18 rows
+2026-05-11T14:11:24 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.51_Demand_Data_Table
+2026-05-11T14:11:25 | DEBUG    | ABMonitor | Fetched http://10.16.130.51/6 — 2157 bytes
+2026-05-11T14:11:25 | DEBUG    | ABMonitor | Parsed table 'Diagnostic_Table' — 31 rows
+2026-05-11T14:11:25 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.51_Diagnostic_Table
+2026-05-11T14:11:25 | DEBUG    | ABMonitor | Fetched http://10.16.130.51/7 — 2129 bytes
+2026-05-11T14:11:25 | DEBUG    | ABMonitor | Parsed table 'Voltage_Current_Snapshot_Log_Table' — 27 rows
+2026-05-11T14:11:25 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.51_Voltage_Current_Snapshot_Log_Table
+2026-05-11T14:11:25 | DEBUG    | ABMonitor | Fetched http://10.16.130.51/8 — 2316 bytes
+2026-05-11T14:11:25 | DEBUG    | ABMonitor | Parsed table 'Power_Snapshot_Log_Table' — 30 rows
+2026-05-11T14:11:25 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.51_Power_Snapshot_Log_Table
+2026-05-11T14:11:25 | DEBUG    | ABMonitor | Fetched http://10.16.130.51/9 — 1159 bytes
+2026-05-11T14:11:25 | DEBUG    | ABMonitor | Parsed table 'MinMax_Log_Table' — 12 rows
+2026-05-11T14:11:25 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.51_MinMax_Log_Table
+2026-05-11T14:11:26 | DEBUG    | ABMonitor | Fetched http://10.16.130.51/10 — 2157 bytes
+2026-05-11T14:11:26 | DEBUG    | ABMonitor | Parsed table 'Diagnostic_Table_Extended' — 31 rows
+2026-05-11T14:11:26 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.51_Diagnostic_Table_Extended
+2026-05-11T14:11:26 | INFO     | ABMonitor | Named dicts updated from 2 device(s).
+2026-05-11T14:11:26 | INFO     | ABMonitor | FITS written: c:\users\wwallace\onedrive - national radio astronomy observatory\documents\github\gbo_maser_control\ab_meter_output\fits\ABMeter_10_16_130_50_20260511T181126.fits
+2026-05-11T14:11:26 | INFO     | ABMonitor | FITS written: c:\users\wwallace\onedrive - national radio astronomy observatory\documents\github\gbo_maser_control\ab_meter_output\fits\ABMeter_10_16_130_51_20260511T181126.fits
+2026-05-11T14:11:26 | DEBUG    | ABMonitor | CSV appended: c:\users\wwallace\onedrive - national radio astronomy observatory\documents\github\gbo_maser_control\ab_meter_output\csv\ABMeter_10_16_130_50_Device_Configuration_Table.csv
+2026-05-11T14:11:26 | DEBUG    | ABMonitor | CSV appended: c:\users\wwallace\onedrive - national radio astronomy observatory\documents\github\gbo_maser_control\ab_meter_output\csv\ABMeter_10_16_130_50_Communications_Configuration_Table.csv
+2026-05-11T14:11:26 | DEBUG    | ABMonitor | CSV appended: c:\users\wwallace\onedrive - national radio astronomy observatory\documents\github\gbo_maser_control\ab_meter_output\csv\ABMeter_10_16_130_50_Voltage_Current_Table.csv
+2026-05-11T14:11:26 | DEBUG    | ABMonitor | CSV appended: c:\users\wwallace\onedrive - national radio astronomy observatory\documents\github\gbo_maser_control\ab_meter_output\csv\ABMeter_10_16_130_50_Real_Time_Power_Table.csv
+2026-05-11T14:11:26 | DEBUG    | ABMonitor | CSV appended: c:\users\wwallace\onedrive - national radio astronomy observatory\documents\github\gbo_maser_control\ab_meter_output\csv\ABMeter_10_16_130_50_Cumulative_Power_Table.csv
+2026-05-11T14:11:26 | DEBUG    | ABMonitor | CSV appended: c:\users\wwallace\onedrive - national radio astronomy observatory\documents\github\gbo_maser_control\ab_meter_output\csv\ABMeter_10_16_130_50_Demand_Data_Table.csv
+2026-05-11T14:11:26 | DEBUG    | ABMonitor | CSV appended: c:\users\wwallace\onedrive - national radio astronomy observatory\documents\github\gbo_maser_control\ab_meter_output\csv\ABMeter_10_16_130_50_Diagnostic_Table.csv
+2026-05-11T14:11:26 | DEBUG    | ABMonitor | CSV appended: c:\users\wwallace\onedrive - national radio astronomy observatory\documents\github\gbo_maser_control\ab_meter_output\csv\ABMeter_10_16_130_50_Voltage_Current_Snapshot_Log_Table.csv
+2026-05-11T14:11:26 | DEBUG    | ABMonitor | CSV appended: c:\users\wwallace\onedrive - national radio astronomy observatory\documents\github\gbo_maser_control\ab_meter_output\csv\ABMeter_10_16_130_50_Power_Snapshot_Log_Table.csv
+2026-05-11T14:11:26 | DEBUG    | ABMonitor | CSV appended: c:\users\wwallace\onedrive - national radio astronomy observatory\documents\github\gbo_maser_control\ab_meter_output\csv\ABMeter_10_16_130_50_MinMax_Log_Table.csv
+2026-05-11T14:11:26 | DEBUG    | ABMonitor | CSV appended: c:\users\wwallace\onedrive - national radio astronomy observatory\documents\github\gbo_maser_control\ab_meter_output\csv\ABMeter_10_16_130_50_Diagnostic_Table_Extended.csv
+2026-05-11T14:11:26 | DEBUG    | ABMonitor | CSV appended: c:\users\wwallace\onedrive - national radio astronomy observatory\documents\github\gbo_maser_control\ab_meter_output\csv\ABMeter_10_16_130_51_Device_Configuration_Table.csv
+2026-05-11T14:11:26 | DEBUG    | ABMonitor | CSV appended: c:\users\wwallace\onedrive - national radio astronomy observatory\documents\github\gbo_maser_control\ab_meter_output\csv\ABMeter_10_16_130_51_Communications_Configuration_Table.csv
+2026-05-11T14:11:26 | DEBUG    | ABMonitor | CSV appended: c:\users\wwallace\onedrive - national radio astronomy observatory\documents\github\gbo_maser_control\ab_meter_output\csv\ABMeter_10_16_130_51_Voltage_Current_Table.csv
+2026-05-11T14:11:26 | DEBUG    | ABMonitor | CSV appended: c:\users\wwallace\onedrive - national radio astronomy observatory\documents\github\gbo_maser_control\ab_meter_output\csv\ABMeter_10_16_130_51_Real_Time_Power_Table.csv
+2026-05-11T14:11:26 | DEBUG    | ABMonitor | CSV appended: c:\users\wwallace\onedrive - national radio astronomy observatory\documents\github\gbo_maser_control\ab_meter_output\csv\ABMeter_10_16_130_51_Cumulative_Power_Table.csv
+2026-05-11T14:11:26 | DEBUG    | ABMonitor | CSV appended: c:\users\wwallace\onedrive - national radio astronomy observatory\documents\github\gbo_maser_control\ab_meter_output\csv\ABMeter_10_16_130_51_Demand_Data_Table.csv
+2026-05-11T14:11:26 | DEBUG    | ABMonitor | CSV appended: c:\users\wwallace\onedrive - national radio astronomy observatory\documents\github\gbo_maser_control\ab_meter_output\csv\ABMeter_10_16_130_51_Diagnostic_Table.csv
+2026-05-11T14:11:26 | DEBUG    | ABMonitor | CSV appended: c:\users\wwallace\onedrive - national radio astronomy observatory\documents\github\gbo_maser_control\ab_meter_output\csv\ABMeter_10_16_130_51_Voltage_Current_Snapshot_Log_Table.csv
+2026-05-11T14:11:26 | DEBUG    | ABMonitor | CSV appended: c:\users\wwallace\onedrive - national radio astronomy observatory\documents\github\gbo_maser_control\ab_meter_output\csv\ABMeter_10_16_130_51_Power_Snapshot_Log_Table.csv
+2026-05-11T14:11:26 | DEBUG    | ABMonitor | CSV appended: c:\users\wwallace\onedrive - national radio astronomy observatory\documents\github\gbo_maser_control\ab_meter_output\csv\ABMeter_10_16_130_51_MinMax_Log_Table.csv
+2026-05-11T14:11:26 | DEBUG    | ABMonitor | CSV appended: c:\users\wwallace\onedrive - national radio astronomy observatory\documents\github\gbo_maser_control\ab_meter_output\csv\ABMeter_10_16_130_51_Diagnostic_Table_Extended.csv
+2026-05-11T14:11:26 | INFO     | ABMonitor | XLSX written: c:\users\wwallace\onedrive - national radio astronomy observatory\documents\github\gbo_maser_control\ab_meter_output\xlsx\ABMeter_10_16_130_50_20260511T181126.xlsx
+2026-05-11T14:11:26 | INFO     | ABMonitor | XLSX written: c:\users\wwallace\onedrive - national radio astronomy observatory\documents\github\gbo_maser_control\ab_meter_output\xlsx\ABMeter_10_16_130_51_20260511T181126.xlsx
+2026-05-11T14:11:26 | DEBUG    | ABMonitor | Log appended: c:\users\wwallace\onedrive - national radio astronomy observatory\documents\github\gbo_maser_control\ab_meter_output\logs\ABMeter_10_16_130_50.log
+2026-05-11T14:11:26 | DEBUG    | ABMonitor | Log appended: c:\users\wwallace\onedrive - national radio astronomy observatory\documents\github\gbo_maser_control\ab_meter_output\logs\ABMeter_10_16_130_51.log
+2026-05-11T14:13:43 | DEBUG    | ABMonitor | Veusz: 456 datasets loaded for device 10.16.130.50
+2026-05-11T14:13:43 | ERROR    | ABMonitor | Veusz build/save failed for device 10.16.130.50: Widget has no child title
+Traceback (most recent call last):
+  File "c:\users\wwallace\onedrive - national radio astronomy observatory\documents\github\gbo_maser_control\ab_power_meter_monitor.py", line 1130, in write_veusz
+    doc.Set("title", f"{param}  ({ip})")
+  File "C:\Users\wwallace\miniforge3\envs\py3p8\lib\site-packages\veusz\embed.py", line 325, in runCommand
+    return self.sendCommand( (self.winno, cmd, args[1:], args2) )
+  File "C:\Users\wwallace\miniforge3\envs\py3p8\lib\site-packages\veusz\embed.py", line 318, in sendCommand
+    raise retobj
+ValueError: Widget has no child title
+
+2026-05-11T14:13:43 | DEBUG    | ABMonitor | Veusz: 456 datasets loaded for device 10.16.130.51
+2026-05-11T14:13:43 | ERROR    | ABMonitor | Veusz build/save failed for device 10.16.130.51: Widget has no child title
+Traceback (most recent call last):
+  File "c:\users\wwallace\onedrive - national radio astronomy observatory\documents\github\gbo_maser_control\ab_power_meter_monitor.py", line 1130, in write_veusz
+    doc.Set("title", f"{param}  ({ip})")
+  File "C:\Users\wwallace\miniforge3\envs\py3p8\lib\site-packages\veusz\embed.py", line 325, in runCommand
+    return self.sendCommand( (self.winno, cmd, args[1:], args2) )
+  File "C:\Users\wwallace\miniforge3\envs\py3p8\lib\site-packages\veusz\embed.py", line 318, in sendCommand
+    raise retobj
+ValueError: Widget has no child title
+
