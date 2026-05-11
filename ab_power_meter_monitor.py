@@ -821,7 +821,21 @@ def write_log_text(
 
 
 # ===========================================================================
-#  OUTPUT MODULE 5 — VEUSZ
+#  OUTPUT MODULE 5 — VEUSZ  (HDF5 format, Veusz ≥ 3.6 / 4.1)
+# ===========================================================================
+#
+#  Uses the veusz.embed.Embedded API to build the document in-process and
+#  saves with mode='hdf5', producing a .vszh5 (HDF5-backed) project file.
+#
+#  Veusz HDF5 format stores all datasets natively in HDF5 groups, which
+#  gives better performance and lossless numeric fidelity compared to the
+#  legacy plain-text .vsz format.
+#
+#  References:
+#    • Veusz 3.6 changelog — introduced stable HDF5 save API
+#    • Veusz 4.1 — HDF5 is now the recommended/default format
+#    • doc.Save(path, mode='hdf5')  — core API call
+#    • File extension convention: .vszh5
 # ===========================================================================
 
 # Groups of parameter name substrings that share the same SI unit for overlay
@@ -851,184 +865,306 @@ def _veusz_safe(name: str) -> str:
     """
     Convert a parameter name to a Veusz-safe dataset identifier.
 
-    Replaces spaces, dots, brackets, and slashes with underscores and
-    removes other non-alphanumeric characters (except underscores).
+    Veusz dataset names must not contain spaces, slashes, dots, parentheses
+    or other non-word characters.  This function replaces those with
+    underscores and strips anything else, returning a string no longer
+    than 64 characters.
 
     Parameters
     ----------
     name : str
-        Raw parameter name.
+        Raw parameter name (e.g. 'L1-L2 Voltage', 'L4(Neutral) Current').
 
     Returns
     -------
     str
-        A valid Veusz dataset name.
+        A valid Veusz dataset name (alphanumerics + underscores only).
     """
     import re
     s = name.replace(" ", "_").replace(".", "_").replace("/", "_")
     s = re.sub(r"[^\w]", "", s)
-    return s[:64]   # keep it manageable
+    return s[:64]
 
 
 def write_veusz(
     all_device_data: Dict[str, Dict[str, Dict[str, Any]]],
     veusz_dir: str,
+    show_window: bool = False,
 ) -> None:
     """
-    Generate Veusz (.vsz) project files — one per device.
+    Build and save Veusz HDF5 project files (.vszh5) — one per device.
 
-    Each file contains:
-    1. One page per table showing all numeric parameters as individual bar/xy plots.
-    2. Overlay pages grouping parameters that share the same unit.
+    Uses the ``veusz.embed.Embedded`` API (Veusz ≥ 3.6 / 4.1) to construct
+    the document programmatically in-process and saves it with
+    ``doc.Save(path, mode='hdf5')``, producing a binary HDF5-backed project
+    that is the recommended format for Veusz 3.6+ and 4.x.
+
+    File naming convention: ``ABMeter_<safe_ip>.vszh5``
+
+    Each project file contains:
+
+    1. **Per-table pages** — one Veusz ``page`` per meter table.  Each page
+       holds one ``graph`` per numeric parameter, plotted as an xy scatter
+       point with a labelled y-axis.
+    2. **Overlay pages** — one page per unit-group (current, voltage, power,
+       power-factor, etc.) with all matching parameters overlaid on a single
+       graph and a legend key.
 
     Parameters
     ----------
-    all_device_data : Dict
-        Nested dict: {ip: {table_name: parsed_dict}}
+    all_device_data : Dict[str, Dict[str, Dict[str, Any]]]
+        Nested dict: ``{ip: {table_name: parsed_dict}}``.
     veusz_dir : str
-        Output directory path.
+        Output directory path (created if absent).
+    show_window : bool, optional
+        If True, the embedded Veusz window is shown (``hidden=False``).
+        Defaults to False (headless generation).  The GUI sets this to True
+        when the user requests a live Veusz preview.
+
+    Raises
+    ------
+    ImportError
+        Logged as an error and function returns early if ``veusz`` is not
+        installed.  Install with: ``pip install veusz``.
     """
+    try:
+        import veusz.embed as vz          # Veusz embedded API
+        import numpy as np
+    except ImportError as exc:
+        logger.error(
+            "veusz package not available — Veusz HDF5 output skipped: %s\n"
+            "Install with: pip install veusz",
+            exc,
+        )
+        return
+
     os.makedirs(veusz_dir, exist_ok=True)
     now_utc = datetime.datetime.utcnow().isoformat(timespec="seconds") + "Z"
 
     for ip, tables in all_device_data.items():
         safe_ip  = ip.replace(".", "_")
-        filename = os.path.join(veusz_dir, f"ABMeter_{safe_ip}.vsz")
-
-        lines: List[str] = []
-
-        def emit(s: str = "") -> None:
-            lines.append(s)
-
-        emit("# Veusz project file — Allen-Bradley Power Meter Monitor")
-        emit(f"# Device: {ip}   Generated: {now_utc}")
-        emit(f"# Generator: ab_power_meter_monitor.py")
-        emit("")
+        # .vszh5 is the canonical extension for Veusz HDF5 project files
+        filename = os.path.join(veusz_dir, f"ABMeter_{safe_ip}.vszh5")
 
         # -------------------------------------------------------------------
-        # 1) Define all datasets
+        # Open the Veusz embedded document.
+        # hidden=True  → no window (headless/background mode).
+        # hidden=False → the separate Veusz application window appears with
+        #               its own toolbar, allowing interactive inspection.
         # -------------------------------------------------------------------
-        all_series: Dict[str, Dict[str, Tuple[float, str]]] = {}   # tname → series
+        plot_title = f"AB Power Meter — {ip} — {now_utc}"
+        try:
+            doc = vz.Embedded(plot_title, hidden=not show_window)
+        except Exception as exc:
+            logger.error("Failed to open Veusz embedded document for %s: %s", ip, exc)
+            continue
 
-        for tname, tdict in tables.items():
-            series = extract_numeric_series(tdict)
-            if not series:
-                continue
-            all_series[tname] = series
+        try:
+            # ---------------------------------------------------------------
+            # Collect all numeric series keyed by table name
+            # ---------------------------------------------------------------
+            all_series: Dict[str, Dict[str, Tuple[float, str]]] = {}
 
-            emit(f"# ---- Datasets for table: {tname} ----")
-            for param, (val, unit) in series.items():
-                ds_name = _veusz_safe(f"{tname}_{param}")
-                emit(f"SetData('{ds_name}', [{val}])")
-                if unit:
-                    emit(f"# unit: {unit}")
-            emit("")
+            for tname, tdict in tables.items():
+                series = extract_numeric_series(tdict)
+                if not series:
+                    logger.debug("Veusz: no numeric data in table '%s' — skipping", tname)
+                    continue
+                all_series[tname] = series
 
-        # -------------------------------------------------------------------
-        # 2) Individual table pages — one widget per numeric parameter
-        # -------------------------------------------------------------------
-        for tname, series in all_series.items():
-            if not series:
+            if not all_series:
+                logger.warning("Veusz: no numeric data found for device %s — skipping", ip)
+                doc.Close()
                 continue
 
-            emit(f"# ===== Page: {tname} =====")
-            emit(f"Add('page', name='{_veusz_safe(tname)}_page')")
-            emit(f"Set('/{_veusz_safe(tname)}_page/label', '{tname} ({ip})')")
-            emit(f"To('/{_veusz_safe(tname)}_page')")
-
-            # Grid layout: 2-column grid of graphs
-            emit("Add('grid', name='grid1', autoadd=False)")
-            emit("Set('/grid1/rows', 1)")
-            emit("Set('/grid1/columns', 2)")
-            emit("To('/grid1')")
-
-            for param, (val, unit) in series.items():
-                ds_name   = _veusz_safe(f"{tname}_{param}")
-                gname     = _veusz_safe(f"g_{param}")
-                axis_label = f"{param}" + (f" [{unit}]" if unit else "")
-
-                emit(f"Add('graph', name='{gname}', autoadd=False)")
-                emit(f"To('{gname}')")
-                emit(f"Set('title', '{param}')")
-                emit("Add('axis', name='x', direction='horizontal')")
-                emit(f"Add('axis', name='y', direction='vertical')")
-                emit(f"Set('y/label', '{axis_label}')")
-
-                # x-axis: sample index (just index 0 for a single-point snapshot)
-                x_ds = _veusz_safe(f"idx_{ds_name}")
-                emit(f"SetData('{x_ds}', [0])")
-                emit("Add('xy', name='plot1', autoadd=False)")
-                emit("To('plot1')")
-                emit(f"Set('xData', '{x_ds}')")
-                emit(f"Set('yData', '{ds_name}')")
-                emit(f"Set('marker', 'circle')")
-                emit(f"Set('PlotLine/width', '2pt')")
-                emit("To('..')")   # back to graph
-                emit("To('..')")   # back to grid
-
-            emit("To('..')")   # back to page
-            emit("To('..')")   # back to document
-            emit("")
-
-        # -------------------------------------------------------------------
-        # 3) Overlay pages — group parameters sharing the same unit
-        # -------------------------------------------------------------------
-        emit("# ===== Overlay Pages =====")
-
-        for group_label, substrings in VEUSZ_OVERLAY_GROUPS.items():
-            # Collect all matching datasets across all tables
-            overlay_datasets: List[Tuple[str, str, str]] = []  # (ds_name, param, unit)
-
+            # ---------------------------------------------------------------
+            # Step 1 — Load all datasets into the Veusz document.
+            #
+            # Each parameter becomes a 1-D NumPy array dataset.
+            # A companion index dataset is also created for the x-axis so
+            # that successive poll snapshots can be accumulated over time.
+            # Dataset naming: <table_safe>_<param_safe>
+            # ---------------------------------------------------------------
             for tname, series in all_series.items():
                 for param, (val, unit) in series.items():
-                    param_lower = param.lower()
-                    if any(sub in param_lower for sub in substrings):
-                        ds_name = _veusz_safe(f"{tname}_{param}")
-                        overlay_datasets.append((ds_name, param, unit))
+                    ds_name  = _veusz_safe(f"{tname}_{param}")
+                    idx_name = _veusz_safe(f"idx_{tname}_{param}")
 
-            if not overlay_datasets:
-                continue
+                    # SetData expects Python lists or NumPy arrays
+                    doc.SetData(ds_name,  [float(val)])
+                    doc.SetData(idx_name, [0.0])          # sample index 0
 
-            page_name = _veusz_safe(f"overlay_{group_label}")
-            emit(f"Add('page', name='{page_name}')")
-            emit(f"Set('/{page_name}/label', 'Overlay: {group_label} ({ip})')")
-            emit(f"To('/{page_name}')")
-            emit(f"Add('graph', name='overlay_graph', autoadd=False)")
-            emit("To('overlay_graph')")
-            emit(f"Set('title', 'Overlay: {group_label}')")
-            emit("Add('axis', name='x', direction='horizontal')")
-            emit("Add('axis', name='y', direction='vertical')")
+            logger.debug(
+                "Veusz: %d datasets loaded for device %s",
+                sum(len(s) for s in all_series.values()) * 2,
+                ip,
+            )
 
-            # Unit label from first item
-            first_unit = overlay_datasets[0][2] if overlay_datasets else ""
-            emit(f"Set('y/label', '{group_label} [{first_unit}]')")
-            emit(f"Set('x/label', 'Sample Index')")
+            # ---------------------------------------------------------------
+            # Step 2 — Per-table pages.
+            #
+            # One Veusz page per table.  Each page contains one graph per
+            # numeric parameter arranged in a 2-column grid widget.
+            # ---------------------------------------------------------------
+            for tname, series in all_series.items():
 
-            for ds_name, param, unit in overlay_datasets:
-                x_ds  = _veusz_safe(f"idx_{ds_name}")
-                pname = _veusz_safe(f"xy_{ds_name}")
-                emit(f"SetData('{x_ds}', [0])")
-                emit(f"Add('xy', name='{pname}', autoadd=False)")
-                emit(f"To('{pname}')")
-                emit(f"Set('xData', '{x_ds}')")
-                emit(f"Set('yData', '{ds_name}')")
-                emit(f"Set('key', '{param}')")
-                emit(f"Set('marker', 'circle')")
-                emit("To('..')")
+                # Create the page
+                page_name = _veusz_safe(f"{tname}_page")
+                doc.To("/")                                  # navigate to root
+                doc.Add("page", name=page_name)
+                doc.To(f"/{page_name}")
 
-            emit("To('..')")   # back to page
-            emit("To('..')")   # back to document
-            emit("")
+                # 2-column grid to hold the individual graphs
+                doc.Add("grid", name="grid1", autoadd=False)
+                doc.To(f"/{page_name}/grid1")
+                doc.Set("rows",    max(1, (len(series) + 1) // 2))
+                doc.Set("columns", 2)
 
-        # -------------------------------------------------------------------
-        # Write the .vsz file
-        # -------------------------------------------------------------------
-        try:
-            with open(filename, "w", encoding="utf-8") as fh:
-                fh.write("\n".join(lines))
-            logger.info("Veusz project written: %s", filename)
+                for param, (val, unit) in series.items():
+                    ds_name    = _veusz_safe(f"{tname}_{param}")
+                    idx_name   = _veusz_safe(f"idx_{tname}_{param}")
+                    gname      = _veusz_safe(f"g_{param}")
+                    axis_label = f"{param} [{unit}]" if unit else param
+
+                    # Add graph inside the grid
+                    doc.Add("graph", name=gname, autoadd=False)
+                    doc.To(f"/{page_name}/grid1/{gname}")
+
+                    # Graph title
+                    doc.Set("title", f"{param}  ({ip})")
+
+                    # Axes
+                    doc.Add("axis", name="x", autoadd=False)
+                    doc.To(f"/{page_name}/grid1/{gname}/x")
+                    doc.Set("direction", "horizontal")
+                    doc.Set("label",     "Sample Index")
+                    doc.To(f"/{page_name}/grid1/{gname}")
+
+                    doc.Add("axis", name="y", autoadd=False)
+                    doc.To(f"/{page_name}/grid1/{gname}/y")
+                    doc.Set("direction", "vertical")
+                    doc.Set("label",     axis_label)
+                    doc.To(f"/{page_name}/grid1/{gname}")
+
+                    # xy plotter widget
+                    doc.Add("xy", name="plot1", autoadd=False)
+                    doc.To(f"/{page_name}/grid1/{gname}/plot1")
+                    doc.Set("xData",          idx_name)
+                    doc.Set("yData",          ds_name)
+                    doc.Set("marker",         "circle")
+                    doc.Set("PlotLine/width", "1.5pt")
+
+                    doc.To(f"/{page_name}/grid1")   # back to grid for next graph
+
+                doc.To("/")   # back to root for next page
+
+            # ---------------------------------------------------------------
+            # Step 3 — Overlay pages.
+            #
+            # One page per unit group; all matching parameters from all
+            # tables are overlaid on a single graph with a key/legend.
+            # ---------------------------------------------------------------
+            for group_label, substrings in VEUSZ_OVERLAY_GROUPS.items():
+
+                # Collect matching (ds_name, idx_name, param, unit) tuples
+                overlay: List[Tuple[str, str, str, str]] = []
+                for tname, series in all_series.items():
+                    for param, (val, unit) in series.items():
+                        if any(sub in param.lower() for sub in substrings):
+                            ds_name  = _veusz_safe(f"{tname}_{param}")
+                            idx_name = _veusz_safe(f"idx_{tname}_{param}")
+                            overlay.append((ds_name, idx_name, param, unit))
+
+                if not overlay:
+                    continue
+
+                # First-item unit for the y-axis label
+                first_unit = overlay[0][3] if overlay else ""
+                y_label    = f"{group_label} [{first_unit}]" if first_unit else group_label
+
+                ov_page  = _veusz_safe(f"overlay_{group_label}")
+                doc.To("/")
+                doc.Add("page", name=ov_page)
+                doc.To(f"/{ov_page}")
+
+                doc.Add("graph", name="overlay_graph", autoadd=False)
+                doc.To(f"/{ov_page}/overlay_graph")
+                doc.Set("title", f"Overlay: {group_label}  ({ip})")
+
+                # Axes
+                doc.Add("axis", name="x", autoadd=False)
+                doc.To(f"/{ov_page}/overlay_graph/x")
+                doc.Set("direction", "horizontal")
+                doc.Set("label",     "Sample Index")
+                doc.To(f"/{ov_page}/overlay_graph")
+
+                doc.Add("axis", name="y", autoadd=False)
+                doc.To(f"/{ov_page}/overlay_graph/y")
+                doc.Set("direction", "vertical")
+                doc.Set("label",     y_label)
+                doc.To(f"/{ov_page}/overlay_graph")
+
+                # Add a key/legend widget
+                doc.Add("key", name="key1", autoadd=False)
+
+                # One xy widget per overlaid parameter
+                for ds_name, idx_name, param, unit in overlay:
+                    xy_name = _veusz_safe(f"xy_{ds_name}")
+                    doc.Add("xy", name=xy_name, autoadd=False)
+                    doc.To(f"/{ov_page}/overlay_graph/{xy_name}")
+                    doc.Set("xData",          idx_name)
+                    doc.Set("yData",          ds_name)
+                    doc.Set("key",            param)      # label shown in legend
+                    doc.Set("marker",         "circle")
+                    doc.Set("PlotLine/width", "1.5pt")
+                    doc.To(f"/{ov_page}/overlay_graph")   # back to graph
+
+                doc.To("/")   # back to root for next overlay page
+
+            # ---------------------------------------------------------------
+            # Step 4 — Save as HDF5 (.vszh5).
+            #
+            # mode='hdf5' is available in Veusz ≥ 3.6 and is the default
+            # recommended format in Veusz 4.1.  The resulting file stores
+            # all datasets in native HDF5 groups for compact, lossless,
+            # random-access storage.
+            # ---------------------------------------------------------------
+            doc.Save(filename, mode="hdf5")
+            logger.info("Veusz HDF5 project saved: %s", filename)
+
         except Exception as exc:
-            logger.error("Veusz write failed for %s: %s", ip, exc)
+            logger.error(
+                "Veusz build/save failed for device %s: %s\n%s",
+                ip, exc, traceback.format_exc(),
+            )
+        finally:
+            # Always close the embedded document to release resources,
+            # even if an error occurred during plot construction.
+            try:
+                doc.Close()
+            except Exception:
+                pass  # already closed or never opened — safe to ignore
+
+
+def open_veusz_preview(
+    all_device_data: Dict[str, Dict[str, Dict[str, Any]]],
+    veusz_dir: str,
+) -> None:
+    """
+    Convenience wrapper: call write_veusz with show_window=True so the
+    Veusz application window opens with the toolbar visible for interactive
+    inspection, then save to .vszh5 on close.
+
+    This is the function wired to the "Open in Veusz" button in the GUI.
+
+    Parameters
+    ----------
+    all_device_data : Dict
+        Nested dict: ``{ip: {table_name: parsed_dict}}``.
+    veusz_dir : str
+        Output directory path.
+    """
+    write_veusz(all_device_data, veusz_dir, show_window=True)
 
 
 # ===========================================================================
@@ -1448,16 +1584,21 @@ def launch_gui(
             widget = QWidget()
             layout = QHBoxLayout(widget)
 
-            self._btn_poll  = QPushButton("Poll Now")
-            self._btn_start = QPushButton("Start Auto")
-            self._btn_stop  = QPushButton("Stop")
+            self._btn_poll   = QPushButton("Poll Now")
+            self._btn_start  = QPushButton("Start Auto")
+            self._btn_stop   = QPushButton("Stop")
+            self._btn_veusz  = QPushButton("Open in Veusz")
             self._btn_stop.setEnabled(False)
+            self._btn_veusz.setToolTip(
+                "Build plots in the live Veusz window and save as .vszh5 (HDF5)"
+            )
 
             self._btn_poll.clicked.connect(self._do_poll_once)
             self._btn_start.clicked.connect(self._do_start)
             self._btn_stop.clicked.connect(self._do_stop)
+            self._btn_veusz.clicked.connect(self._do_open_veusz)
 
-            for b in [self._btn_poll, self._btn_start, self._btn_stop]:
+            for b in [self._btn_poll, self._btn_start, self._btn_stop, self._btn_veusz]:
                 layout.addWidget(b)
 
             return widget
@@ -1567,9 +1708,33 @@ def launch_gui(
             self._append_log(f"ERROR: {msg}")
             self._status_bar.showMessage(f"Error — {msg[:60]}")
 
+        def _do_open_veusz(self) -> None:
+            """
+            Open the live Veusz window (separate process window with toolbar)
+            for the most recently polled data, then save as .vszh5 (HDF5).
+
+            Runs synchronously in the GUI thread — Veusz's own event loop
+            handles interaction in its separate window.  The file is saved
+            when write_veusz() reaches doc.Save() after building all pages.
+            """
+            if not ALL_DEVICE_DATA:
+                self._append_log("No data to plot — run Poll Now first.")
+                return
+            self._append_log("Opening Veusz window … (will save .vszh5 on completion)")
+            try:
+                open_veusz_preview(ALL_DEVICE_DATA, VEUSZ_DIR)
+                self._append_log(f"Veusz HDF5 file(s) saved to: {VEUSZ_DIR}")
+            except Exception as exc:
+                self._append_log(f"Veusz error: {exc}")
+                logger.error("Veusz preview failed: %s", exc)
+
         def _process_outputs(self, data: Dict, cfg: Dict) -> None:
             """
             Dispatch data to enabled output modules based on GUI state.
+
+            Veusz output is intentionally NOT triggered here automatically;
+            it is an explicit user action via the 'Open in Veusz' button
+            so that the window only opens when requested.
 
             Parameters
             ----------
@@ -1587,7 +1752,6 @@ def launch_gui(
             if cfg.get("enable_log_append"):
                 log_dir = cfg.get("log_dir") or LOG_DIR
                 write_log_text(ALL_DEVICE_DATA, log_dir)
-            write_veusz(ALL_DEVICE_DATA, VEUSZ_DIR)
 
         def _append_log(self, text: str) -> None:
             """Append a line to the status console widget."""
