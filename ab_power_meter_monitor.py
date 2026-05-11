@@ -2001,6 +2001,7 @@ def launch_gui(
             fits_dir  = cfg.get("fits_dir",  FITS_DIR)
             csv_dir   = cfg.get("csv_dir",   CSV_DIR)
             xlsx_dir  = cfg.get("xlsx_dir",  XLSX_DIR)
+            veusz_dir = cfg.get("veusz_dir", VEUSZ_DIR)
             log_dir   = cfg.get("log_dir",   LOG_DIR)
 
             if cfg.get("enable_fits"):
