@@ -96,7 +96,7 @@ ENABLE_VEUSZ = 0   # Write Veusz HDF5 project file(s) (.vszh5)
 # ---------------------------------------------------------------------------
 IP_BASE = "10.16.130"  # First three octets (do NOT include trailing dot)
 IP_LAST_OCTET_START = 50           # Start of last-octet range (inclusive)
-IP_LAST_OCTET_END = 53           # End   of last-octet range (inclusive)
+IP_LAST_OCTET_END = 51           # End   of last-octet range (inclusive)
 
 # ---------------------------------------------------------------------------
 # Polling / timing
