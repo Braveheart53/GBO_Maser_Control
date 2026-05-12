@@ -24,7 +24,8 @@ Author : W. Wallace — NRAO / Green Bank Observatory
 Date   : 2026-05-11
 Python : 3.8+
 Deps   : PySide6, matplotlib, requests, beautifulsoup4, lxml,
-         astropy, openpyxl, veusz  (pip install each)
+         astropy, openpyxl, veusz  
+         (pip, conda, mamba, or uv install each)
 
 Usage
 -----
@@ -75,8 +76,9 @@ import concurrent.futures
 try:
     import psutil          # pip install psutil — for memory monitoring
 except ImportError:
-    psutil = None          # type: ignore[assignment]  graceful degradation: memory-based
-                           # flush threshold will not trigger, sentinel 9999 MB is returned
+    # type: ignore[assignment]  graceful degradation: memory-based
+    psutil = None
+    # flush threshold will not trigger, sentinel 9999 MB is returned
 
 # ===========================================================================
 #  ██████╗  ██████╗ ██╗    ██╗███████╗██████╗     ███████╗██╗    ██╗██╗████████╗ ██████╗██╗  ██╗███████╗███████╗
@@ -93,12 +95,13 @@ except ImportError:
 # ---------------------------------------------------------------------------
 # Feature / output enable switches  (0 = off, 1 = on)
 # ---------------------------------------------------------------------------
-ENABLE_GUI           = 1   # Show PyQt/PySide6 main window
-ENABLE_FITS          = 1   # Write NRAO-compliant FITS files
-ENABLE_CSV           = 1   # Write per-table CSV files
-ENABLE_XLSX          = 1   # Write Excel workbook with charts
-ENABLE_LOG_APPEND    = 1   # Append timestamped entries to Markdown log files (.md)
-ENABLE_VEUSZ         = 1   # Write Veusz HDF5 project file(s) (.vszh5)
+ENABLE_GUI = 0   # Show PyQt/PySide6 main window
+ENABLE_FITS = 1   # Write NRAO-compliant FITS files
+ENABLE_CSV = 1   # Write per-table CSV files
+ENABLE_XLSX = 1   # Write Excel workbook with charts
+# Append timestamped entries to Markdown log files (.md)
+ENABLE_LOG_APPEND = 1
+ENABLE_VEUSZ = 1   # Write Veusz HDF5 project file(s) (.vszh5)
 
 # ---------------------------------------------------------------------------
 # Headless loop control
@@ -106,7 +109,7 @@ ENABLE_VEUSZ         = 1   # Write Veusz HDF5 project file(s) (.vszh5)
 # Number of poll cycles to run in headless mode.
 # 0 = run indefinitely until stopped (Ctrl-C or stop signal file).
 # N = run exactly N cycles then exit cleanly.
-HEADLESS_LOOP_COUNT  = 0   # 0 = infinite loop; N = run N cycles then stop
+HEADLESS_LOOP_COUNT = 100   # 0 = infinite loop; N = run N cycles then stop
 
 # ---------------------------------------------------------------------------
 # Memory / flush thresholds (adaptive write scheduling)
@@ -116,20 +119,20 @@ HEADLESS_LOOP_COUNT  = 0   # 0 = infinite loop; N = run N cycles then stop
 # CSV / XLSX / log files is triggered mid-loop (parallel, non-blocking) so
 # memory is reclaimed without dropping sample points.
 MEM_FLUSH_THRESHOLD_MB = 256   # flush when store occupies more than N MB
-MEM_FREE_MIN_MB        = 512   # flush when system free RAM falls below N MB
+MEM_FREE_MIN_MB = 512   # flush when system free RAM falls below N MB
 
 # ---------------------------------------------------------------------------
 # IP address configuration
 # ---------------------------------------------------------------------------
-IP_BASE              = "10.16.130"  # First three octets (do NOT include trailing dot)
-IP_LAST_OCTET_START  = 50           # Start of last-octet range (inclusive)
-IP_LAST_OCTET_END    = 53           # End   of last-octet range (inclusive)
+IP_BASE = "10.16.130"  # First three octets (do NOT include trailing dot)
+IP_LAST_OCTET_START = 50           # Start of last-octet range (inclusive)
+IP_LAST_OCTET_END = 51           # End   of last-octet range (inclusive)
 
 # ---------------------------------------------------------------------------
 # Polling / timing
 # ---------------------------------------------------------------------------
-SAMPLE_PERIOD_SEC    = 30    # Seconds between successive polls of all devices
-HTTP_TIMEOUT_SEC     = 5     # Per-request HTTP timeout
+SAMPLE_PERIOD_SEC = 15    # Seconds between successive polls of all devices
+HTTP_TIMEOUT_SEC = 5     # Per-request HTTP timeout
 
 # ---------------------------------------------------------------------------
 # Output paths
@@ -145,22 +148,24 @@ HTTP_TIMEOUT_SEC     = 5     # Per-request HTTP timeout
 # The default resolves to a folder named "ab_meter_output" sitting next
 # to this script file, which keeps everything self-contained.
 # ---------------------------------------------------------------------------
-OUTPUT_BASE_DIR      = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ab_meter_output")
+OUTPUT_BASE_DIR = os.path.join(os.path.dirname(
+    os.path.abspath(__file__)), "ab_meter_output")
 
 # Sub-directories — all derived from OUTPUT_BASE_DIR so a single change
 # above propagates everywhere automatically.  Override individually only
 # if you need outputs split across different locations.
-OUTPUT_DIR           = OUTPUT_BASE_DIR                          # kept for back-compat references
-LOG_DIR              = os.path.join(OUTPUT_BASE_DIR, "logs")   # text log files
-FITS_DIR             = os.path.join(OUTPUT_BASE_DIR, "fits")   # NRAO FITS files
-CSV_DIR              = os.path.join(OUTPUT_BASE_DIR, "csv")    # per-table CSV files
-XLSX_DIR             = os.path.join(OUTPUT_BASE_DIR, "xlsx")   # Excel workbooks
-VEUSZ_DIR            = os.path.join(OUTPUT_BASE_DIR, "veusz")  # Veusz HDF5 projects
+# kept for back-compat references
+OUTPUT_DIR = OUTPUT_BASE_DIR
+LOG_DIR = os.path.join(OUTPUT_BASE_DIR, "logs")   # text log files
+FITS_DIR = os.path.join(OUTPUT_BASE_DIR, "fits")   # NRAO FITS files
+CSV_DIR = os.path.join(OUTPUT_BASE_DIR, "csv")    # per-table CSV files
+XLSX_DIR = os.path.join(OUTPUT_BASE_DIR, "xlsx")   # Excel workbooks
+VEUSZ_DIR = os.path.join(OUTPUT_BASE_DIR, "veusz")  # Veusz HDF5 projects
 
 # Path to the stop-signal file.  Touch this file (or run ab_stop.py) to
 # request a clean shutdown of the headless loop.  Deleted automatically
 # on startup and on clean exit.
-STOP_SIGNAL_FILE     = os.path.join(OUTPUT_BASE_DIR, "STOP_COLLECTION")
+STOP_SIGNAL_FILE = os.path.join(OUTPUT_BASE_DIR, "STOP_COLLECTION")
 
 # ---------------------------------------------------------------------------
 # Table page-index → canonical name mapping
@@ -257,7 +262,8 @@ def _setup_logging(log_dir: str, append: bool = True) -> logging.Logger:
 
 
 # Global logger (module scope; re-initialised when log_dir changes)
-logger: logging.Logger = _setup_logging(LOG_DIR, append=bool(ENABLE_LOG_APPEND))
+logger: logging.Logger = _setup_logging(
+    LOG_DIR, append=bool(ENABLE_LOG_APPEND))
 
 
 # ===========================================================================
@@ -410,9 +416,9 @@ def parse_html_table(html: str, table_name: str, ip: str, page: int) -> Dict[str
             cells = row.find_all("td")
             if len(cells) < 3:
                 continue  # skip header row (uses <font> not <td> data)
-            idx_text   = cells[0].get_text(strip=True)
+            idx_text = cells[0].get_text(strip=True)
             param_name = cells[1].get_text(strip=True)
-            raw_value  = cells[2].get_text(strip=True)
+            raw_value = cells[2].get_text(strip=True)
 
             # Skip header-looking rows
             if param_name in ("Parameter Name", "#") or idx_text == "#":
@@ -427,14 +433,16 @@ def parse_html_table(html: str, table_name: str, ip: str, page: int) -> Dict[str
                 value = raw_value  # keep as string (dates, '####', etc.)
 
             key = f"#{idx_text}"
-            result[key]              = param_name
-            result[f"{key}_value"]   = value
-            result[f"{key}_unit"]    = infer_unit(param_name)
+            result[key] = param_name
+            result[f"{key}_value"] = value
+            result[f"{key}_unit"] = infer_unit(param_name)
 
-        logger.debug("Parsed table '%s' — %d rows", table_name, (len(result) - 1) // 3)
+        logger.debug("Parsed table '%s' — %d rows",
+                     table_name, (len(result) - 1) // 3)
 
     except Exception as exc:
-        logger.error("Parse error for table '%s': %s\n%s", table_name, exc, traceback.format_exc())
+        logger.error("Parse error for table '%s': %s\n%s",
+                     table_name, exc, traceback.format_exc())
         result["_meta"]["error"] = str(exc)
 
     return result
@@ -477,8 +485,8 @@ def poll_all_devices(
 
         for page_idx, tname in table_names.items():
             dict_key = f"{ip}_{tname}"
-            html     = fetch_table_html(ip, page_idx)
-            parsed   = parse_html_table(html, tname, ip, page_idx)
+            html = fetch_table_html(ip, page_idx)
+            parsed = parse_html_table(html, tname, ip, page_idx)
             all_data[dict_key] = parsed
             logger.debug("Stored dict key: %s", dict_key)
 
@@ -561,7 +569,8 @@ def accumulate_poll(all_device_data: Dict[str, Dict[str, Dict[str, Any]]]) -> No
                     for param in series:
                         if param not in existing:
                             # Back-fill with None for prior rows
-                            n_existing = len(TIME_SERIES_STORE[ip][tname]["timestamps_local"])
+                            n_existing = len(
+                                TIME_SERIES_STORE[ip][tname]["timestamps_local"])
                             existing[param] = [None] * n_existing
                             TIME_SERIES_STORE[ip][tname]["units"][param] = series[param][1]
 
@@ -575,7 +584,8 @@ def accumulate_poll(all_device_data: Dict[str, Dict[str, Dict[str, Any]]]) -> No
                     if len(col_list) < n_ts:
                         col_list.append(None)
 
-    logger.debug("Accumulator updated — %d devices, local ts: %s", len(all_device_data), local_ts)
+    logger.debug("Accumulator updated — %d devices, local ts: %s",
+                 len(all_device_data), local_ts)
 
 
 def ts_store_size_mb() -> float:
@@ -602,7 +612,8 @@ def ts_store_size_mb() -> float:
         seen.add(obj_id)
         size = sys.getsizeof(obj)
         if isinstance(obj, dict):
-            size += sum(_size(k, seen) + _size(v, seen) for k, v in obj.items())
+            size += sum(_size(k, seen) + _size(v, seen)
+                        for k, v in obj.items())
         elif isinstance(obj, (list, tuple)):
             size += sum(_size(i, seen) for i in obj)
         return size
@@ -648,14 +659,16 @@ def should_flush(cfg: Dict[str, Any]) -> bool:
     bool
     """
     threshold = cfg.get("mem_flush_threshold_mb", MEM_FLUSH_THRESHOLD_MB)
-    free_min  = cfg.get("mem_free_min_mb",        MEM_FREE_MIN_MB)
-    store_mb  = ts_store_size_mb()
-    free_mb   = system_free_ram_mb()
+    free_min = cfg.get("mem_free_min_mb",        MEM_FREE_MIN_MB)
+    store_mb = ts_store_size_mb()
+    free_mb = system_free_ram_mb()
     if store_mb > threshold:
-        logger.info("Flush triggered: store size %.1f MB > threshold %.1f MB", store_mb, threshold)
+        logger.info(
+            "Flush triggered: store size %.1f MB > threshold %.1f MB", store_mb, threshold)
         return True
     if free_mb < free_min:
-        logger.info("Flush triggered: free RAM %.1f MB < minimum %.1f MB", free_mb, free_min)
+        logger.info(
+            "Flush triggered: free RAM %.1f MB < minimum %.1f MB", free_mb, free_min)
         return True
     return False
 
@@ -680,9 +693,9 @@ def update_named_dicts(all_data: Dict[str, Dict[str, Any]]) -> None:
     ALL_DEVICE_DATA.clear()
 
     for dict_key, data in all_data.items():
-        meta    = data.get("_meta", {})
-        ip      = meta.get("source_ip", "unknown")
-        tname   = meta.get("table_name", "unknown")
+        meta = data.get("_meta", {})
+        ip = meta.get("source_ip", "unknown")
+        tname = meta.get("table_name", "unknown")
 
         if ip not in ALL_DEVICE_DATA:
             ALL_DEVICE_DATA[ip] = {}
@@ -695,17 +708,22 @@ def update_named_dicts(all_data: Dict[str, Dict[str, Any]]) -> None:
         return
 
     dev = ALL_DEVICE_DATA[first_ip]
-    Device_Configuration_Table          = dev.get("Device_Configuration_Table",          {})
-    Communications_Configuration_Table  = dev.get("Communications_Configuration_Table",  {})
-    Voltage_Current_Table               = dev.get("Voltage_Current_Table",               {})
-    Real_Time_Power_Table               = dev.get("Real_Time_Power_Table",               {})
-    Cumulative_Power_Table              = dev.get("Cumulative_Power_Table",              {})
-    Demand_Data_Table                   = dev.get("Demand_Data_Table",                   {})
-    Diagnostic_Table                    = dev.get("Diagnostic_Table",                    {})
-    Voltage_Current_Snapshot_Log_Table  = dev.get("Voltage_Current_Snapshot_Log_Table",  {})
-    Power_Snapshot_Log_Table            = dev.get("Power_Snapshot_Log_Table",            {})
-    MinMax_Log_Table                    = dev.get("MinMax_Log_Table",                    {})
-    Diagnostic_Table_Extended           = dev.get("Diagnostic_Table_Extended",           {})
+    Device_Configuration_Table = dev.get(
+        "Device_Configuration_Table",          {})
+    Communications_Configuration_Table = dev.get(
+        "Communications_Configuration_Table",  {})
+    Voltage_Current_Table = dev.get("Voltage_Current_Table",               {})
+    Real_Time_Power_Table = dev.get("Real_Time_Power_Table",               {})
+    Cumulative_Power_Table = dev.get("Cumulative_Power_Table",              {})
+    Demand_Data_Table = dev.get("Demand_Data_Table",                   {})
+    Diagnostic_Table = dev.get("Diagnostic_Table",                    {})
+    Voltage_Current_Snapshot_Log_Table = dev.get(
+        "Voltage_Current_Snapshot_Log_Table",  {})
+    Power_Snapshot_Log_Table = dev.get(
+        "Power_Snapshot_Log_Table",            {})
+    MinMax_Log_Table = dev.get("MinMax_Log_Table",                    {})
+    Diagnostic_Table_Extended = dev.get(
+        "Diagnostic_Table_Extended",           {})
 
     accumulate_poll(ALL_DEVICE_DATA)
     logger.info("Named dicts updated from %d device(s).", len(ALL_DEVICE_DATA))
@@ -734,7 +752,7 @@ def extract_numeric_series(table_dict: Dict[str, Any]) -> Dict[str, Tuple[float,
             continue
         # key is '#N' → check for corresponding _value
         value_key = f"{key}_value"
-        unit_key  = f"{key}_unit"
+        unit_key = f"{key}_unit"
         if value_key in table_dict:
             v = table_dict[value_key]
             u = table_dict.get(unit_key, "")
@@ -806,30 +824,34 @@ def write_fits(
         }
 
     for ip in all_device_data:
-        safe_ip  = ip.replace(".", "_")
+        safe_ip = ip.replace(".", "_")
         filename = os.path.join(
             fits_dir,
             f"ABMeter_{safe_ip}_{now_utc.strftime('%Y%m%dT%H%M%S')}.fits",
         )
 
-        hdu_list    = [astrofits.PrimaryHDU()]
+        hdu_list = [astrofits.PrimaryHDU()]
         primary_hdr = hdu_list[0].header
 
         # --- NRAO / standard FITS primary header keywords ---
-        primary_hdr["TELESCOP"] = (_fits_ascii("GBT"),          "Green Bank Telescope facility")
-        primary_hdr["INSTRUME"] = (_fits_ascii("ABPowerMeter"), "Allen-Bradley 1403 Site Power Meter")
-        primary_hdr["ORIGIN"  ] = (_fits_ascii("NRAO-GBO"),     "National Radio Astronomy Observatory")
+        primary_hdr["TELESCOP"] = (_fits_ascii(
+            "GBT"),          "Green Bank Telescope facility")
+        primary_hdr["INSTRUME"] = (_fits_ascii(
+            "ABPowerMeter"), "Allen-Bradley 1403 Site Power Meter")
+        primary_hdr["ORIGIN"] = (_fits_ascii(
+            "NRAO-GBO"),     "National Radio Astronomy Observatory")
         primary_hdr["OBSERVER"] = (_fits_ascii("WWallace"),     "W. Wallace")
         primary_hdr["DATE-OBS"] = (
             _fits_ascii(now_utc.isoformat(timespec="seconds") + "Z"),
             "UTC file-creation time",
         )
-        primary_hdr["FILENAME"] = (_fits_ascii(os.path.basename(filename)), "FITS file name")
-        primary_hdr["DEVIP"   ] = (_fits_ascii(ip), "Source device IP address")
-        primary_hdr["COMMENT" ] = _fits_ascii(
+        primary_hdr["FILENAME"] = (_fits_ascii(
+            os.path.basename(filename)), "FITS file name")
+        primary_hdr["DEVIP"] = (_fits_ascii(ip), "Source device IP address")
+        primary_hdr["COMMENT"] = _fits_ascii(
             "Allen-Bradley power meter telemetry - NRAO GBO site infrastructure"
         )
-        primary_hdr["HISTORY" ] = _fits_ascii(
+        primary_hdr["HISTORY"] = _fits_ascii(
             f"Generated by ab_power_meter_monitor.py on {now_utc.date()}"
         )
 
@@ -837,13 +859,14 @@ def write_fits(
 
         for tname, tdata in ip_tables.items():
             timestamps = tdata["timestamps_local"]
-            columns    = tdata["columns"]
-            units_map  = tdata["units"]
-            params     = list(columns.keys())
-            n_samples  = len(timestamps)
+            columns = tdata["columns"]
+            units_map = tdata["units"]
+            params = list(columns.keys())
+            n_samples = len(timestamps)
 
             if not timestamps:
-                logger.debug("FITS: no accumulated samples for '%s' — skipping HDU", tname)
+                logger.debug(
+                    "FITS: no accumulated samples for '%s' — skipping HDU", tname)
                 continue
 
             # ----------------------------------------------------------------
@@ -852,10 +875,10 @@ def write_fits(
             # ----------------------------------------------------------------
             fits_cols = [
                 astrofits.Column(
-                    name   = _fits_ascii("TIMESTAMP_LOCAL"),
-                    format = "A19",
-                    unit   = _fits_ascii("local time"),
-                    array  = np.array(timestamps, dtype="U19"),
+                    name=_fits_ascii("TIMESTAMP_LOCAL"),
+                    format="A19",
+                    unit=_fits_ascii("local time"),
+                    array=np.array(timestamps, dtype="U19"),
                 )
             ]
 
@@ -867,34 +890,37 @@ def write_fits(
             for param in params:
                 raw_vals = columns[param]
                 arr = np.array(
-                    [float(v) if v is not None else float("nan") for v in raw_vals],
+                    [float(v) if v is not None else float("nan")
+                     for v in raw_vals],
                     dtype=np.float64,
                 )
                 col_name = _fits_ascii(param[:68])
-                unit_str = _fits_ascii(units_map.get(param, "dimensionless") or "dimensionless")
+                unit_str = _fits_ascii(units_map.get(
+                    param, "dimensionless") or "dimensionless")
                 fits_cols.append(
                     astrofits.Column(
-                        name   = col_name,
-                        format = "D",
-                        unit   = unit_str,
-                        array  = arr,
+                        name=col_name,
+                        format="D",
+                        unit=unit_str,
+                        array=arr,
                     )
                 )
 
-            hdu      = astrofits.BinTableHDU.from_columns(fits_cols)
+            hdu = astrofits.BinTableHDU.from_columns(fits_cols)
             ext_name = tname[:8]   # EXTNAME strict 8-char limit
-            hdu.header["EXTNAME" ] = _fits_ascii(ext_name)
-            hdu.header["TBLNAME" ] = _fits_ascii(tname)
-            hdu.header["SRCIP"   ] = _fits_ascii(ip)
-            hdu.header["NSAMP"   ] = (n_samples, "Number of accumulated poll cycles")
+            hdu.header["EXTNAME"] = _fits_ascii(ext_name)
+            hdu.header["TBLNAME"] = _fits_ascii(tname)
+            hdu.header["SRCIP"] = _fits_ascii(ip)
+            hdu.header["NSAMP"] = (
+                n_samples, "Number of accumulated poll cycles")
             hdu.header["DATE-OBS"] = _fits_ascii(
                 timestamps[0].replace(" ", "T") if timestamps else ""
             )
             hdu.header["DATE-END"] = _fits_ascii(
                 timestamps[-1].replace(" ", "T") if timestamps else ""
             )
-            hdu.header["COMMENT"  ] = _fits_ascii(f"AB meter table: {tname}")
-            hdu.header["COMMENT"  ] = _fits_ascii(
+            hdu.header["COMMENT"] = _fits_ascii(f"AB meter table: {tname}")
+            hdu.header["COMMENT"] = _fits_ascii(
                 f"{n_samples} sample(s), columnar time-series, TIMESTAMP_LOCAL col 1"
             )
             hdu_list.append(hdu)
@@ -960,12 +986,12 @@ def write_csv(
         safe_ip = ip.replace(".", "_")
         for tname, tdata in tables.items():
             filename = os.path.join(csv_dir, f"ABMeter_{safe_ip}_{tname}.csv")
-            is_new   = not os.path.exists(filename) or not append
+            is_new = not os.path.exists(filename) or not append
 
             timestamps = tdata["timestamps_local"]
-            columns    = tdata["columns"]
-            units      = tdata["units"]
-            params     = list(columns.keys())
+            columns = tdata["columns"]
+            units = tdata["units"]
+            params = list(columns.keys())
 
             if not timestamps:
                 continue
@@ -976,9 +1002,11 @@ def write_csv(
                     with open(filename, "w", newline="", encoding="utf-8") as fh:
                         writer = csv.writer(fh)
                         writer.writerow(["Timestamp_Local"] + params)
-                        writer.writerow(["(units)"] + [units.get(p, "") for p in params])
+                        writer.writerow(
+                            ["(units)"] + [units.get(p, "") for p in params])
                         for i, ts in enumerate(timestamps):
-                            row = [ts] + [columns[p][i] if i < len(columns[p]) else "" for p in params]
+                            row = [ts] + [columns[p][i] if i <
+                                          len(columns[p]) else "" for p in params]
                             writer.writerow(row)
                 else:
                     # Append mode: read existing header to preserve column order,
@@ -989,13 +1017,15 @@ def write_csv(
                         reader = csv.reader(fh)
                         for row_idx, row in enumerate(reader):
                             if row_idx == 0:
-                                existing_params = row[1:]  # skip Timestamp_Local
+                                # skip Timestamp_Local
+                                existing_params = row[1:]
                             elif row_idx == 1:
                                 pass  # units row
                             else:
                                 existing_row_count += 1
 
-                    new_params = [p for p in params if p not in existing_params]
+                    new_params = [
+                        p for p in params if p not in existing_params]
                     all_params = existing_params + new_params
 
                     if new_params:
@@ -1011,24 +1041,27 @@ def write_csv(
                             writer.writerow(["(units)"] + all_units)
                             # Re-emit data rows with blanks for new cols
                             for old_row in old_rows[2:]:
-                                writer.writerow(old_row + [""] * len(new_params))
+                                writer.writerow(
+                                    old_row + [""] * len(new_params))
 
                     # Append only rows not yet written
                     rows_to_write = timestamps[existing_row_count:]
-                    start_idx     = existing_row_count
+                    start_idx = existing_row_count
                     with open(filename, "a", newline="", encoding="utf-8") as fh:
                         writer = csv.writer(fh)
                         for i, ts in enumerate(rows_to_write):
                             abs_i = start_idx + i
-                            row   = [ts] + [
-                                columns[p][abs_i] if (p in columns and abs_i < len(columns[p])) else ""
+                            row = [ts] + [
+                                columns[p][abs_i] if (
+                                    p in columns and abs_i < len(columns[p])) else ""
                                 for p in all_params
                             ]
                             writer.writerow(row)
 
                 logger.debug("CSV written (columnar): %s", filename)
             except Exception as exc:
-                logger.error("CSV write failed for %s / %s: %s", ip, tname, exc)
+                logger.error("CSV write failed for %s / %s: %s",
+                             ip, tname, exc)
 
 
 # ===========================================================================
@@ -1086,44 +1119,46 @@ def write_xlsx(
         }
 
     for ip, tables in snapshot.items():
-        safe_ip  = ip.replace(".", "_")
+        safe_ip = ip.replace(".", "_")
         filename = os.path.join(xlsx_dir, f"ABMeter_{safe_ip}.xlsx")
 
         wb = openpyxl.Workbook()
         wb.remove(wb.active)   # remove default blank sheet
 
-        header_font  = Font(name="Calibri", bold=True, color="FFFFFF")
-        header_fill  = PatternFill(fill_type="solid", fgColor="1F4E79")
-        units_fill   = PatternFill(fill_type="solid", fgColor="2E75B6")
-        units_font   = Font(name="Calibri", bold=False, color="FFFFFF", italic=True)
+        header_font = Font(name="Calibri", bold=True, color="FFFFFF")
+        header_fill = PatternFill(fill_type="solid", fgColor="1F4E79")
+        units_fill = PatternFill(fill_type="solid", fgColor="2E75B6")
+        units_font = Font(name="Calibri", bold=False,
+                          color="FFFFFF", italic=True)
         header_align = Alignment(horizontal="center")
 
         for tname, tdata in tables.items():
             timestamps = tdata["timestamps_local"]
-            columns    = tdata["columns"]
-            units_map  = tdata["units"]
-            params     = list(columns.keys())
+            columns = tdata["columns"]
+            units_map = tdata["units"]
+            params = list(columns.keys())
 
             if not timestamps:
                 continue
 
-            safe_name = tname[:31].replace("/", "_").replace("\\", "_").replace("*", "_")
+            safe_name = tname[:31].replace(
+                "/", "_").replace("\\", "_").replace("*", "_")
             ws = wb.create_sheet(title=safe_name)
 
             # ── Row 1: Headers ──
             header_row = ["Timestamp_Local"] + params
             for col_idx, hdr in enumerate(header_row, start=1):
-                cell           = ws.cell(row=1, column=col_idx, value=hdr)
-                cell.font      = header_font
-                cell.fill      = header_fill
+                cell = ws.cell(row=1, column=col_idx, value=hdr)
+                cell.font = header_font
+                cell.fill = header_fill
                 cell.alignment = header_align
 
             # ── Row 2: Units ──
             units_row = ["(units)"] + [units_map.get(p, "") for p in params]
             for col_idx, u in enumerate(units_row, start=1):
-                cell           = ws.cell(row=2, column=col_idx, value=u)
-                cell.font      = units_font
-                cell.fill      = units_fill
+                cell = ws.cell(row=2, column=col_idx, value=u)
+                cell.font = units_font
+                cell.fill = units_fill
                 cell.alignment = header_align
 
             # ── Rows 3+: Data (one row per poll cycle) ──
@@ -1131,7 +1166,8 @@ def write_xlsx(
                 data_row_idx = i + 3
                 ws.cell(row=data_row_idx, column=1, value=ts)
                 for col_idx, param in enumerate(params, start=2):
-                    val = columns[param][i] if i < len(columns[param]) else None
+                    val = columns[param][i] if i < len(
+                        columns[param]) else None
                     cell = ws.cell(row=data_row_idx, column=col_idx, value=val)
                     if isinstance(val, (int, float)):
                         cell.number_format = "0.000000"
@@ -1140,7 +1176,7 @@ def write_xlsx(
 
             # ── Auto-size columns ──
             for col in ws.columns:
-                max_len    = 0
+                max_len = 0
                 col_letter = col[0].column_letter
                 for cell in col:
                     try:
@@ -1161,15 +1197,16 @@ def write_xlsx(
 
             if n_data_rows >= 2 and numeric_cols:
                 try:
-                    chart        = LineChart()
-                    chart.title  = f"{tname} — {ip}"
-                    chart.style  = 10
+                    chart = LineChart()
+                    chart.title = f"{tname} — {ip}"
+                    chart.style = 10
                     chart.y_axis.title = "Value"
                     chart.x_axis.title = "Sample (poll cycle)"
-                    chart.width  = 24
+                    chart.width = 24
                     chart.height = 14
 
-                    for nc in numeric_cols[:12]:   # cap at 12 series for legibility
+                    # cap at 12 series for legibility
+                    for nc in numeric_cols[:12]:
                         data_ref = Reference(
                             ws,
                             min_col=nc, max_col=nc,
@@ -1178,11 +1215,13 @@ def write_xlsx(
                         chart.add_data(data_ref, titles_from_data=True)
 
                     # x-axis categories = Timestamp_Local column
-                    cat_ref = Reference(ws, min_col=1, min_row=3, max_row=n_data_rows + 2)
+                    cat_ref = Reference(
+                        ws, min_col=1, min_row=3, max_row=n_data_rows + 2)
                     chart.set_categories(cat_ref)
                     ws.add_chart(chart, f"A{n_data_rows + 5}")
                 except Exception as exc:
-                    logger.warning("Chart creation failed for sheet '%s': %s", safe_name, exc)
+                    logger.warning(
+                        "Chart creation failed for sheet '%s': %s", safe_name, exc)
 
         try:
             wb.save(filename)
@@ -1245,9 +1284,9 @@ def write_log_text(
         safe_ip = ip.replace(".", "_")
         for tname, tdata in tables.items():
             timestamps = tdata["timestamps_local"]
-            columns    = tdata["columns"]
-            units_map  = tdata["units"]
-            params     = list(columns.keys())
+            columns = tdata["columns"]
+            units_map = tdata["units"]
+            params = list(columns.keys())
 
             if not timestamps:
                 continue
@@ -1290,12 +1329,14 @@ def write_log_text(
             for i, ts in enumerate(timestamps):
                 col_widths[0] = max(col_widths[0], len(ts))
                 for j, p in enumerate(params, start=1):
-                    val = columns[p][i] if (i < len(columns[p]) and columns[p][i] is not None) else ""
+                    val = columns[p][i] if (
+                        i < len(columns[p]) and columns[p][i] is not None) else ""
                     col_widths[j] = max(col_widths[j], len(str(val)))
 
             def _md_row(cells: List[str]) -> str:
                 """Format a list of cell strings as a padded GFM table row."""
-                padded = [str(c).ljust(col_widths[k]) for k, c in enumerate(cells)]
+                padded = [str(c).ljust(col_widths[k])
+                          for k, c in enumerate(cells)]
                 return "| " + " | ".join(padded) + " |"
 
             def _md_sep() -> str:
@@ -1312,7 +1353,7 @@ def write_log_text(
 
                     # Append only rows not yet written
                     for i in range(existing_rows, len(timestamps)):
-                        ts  = timestamps[i]
+                        ts = timestamps[i]
                         row = [ts] + [
                             str(columns[p][i])
                             if (p in columns and i < len(columns[p]) and columns[p][i] is not None)
@@ -1323,7 +1364,8 @@ def write_log_text(
 
                 logger.debug("Markdown log written: %s", filename)
             except Exception as exc:
-                logger.error("Markdown log write failed for %s / %s: %s", ip, tname, exc)
+                logger.error(
+                    "Markdown log write failed for %s / %s: %s", ip, tname, exc)
 
 
 # ===========================================================================
@@ -1361,11 +1403,11 @@ VEUSZ_OVERLAY_GROUPS: Dict[str, List[str]] = {
     "Apparent Power (VA)":    ["l1 apparent power", "l2 apparent power",
                                "l3 apparent power", "total apparent power"],
     "True PF (%)": ["l1 true pf", "l2 true pf", "l3 true pf",
-                               "total true pf"],
+                    "total true pf"],
     "Displacement PF (%)": ["l1 displacement pf", "l2 displacement pf",
-                               "l3 displacement pf", "total displacement pf"],
+                            "l3 displacement pf", "total displacement pf"],
     "Distortion PF (%)": ["l1 distortion pf", "l2 distortion pf",
-                               "l3 distortion pf", "total distortion pf"],
+                          "l3 distortion pf", "total distortion pf"],
 }
 
 
@@ -1450,7 +1492,7 @@ def write_veusz(
     now_utc = datetime.datetime.utcnow().isoformat(timespec="seconds") + "Z"
 
     for ip, tables in all_device_data.items():
-        safe_ip  = ip.replace(".", "_")
+        safe_ip = ip.replace(".", "_")
         filename = os.path.join(veusz_dir, f"ABMeter_{safe_ip}.vszh5")
 
         # -------------------------------------------------------------------
@@ -1479,12 +1521,14 @@ def write_veusz(
             for tname, tdict in tables.items():
                 series = extract_numeric_series(tdict)
                 if not series:
-                    logger.debug("Veusz: no numeric data in '%s' — skipping", tname)
+                    logger.debug(
+                        "Veusz: no numeric data in '%s' — skipping", tname)
                     continue
                 all_series[tname] = series
 
             if not all_series:
-                logger.warning("Veusz: no numeric data for device %s — skipping", ip)
+                logger.warning(
+                    "Veusz: no numeric data for device %s — skipping", ip)
                 doc.Close()
                 continue
 
@@ -1502,16 +1546,17 @@ def write_veusz(
                 tstore = ts_ip.get(tname, {})
                 ts_columns = tstore.get("columns", {})
                 timestamps = tstore.get("timestamps_local", [])
-                n_samples  = len(timestamps)
+                n_samples = len(timestamps)
 
                 for param in series:
-                    ds_name  = _veusz_safe(f"{tname}_{param}")
+                    ds_name = _veusz_safe(f"{tname}_{param}")
                     idx_name = _veusz_safe(f"idx_{tname}_{param}")
 
                     if param in ts_columns and ts_columns[param]:
                         # Use full accumulated series; replace None with NaN
-                        raw  = ts_columns[param]
-                        vals = [float(v) if v is not None else float("nan") for v in raw]
+                        raw = ts_columns[param]
+                        vals = [float(v) if v is not None else float("nan")
+                                for v in raw]
                         idxs = [float(k) for k in range(len(vals))]
                     else:
                         # Fallback: single-point from latest snapshot
@@ -1574,40 +1619,41 @@ def write_veusz(
 
                 # --- Grid (2 columns) ---
                 grid = page.Add("grid", name="grid1", autoadd=False)
-                grid.rows.val    = max(1, (len(series) + 1) // 2)
+                grid.rows.val = max(1, (len(series) + 1) // 2)
                 grid.columns.val = 2
 
                 for p_idx, (param, (val, unit)) in enumerate(series.items()):
-                    ds_name    = _veusz_safe(f"{tname}_{param}")
-                    idx_name   = _veusz_safe(f"idx_{tname}_{param}")
-                    gname      = _veusz_safe(f"g_{param}")
-                    colour     = _colour(p_idx)
+                    ds_name = _veusz_safe(f"{tname}_{param}")
+                    idx_name = _veusz_safe(f"idx_{tname}_{param}")
+                    gname = _veusz_safe(f"g_{param}")
+                    colour = _colour(p_idx)
                     # Y-axis label: human-readable param + unit, no underscores
-                    axis_label = f"{_human(param)} [{unit}]" if unit else _human(param)
+                    axis_label = f"{_human(param)} [{unit}]" if unit else _human(
+                        param)
 
                     # --- Graph ---
                     graph = grid.Add("graph", name=gname, autoadd=False)
 
                     # --- x-axis ---
                     ax = graph.Add("axis", name="x", autoadd=False)
-                    ax.label.val     = "Sample Index (poll cycle)"
+                    ax.label.val = "Sample Index (poll cycle)"
                     ax.direction.val = "horizontal"
 
                     # --- y-axis (carries the parameter label) ---
                     ay = graph.Add("axis", name="y", autoadd=False)
-                    ay.label.val     = axis_label
+                    ay.label.val = axis_label
                     ay.direction.val = "vertical"
 
                     # --- xy plotter with auto colour ---
                     xy = graph.Add("xy", name="plot1", autoadd=False)
-                    xy.xData.val          = idx_name
-                    xy.yData.val          = ds_name
-                    xy.marker.val         = "circle"
+                    xy.xData.val = idx_name
+                    xy.yData.val = ds_name
+                    xy.marker.val = "circle"
                     xy.PlotLine.width.val = "1.5pt"
                     # Line and marker colour — set the same colour on both so
                     # line and marker are always consistent.
                     try:
-                        xy.PlotLine.color.val   = colour
+                        xy.PlotLine.color.val = colour
                         xy.MarkerFill.color.val = colour
                         xy.MarkerLine.color.val = colour
                     except Exception:
@@ -1617,8 +1663,8 @@ def write_veusz(
                     # graph has no 'title' property; use a label widget instead.
                     lbl = graph.Add("label", name="title lbl", autoadd=False)
                     lbl.label.val = f"{_human(param)} ({ip})"
-                    lbl.xPos.val  = [0.5]   # horizontally centred
-                    lbl.yPos.val  = [1.02]  # just above the plot area
+                    lbl.xPos.val = [0.5]   # horizontally centred
+                    lbl.yPos.val = [1.02]  # just above the plot area
 
             # ---------------------------------------------------------------
             # Step 3 — Overlay pages.
@@ -1633,7 +1679,7 @@ def write_veusz(
                 for tname, series in all_series.items():
                     for param, (val, unit) in series.items():
                         if any(sub in param.lower() for sub in substrings):
-                            ds_name  = _veusz_safe(f"{tname}_{param}")
+                            ds_name = _veusz_safe(f"{tname}_{param}")
                             idx_name = _veusz_safe(f"idx_{tname}_{param}")
                             overlay.append((ds_name, idx_name, param, unit))
 
@@ -1641,7 +1687,7 @@ def write_veusz(
                     continue
 
                 first_unit = overlay[0][3] if overlay else ""
-                y_label    = group_label   # already human-readable (spaces)
+                y_label = group_label   # already human-readable (spaces)
                 if first_unit:
                     y_label = f"{group_label} [{first_unit}]"
 
@@ -1650,15 +1696,16 @@ def write_veusz(
                 ov_page = root.Add("page", name=ov_page_name, autoadd=False)
 
                 # --- Single graph ---
-                ov_graph = ov_page.Add("graph", name="overlay graph", autoadd=False)
+                ov_graph = ov_page.Add(
+                    "graph", name="overlay graph", autoadd=False)
 
                 # --- Axes ---
                 ox = ov_graph.Add("axis", name="x", autoadd=False)
-                ox.label.val     = "Sample Index (poll cycle)"
+                ox.label.val = "Sample Index (poll cycle)"
                 ox.direction.val = "horizontal"
 
                 oy = ov_graph.Add("axis", name="y", autoadd=False)
-                oy.label.val     = y_label
+                oy.label.val = y_label
                 oy.direction.val = "vertical"
 
                 # --- Key / legend ---
@@ -1668,15 +1715,16 @@ def write_veusz(
                 # --- One xy per overlaid parameter, each with a unique colour ---
                 for ov_idx, (ds_name, idx_name, param, unit) in enumerate(overlay):
                     xy_wname = _veusz_safe(f"xy_{ds_name}")
-                    colour   = _colour(ov_idx)
+                    colour = _colour(ov_idx)
                     xy = ov_graph.Add("xy", name=xy_wname, autoadd=False)
-                    xy.xData.val          = idx_name
-                    xy.yData.val          = ds_name
-                    xy.key.val            = _human(param)   # legend entry (no underscores)
-                    xy.marker.val         = "circle"
+                    xy.xData.val = idx_name
+                    xy.yData.val = ds_name
+                    # legend entry (no underscores)
+                    xy.key.val = _human(param)
+                    xy.marker.val = "circle"
                     xy.PlotLine.width.val = "1.5pt"
                     try:
-                        xy.PlotLine.color.val   = colour
+                        xy.PlotLine.color.val = colour
                         xy.MarkerFill.color.val = colour
                         xy.MarkerLine.color.val = colour
                     except Exception:
@@ -1685,8 +1733,8 @@ def write_veusz(
                 # --- label widget for overlay page title ---
                 ov_lbl = ov_graph.Add("label", name="title lbl", autoadd=False)
                 ov_lbl.label.val = f"Overlay: {group_label} - {ip}"
-                ov_lbl.xPos.val  = [0.5]
-                ov_lbl.yPos.val  = [1.02]
+                ov_lbl.xPos.val = [0.5]
+                ov_lbl.yPos.val = [1.02]
 
             # ---------------------------------------------------------------
             # Step 4 — Save as HDF5 (.vszh5).
@@ -1757,19 +1805,23 @@ def flush_outputs_parallel(cfg: Dict[str, Any]) -> "concurrent.futures.Future":
     """
     def _do_flush() -> None:
         fits_dir = cfg.get("fits_dir",  FITS_DIR)
-        csv_dir  = cfg.get("csv_dir",   CSV_DIR)
+        csv_dir = cfg.get("csv_dir",   CSV_DIR)
         xlsx_dir = cfg.get("xlsx_dir",  XLSX_DIR)
-        log_dir  = cfg.get("log_dir",   LOG_DIR)
+        log_dir = cfg.get("log_dir",   LOG_DIR)
 
         tasks = []
         if cfg.get("enable_fits"):
-            tasks.append(("FITS",  lambda: write_fits(ALL_DEVICE_DATA, fits_dir)))
+            tasks.append(
+                ("FITS", lambda: write_fits(ALL_DEVICE_DATA, fits_dir)))
         if cfg.get("enable_csv"):
-            tasks.append(("CSV",   lambda: write_csv(ALL_DEVICE_DATA, csv_dir, append=True)))
+            tasks.append(("CSV", lambda: write_csv(
+                ALL_DEVICE_DATA, csv_dir, append=True)))
         if cfg.get("enable_xlsx"):
-            tasks.append(("XLSX",  lambda: write_xlsx(ALL_DEVICE_DATA, xlsx_dir)))
+            tasks.append(
+                ("XLSX", lambda: write_xlsx(ALL_DEVICE_DATA, xlsx_dir)))
         if cfg.get("enable_log_append"):
-            tasks.append(("LOG",   lambda: write_log_text(ALL_DEVICE_DATA, log_dir)))
+            tasks.append(
+                ("LOG", lambda: write_log_text(ALL_DEVICE_DATA, log_dir)))
 
         with concurrent.futures.ThreadPoolExecutor(
             max_workers=min(4, len(tasks)) if tasks else 1,
@@ -1785,7 +1837,8 @@ def flush_outputs_parallel(cfg: Dict[str, Any]) -> "concurrent.futures.Future":
                     logger.error("Parallel flush ERROR (%s): %s", name, exc)
 
     # Use a module-level executor so we can check if one is already running
-    ex = concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix="ab_flush_mgr")
+    ex = concurrent.futures.ThreadPoolExecutor(
+        max_workers=1, thread_name_prefix="ab_flush_mgr")
     future = ex.submit(_do_flush)
     ex.shutdown(wait=False)
     return future
@@ -1840,18 +1893,19 @@ def build_preview_figures(
 
             params = list(series.keys())
             values = [series[p][0] for p in params]
-            units  = [series[p][1] for p in params]
+            units = [series[p][1] for p in params]
 
             fig, ax = plt.subplots(figsize=(10, 4))
-            x_pos   = range(len(params))
-            bars    = ax.bar(x_pos, values, color=prop_cycle_colors[:len(params)] * 10)
+            x_pos = range(len(params))
+            bars = ax.bar(
+                x_pos, values, color=prop_cycle_colors[:len(params)] * 10)
             ax.set_xticks(list(x_pos))
             ax.set_xticklabels(params, rotation=45, ha="right", fontsize=7)
             ax.set_title(f"{tname}\n{ip}", fontsize=9)
             ax.set_ylabel("Value")
             ax.grid(axis="y", alpha=0.3)
             fig.tight_layout()
-            fig._ab_title  = f"{ip} — {tname}"  # type: ignore[attr-defined]
+            fig._ab_title = f"{ip} — {tname}"  # type: ignore[attr-defined]
             figures.append(fig)
 
         # --- Overlay figures by unit group ---
@@ -1872,15 +1926,18 @@ def build_preview_figures(
                 continue
 
             fig, ax = plt.subplots(figsize=(10, 4))
-            x_pos   = range(len(group_labels))
-            ax.bar(x_pos, group_values, color=prop_cycle_colors[:len(group_labels)] * 10)
+            x_pos = range(len(group_labels))
+            ax.bar(x_pos, group_values,
+                   color=prop_cycle_colors[:len(group_labels)] * 10)
             ax.set_xticks(list(x_pos))
-            ax.set_xticklabels(group_labels, rotation=45, ha="right", fontsize=7)
+            ax.set_xticklabels(group_labels, rotation=45,
+                               ha="right", fontsize=7)
             ax.set_title(f"Overlay: {group_label}\n{ip}", fontsize=9)
             ax.set_ylabel(group_label)
             ax.grid(axis="y", alpha=0.3)
             fig.tight_layout()
-            fig._ab_title = f"{ip} — Overlay: {group_label}"  # type: ignore[attr-defined]
+            # type: ignore[attr-defined]
+            fig._ab_title = f"{ip} — Overlay: {group_label}"
             figures.append(fig)
 
     return figures
@@ -1964,7 +2021,7 @@ class _QTextEditHandler(logging.Handler):
             The log record to display.
         """
         try:
-            msg    = self.format(record)
+            msg = self.format(record)
             colour = self._LEVEL_COLOUR.get(record.levelno, "#cdd6f4")
             # Escape HTML special chars so angle brackets in messages render
             # correctly rather than being interpreted as HTML tags.
@@ -2047,7 +2104,8 @@ def launch_gui(
         from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
         from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavToolbar
     except ImportError as exc:
-        logger.critical("GUI dependencies missing: %s\nInstall: pip install qtpy pyside6 matplotlib", exc)
+        logger.critical(
+            "GUI dependencies missing: %s\nInstall: pip install qtpy pyside6 matplotlib", exc)
         return
 
     # -----------------------------------------------------------------------
@@ -2056,13 +2114,13 @@ def launch_gui(
     class PollThread(QThread):
         """Worker thread that polls devices on a configurable interval."""
 
-        data_ready  = Signal(dict)    # emits all_device_data dict each cycle
+        data_ready = Signal(dict)    # emits all_device_data dict each cycle
         error_occur = Signal(str)     # emits error description string
         log_message = Signal(str)     # emits log text for status console
 
         def __init__(self, config: Dict[str, Any], parent=None):
             super().__init__(parent)
-            self.config   = config
+            self.config = config
             self._running = False
 
         def run(self) -> None:
@@ -2073,10 +2131,10 @@ def launch_gui(
                         f"[{datetime.datetime.now().strftime('%H:%M:%S')}] Polling …"
                     )
                     data = poll_all_devices(
-                        ip_base      = self.config["ip_base"],
-                        octet_start  = self.config["octet_start"],
-                        octet_end    = self.config["octet_end"],
-                        table_names  = TABLE_NAMES,
+                        ip_base=self.config["ip_base"],
+                        octet_start=self.config["octet_start"],
+                        octet_end=self.config["octet_end"],
+                        table_names=TABLE_NAMES,
                     )
                     update_named_dicts(data)
                     self.data_ready.emit(data)
@@ -2177,11 +2235,12 @@ def launch_gui(
             self.setWindowTitle("AB Power Meter Monitor — NRAO / GBO")
             self.resize(1280, 820)
 
-            self._switches  = dict(switches)
-            self._figures   = list(figures)
+            self._switches = dict(switches)
+            self._figures = list(figures)
             self._thread: Optional[PollThread] = None
             self._dark_mode = False
-            self._log_handler: Optional[logging.Handler] = None  # attached after widget is built
+            # attached after widget is built
+            self._log_handler: Optional[logging.Handler] = None
             # Tracks in-flight background file flush so we never start two at once
             self._flush_future: Optional["concurrent.futures.Future"] = None
 
@@ -2193,7 +2252,8 @@ def launch_gui(
             # every logger.info/warning/error call in the entire codebase
             # (poll errors, FITS issues, CSV writes, Veusz, etc.) appears
             # live in the status console with colour coding by severity.
-            self._log_handler = _QTextEditHandler(self._log_console, level=logging.DEBUG)
+            self._log_handler = _QTextEditHandler(
+                self._log_console, level=logging.DEBUG)
             logging.getLogger("ABMonitor").addHandler(self._log_handler)
 
             # Apply initial dark mode if OS prefers it
@@ -2214,7 +2274,7 @@ def launch_gui(
 
             # File menu
             file_menu = menubar.addMenu("&File")
-            act_quit  = QAction("&Quit", self)
+            act_quit = QAction("&Quit", self)
             act_quit.triggered.connect(self.close)
             file_menu.addAction(act_quit)
 
@@ -2228,7 +2288,7 @@ def launch_gui(
         # Central widget
         # ----------------------------------------------------------------
         def _build_central(self) -> None:
-            central     = QWidget()
+            central = QWidget()
             main_layout = QVBoxLayout(central)
             main_layout.setSpacing(6)
 
@@ -2266,19 +2326,21 @@ def launch_gui(
 
         def _build_ip_group(self) -> QGroupBox:
             """Build the IP address range control group."""
-            grp    = QGroupBox("IP Address Range  (10.16.130.X)")
+            grp = QGroupBox("IP Address Range  (10.16.130.X)")
             layout = QGridLayout()
 
             layout.addWidget(QLabel("Last Octet Start:"), 0, 0)
             self._spin_ip_start = QSpinBox()
             self._spin_ip_start.setRange(1, 254)
-            self._spin_ip_start.setValue(self._switches.get("octet_start", IP_LAST_OCTET_START))
+            self._spin_ip_start.setValue(self._switches.get(
+                "octet_start", IP_LAST_OCTET_START))
             layout.addWidget(self._spin_ip_start, 0, 1)
 
             layout.addWidget(QLabel("Last Octet End:"), 1, 0)
             self._spin_ip_end = QSpinBox()
             self._spin_ip_end.setRange(1, 254)
-            self._spin_ip_end.setValue(self._switches.get("octet_end", IP_LAST_OCTET_END))
+            self._spin_ip_end.setValue(
+                self._switches.get("octet_end", IP_LAST_OCTET_END))
             layout.addWidget(self._spin_ip_end, 1, 1)
 
             grp.setLayout(layout)
@@ -2286,7 +2348,7 @@ def launch_gui(
 
         def _build_timing_group(self) -> QGroupBox:
             """Build the sample period control group."""
-            grp    = QGroupBox("Timing")
+            grp = QGroupBox("Timing")
             layout = QGridLayout()
 
             layout.addWidget(QLabel("Sample Period (s):"), 0, 0)
@@ -2294,7 +2356,8 @@ def launch_gui(
             self._spin_period.setRange(5.0, 3600.0)
             self._spin_period.setSingleStep(5.0)
             self._spin_period.setDecimals(1)
-            self._spin_period.setValue(self._switches.get("sample_period", SAMPLE_PERIOD_SEC))
+            self._spin_period.setValue(self._switches.get(
+                "sample_period", SAMPLE_PERIOD_SEC))
             layout.addWidget(self._spin_period, 0, 1)
 
             grp.setLayout(layout)
@@ -2302,24 +2365,29 @@ def launch_gui(
 
         def _build_output_group(self) -> QGroupBox:
             """Build the output enable check-boxes and log-dir chooser."""
-            grp    = QGroupBox("Output Options")
+            grp = QGroupBox("Output Options")
             layout = QVBoxLayout()
 
             # Check-boxes for the 5 file-output modes.
             # NOTE: "Enable GUI" is intentionally omitted here — the GUI is
             # already running, so that switch is only meaningful in the
             # ENABLE_GUI header variable and has no in-app toggle.
-            self._cb_fits  = QCheckBox("Enable FITS output")
-            self._cb_csv   = QCheckBox("Enable CSV output")
-            self._cb_xlsx  = QCheckBox("Enable Excel (XLSX) output")
-            self._cb_log   = QCheckBox("Append to log files")
+            self._cb_fits = QCheckBox("Enable FITS output")
+            self._cb_csv = QCheckBox("Enable CSV output")
+            self._cb_xlsx = QCheckBox("Enable Excel (XLSX) output")
+            self._cb_log = QCheckBox("Append to log files")
             self._cb_veusz = QCheckBox("Enable Veusz HDF5 output (.vszh5)")
 
-            self._cb_fits.setChecked(bool(self._switches.get("enable_fits",       ENABLE_FITS)))
-            self._cb_csv.setChecked(bool(self._switches.get("enable_csv",        ENABLE_CSV)))
-            self._cb_xlsx.setChecked(bool(self._switches.get("enable_xlsx",       ENABLE_XLSX)))
-            self._cb_log.setChecked(bool(self._switches.get("enable_log_append", ENABLE_LOG_APPEND)))
-            self._cb_veusz.setChecked(bool(self._switches.get("enable_veusz",    ENABLE_VEUSZ)))
+            self._cb_fits.setChecked(
+                bool(self._switches.get("enable_fits",       ENABLE_FITS)))
+            self._cb_csv.setChecked(
+                bool(self._switches.get("enable_csv",        ENABLE_CSV)))
+            self._cb_xlsx.setChecked(
+                bool(self._switches.get("enable_xlsx",       ENABLE_XLSX)))
+            self._cb_log.setChecked(bool(self._switches.get(
+                "enable_log_append", ENABLE_LOG_APPEND)))
+            self._cb_veusz.setChecked(
+                bool(self._switches.get("enable_veusz",    ENABLE_VEUSZ)))
 
             for cb in [self._cb_fits, self._cb_csv, self._cb_xlsx, self._cb_log, self._cb_veusz]:
                 layout.addWidget(cb)
@@ -2327,8 +2395,10 @@ def launch_gui(
             # --- Output root directory (drives FITS, CSV, XLSX, Veusz sub-dirs) ---
             layout.addWidget(QLabel("Output Root Directory:"))
             out_dir_layout = QHBoxLayout()
-            self._le_out_dir = QLineEdit(self._switches.get("output_base_dir", OUTPUT_BASE_DIR))
-            self._le_out_dir.setPlaceholderText("Base directory for all output files …")
+            self._le_out_dir = QLineEdit(self._switches.get(
+                "output_base_dir", OUTPUT_BASE_DIR))
+            self._le_out_dir.setPlaceholderText(
+                "Base directory for all output files …")
             self._le_out_dir.setToolTip(
                 "All sub-directories (fits/, csv/, xlsx/, veusz/, logs/) are "
                 "created inside this folder.  Mirrors the OUTPUT_BASE_DIR "
@@ -2343,8 +2413,10 @@ def launch_gui(
             # --- Log directory override (defaults to <output_root>/logs) ---
             layout.addWidget(QLabel("Log File Directory (override):"))
             log_dir_layout = QHBoxLayout()
-            self._le_log_dir = QLineEdit(self._switches.get("log_dir", LOG_DIR))
-            self._le_log_dir.setPlaceholderText("Log file directory (leave blank to use output root) …")
+            self._le_log_dir = QLineEdit(
+                self._switches.get("log_dir", LOG_DIR))
+            self._le_log_dir.setPlaceholderText(
+                "Log file directory (leave blank to use output root) …")
             self._le_log_dir.setToolTip(
                 "Override only the log directory.  Leave blank to use "
                 "<Output Root>/logs/ automatically."
@@ -2363,10 +2435,10 @@ def launch_gui(
             widget = QWidget()
             layout = QHBoxLayout(widget)
 
-            self._btn_poll   = QPushButton("Poll Now")
-            self._btn_start  = QPushButton("Start Auto")
-            self._btn_stop   = QPushButton("Stop")
-            self._btn_veusz  = QPushButton("Open in Veusz")
+            self._btn_poll = QPushButton("Poll Now")
+            self._btn_start = QPushButton("Start Auto")
+            self._btn_stop = QPushButton("Stop")
+            self._btn_veusz = QPushButton("Open in Veusz")
             self._btn_stop.setEnabled(False)
             self._btn_veusz.setToolTip(
                 "Build plots in the live Veusz window and save as .vszh5 (HDF5)"
@@ -2386,7 +2458,8 @@ def launch_gui(
             """Build the bottom status bar."""
             self._status_bar = QStatusBar()
             self.setStatusBar(self._status_bar)
-            self._status_bar.showMessage("Ready — configure options and click Poll Now.")
+            self._status_bar.showMessage(
+                "Ready — configure options and click Poll Now.")
 
         # ----------------------------------------------------------------
         # Plot tab management
@@ -2396,15 +2469,16 @@ def launch_gui(
             self._tab_widget.clear()
 
             if not figures:
-                placeholder = QLabel("No data yet — click 'Poll Now' to fetch.")
+                placeholder = QLabel(
+                    "No data yet — click 'Poll Now' to fetch.")
                 placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
                 self._tab_widget.addTab(placeholder, "Waiting …")
                 return
 
             for fig in figures:
-                canvas  = FigureCanvas(fig)
+                canvas = FigureCanvas(fig)
                 toolbar = NavToolbar(canvas, self._tab_widget)
-                tab_w   = QWidget()
+                tab_w = QWidget()
                 tab_lay = QVBoxLayout(tab_w)
                 tab_lay.addWidget(toolbar)
                 tab_lay.addWidget(canvas)
@@ -2439,7 +2513,7 @@ def launch_gui(
         def _get_runtime_config(self) -> Dict[str, Any]:
             """Collect current GUI state into a config dict."""
             base = self._le_out_dir.text().strip() or OUTPUT_BASE_DIR
-            log  = self._le_log_dir.text().strip()  or os.path.join(base, "logs")
+            log = self._le_log_dir.text().strip() or os.path.join(base, "logs")
             return {
                 "ip_base":           IP_BASE,
                 "octet_start":       self._spin_ip_start.value(),
@@ -2466,19 +2540,20 @@ def launch_gui(
         def _do_poll_once(self) -> None:
             """Perform a single synchronous poll and refresh display."""
             self._append_log("Starting single poll …")
-            cfg  = self._get_runtime_config()
+            cfg = self._get_runtime_config()
             # poll_all_devices returns a flat dict keyed by "ip_tablename".
             # update_named_dicts() converts it into the nested ALL_DEVICE_DATA
             # structure {ip: {table_name: parsed_dict}} used by all downstream
             # functions.  Always pass ALL_DEVICE_DATA to those functions, never
             # the raw flat 'data' return value.
             data = poll_all_devices(
-                ip_base     = cfg["ip_base"],
-                octet_start = cfg["octet_start"],
-                octet_end   = cfg["octet_end"],
-                table_names = TABLE_NAMES,
+                ip_base=cfg["ip_base"],
+                octet_start=cfg["octet_start"],
+                octet_end=cfg["octet_end"],
+                table_names=TABLE_NAMES,
             )
-            update_named_dicts(data)                         # populates ALL_DEVICE_DATA
+            # populates ALL_DEVICE_DATA
+            update_named_dicts(data)
             self._process_outputs(ALL_DEVICE_DATA, cfg)     # nested shape
             figs = build_preview_figures(ALL_DEVICE_DATA)   # nested shape
             self._populate_plot_tabs(figs)
@@ -2486,13 +2561,14 @@ def launch_gui(
                 f"Poll complete — {len(ALL_DEVICE_DATA)} device(s), "
                 f"{sum(len(t) for t in ALL_DEVICE_DATA.values())} table dicts."
             )
-            self._status_bar.showMessage(f"Last poll: {datetime.datetime.now().strftime('%H:%M:%S')}")
+            self._status_bar.showMessage(
+                f"Last poll: {datetime.datetime.now().strftime('%H:%M:%S')}")
 
         def _do_start(self) -> None:
             """Start the background polling thread."""
             if self._thread and self._thread.isRunning():
                 return
-            cfg          = self._get_runtime_config()
+            cfg = self._get_runtime_config()
             self._thread = PollThread(cfg, parent=self)
             self._thread.data_ready.connect(self._on_data_ready)
             self._thread.error_occur.connect(self._on_thread_error)
@@ -2514,7 +2590,8 @@ def launch_gui(
             cfg = self._get_runtime_config()
             if cfg.get("enable_veusz") and ALL_DEVICE_DATA:
                 veusz_dir = cfg.get("veusz_dir", VEUSZ_DIR)
-                self._append_log("Writing final Veusz file with all accumulated samples…")
+                self._append_log(
+                    "Writing final Veusz file with all accumulated samples…")
                 try:
                     write_veusz(ALL_DEVICE_DATA, veusz_dir, show_window=False)
                     self._append_log(f"Veusz saved: {veusz_dir}")
@@ -2531,9 +2608,10 @@ def launch_gui(
             """
             cfg = self._get_runtime_config()
             self._process_outputs(ALL_DEVICE_DATA, cfg)   # nested shape
-            figs = build_preview_figures(ALL_DEVICE_DATA) # nested shape
+            figs = build_preview_figures(ALL_DEVICE_DATA)  # nested shape
             self._populate_plot_tabs(figs)
-            self._status_bar.showMessage(f"Updated: {datetime.datetime.now().strftime('%H:%M:%S')}")
+            self._status_bar.showMessage(
+                f"Updated: {datetime.datetime.now().strftime('%H:%M:%S')}")
 
         def _on_thread_error(self, msg: str) -> None:
             self._append_log(f"ERROR: {msg}")
@@ -2553,7 +2631,7 @@ def launch_gui(
             if not ALL_DEVICE_DATA:
                 self._append_log("No data to plot — run Poll Now first.")
                 return
-            cfg       = self._get_runtime_config()
+            cfg = self._get_runtime_config()
             veusz_dir = cfg.get("veusz_dir", VEUSZ_DIR)
             self._append_log(f"Opening Veusz window … output: {veusz_dir}")
             try:
@@ -2650,7 +2728,8 @@ def launch_gui(
             # Wait up to 30 s for any background file flush to complete so we
             # do not close the process while CSV / XLSX / log is still writing.
             if self._flush_future is not None and not self._flush_future.done():
-                logger.info("Waiting for background flush to finish before closing…")
+                logger.info(
+                    "Waiting for background flush to finish before closing…")
                 try:
                     self._flush_future.result(timeout=30)
                 except Exception as exc:
@@ -2688,7 +2767,8 @@ def _install_signal_handlers() -> None:
     fresh loop does not exit immediately.
     """
     def _handler(signum, frame):  # noqa: ANN001
-        logger.info("Signal %s received — requesting clean stop after current poll.", signum)
+        logger.info(
+            "Signal %s received — requesting clean stop after current poll.", signum)
         _HEADLESS_STOP.set()
 
     try:
@@ -2746,11 +2826,11 @@ def run_headless(cfg: Dict[str, Any]) -> None:
     _install_signal_handlers()
     _HEADLESS_STOP.clear()   # ensure flag is clear for this run
 
-    loop_count   = cfg.get("headless_loop_count", HEADLESS_LOOP_COUNT)
-    sample_sec   = cfg.get("sample_period",       SAMPLE_PERIOD_SEC)
-    veusz_dir    = cfg.get("veusz_dir",            VEUSZ_DIR)
-    infinite     = (loop_count == 0)
-    cycle        = 0
+    loop_count = cfg.get("headless_loop_count", HEADLESS_LOOP_COUNT)
+    sample_sec = cfg.get("sample_period",       SAMPLE_PERIOD_SEC)
+    veusz_dir = cfg.get("veusz_dir",            VEUSZ_DIR)
+    infinite = (loop_count == 0)
+    cycle = 0
     flush_future: Optional["concurrent.futures.Future"] = None
 
     logger.info(
@@ -2764,10 +2844,12 @@ def run_headless(cfg: Dict[str, Any]) -> None:
         while True:
             # ── Check stop conditions ─────────────────────────────────────────────────────────
             if _HEADLESS_STOP.is_set():
-                logger.info("Stop flag set — exiting loop after cycle %d.", cycle)
+                logger.info(
+                    "Stop flag set — exiting loop after cycle %d.", cycle)
                 break
             if os.path.exists(STOP_SIGNAL_FILE):
-                logger.info("Stop-signal file detected (%s) — exiting.", STOP_SIGNAL_FILE)
+                logger.info(
+                    "Stop-signal file detected (%s) — exiting.", STOP_SIGNAL_FILE)
                 try:
                     os.remove(STOP_SIGNAL_FILE)
                 except OSError:
@@ -2785,10 +2867,10 @@ def run_headless(cfg: Dict[str, Any]) -> None:
             t_poll_start = time.monotonic()
 
             data = poll_all_devices(
-                ip_base     = cfg["ip_base"],
-                octet_start = cfg["octet_start"],
-                octet_end   = cfg["octet_end"],
-                table_names = TABLE_NAMES,
+                ip_base=cfg["ip_base"],
+                octet_start=cfg["octet_start"],
+                octet_end=cfg["octet_end"],
+                table_names=TABLE_NAMES,
             )
             update_named_dicts(data)  # also calls accumulate_poll()
 
@@ -2802,10 +2884,12 @@ def run_headless(cfg: Dict[str, Any]) -> None:
             # Only launch a new flush if the previous one has completed.
             if should_flush(cfg):
                 if flush_future is None or flush_future.done():
-                    logger.info("Dispatching background flush (cycle %d)…", cycle)
+                    logger.info(
+                        "Dispatching background flush (cycle %d)…", cycle)
                     flush_future = flush_outputs_parallel(cfg)
                 else:
-                    logger.warning("Previous flush still running — skipping mid-cycle flush.")
+                    logger.warning(
+                        "Previous flush still running — skipping mid-cycle flush.")
 
             # ── Wait for next cycle ──────────────────────────────────────────────────────────
             # Sleep in 0.5 s chunks to remain responsive to stop signals.
@@ -2827,13 +2911,14 @@ def run_headless(cfg: Dict[str, Any]) -> None:
         except Exception as exc:
             logger.error("Background flush error on exit: %s", exc)
 
-    logger.info("Headless loop ended after %d cycle(s). Writing final outputs…", cycle)
+    logger.info(
+        "Headless loop ended after %d cycle(s). Writing final outputs…", cycle)
 
     # Final full write of all enabled formats (including Veusz with all samples)
-    fits_dir  = cfg.get("fits_dir",  FITS_DIR)
-    csv_dir   = cfg.get("csv_dir",   CSV_DIR)
-    xlsx_dir  = cfg.get("xlsx_dir",  XLSX_DIR)
-    log_dir   = cfg.get("log_dir",   LOG_DIR)
+    fits_dir = cfg.get("fits_dir",  FITS_DIR)
+    csv_dir = cfg.get("csv_dir",   CSV_DIR)
+    xlsx_dir = cfg.get("xlsx_dir",  XLSX_DIR)
+    log_dir = cfg.get("log_dir",   LOG_DIR)
 
     if cfg.get("enable_fits"):
         write_fits(ALL_DEVICE_DATA, fits_dir)
@@ -2844,10 +2929,12 @@ def run_headless(cfg: Dict[str, Any]) -> None:
     if cfg.get("enable_log_append"):
         write_log_text(ALL_DEVICE_DATA, log_dir)
     if cfg.get("enable_veusz"):
-        logger.info("Building Veusz project with all %d accumulated sample(s)…", cycle)
+        logger.info(
+            "Building Veusz project with all %d accumulated sample(s)…", cycle)
         write_veusz(ALL_DEVICE_DATA, veusz_dir)
 
-    logger.info("All outputs written. Output directory: %s", cfg.get("output_base_dir", OUTPUT_BASE_DIR))
+    logger.info("All outputs written. Output directory: %s",
+                cfg.get("output_base_dir", OUTPUT_BASE_DIR))
 
     # Pretty-print the 11 named dicts to stdout for inspection
     print("\n" + "="*72)
@@ -2896,7 +2983,8 @@ def main() -> None:
         "headless_loop_count":    HEADLESS_LOOP_COUNT,
         "mem_flush_threshold_mb": MEM_FLUSH_THRESHOLD_MB,
         "mem_free_min_mb":        MEM_FREE_MIN_MB,
-        "enable_gui":        ENABLE_GUI,     # used by main() branch logic only; not shown in GUI
+        # used by main() branch logic only; not shown in GUI
+        "enable_gui":        ENABLE_GUI,
         "enable_fits":       ENABLE_FITS,
         "enable_csv":        ENABLE_CSV,
         "enable_xlsx":       ENABLE_XLSX,
@@ -2927,7 +3015,8 @@ def main() -> None:
         try:
             launch_gui(initial_switches=cfg, initial_figures=initial_figs)
         except Exception as exc:
-            logger.critical("GUI launch failed: %s\n%s", exc, traceback.format_exc())
+            logger.critical("GUI launch failed: %s\n%s",
+                            exc, traceback.format_exc())
             logger.info("Falling back to headless mode.")
             run_headless(cfg)
     else:

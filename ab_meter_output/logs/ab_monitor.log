@@ -2238,3 +2238,410 @@
 2026-05-12T10:03:05 | DEBUG    | ABMonitor | Veusz: loaded 228 datasets (30 samples each) for 10.16.130.51
 2026-05-12T10:03:11 | INFO     | ABMonitor | Veusz HDF5 project saved: c:\users\wwallace\onedrive - national radio astronomy observatory\documents\github\gbo_maser_control\ab_meter_output\veusz\ABMeter_10_16_130_51.vszh5
 2026-05-12T10:03:11 | INFO     | ABMonitor | All outputs written. Output directory: c:\users\wwallace\onedrive - national radio astronomy observatory\documents\github\gbo_maser_control\ab_meter_output
+2026-05-12T13:32:40 | INFO     | ABMonitor | Logger initialised — output: c:\users\wwallace\onedrive - national radio astronomy observatory\documents\github\gbo_maser_control\ab_meter_output\logs\ab_monitor.log
+2026-05-12T13:32:40 | INFO     | ABMonitor | AB Power Meter Monitor starting up.
+2026-05-12T13:32:40 | INFO     | ABMonitor | Configuration: {
+  "ip_base": "10.16.130",
+  "octet_start": 50,
+  "octet_end": 53,
+  "sample_period": 30,
+  "headless_loop_count": 0,
+  "mem_flush_threshold_mb": 256,
+  "mem_free_min_mb": 512,
+  "enable_gui": 1,
+  "enable_fits": 1,
+  "enable_csv": 1,
+  "enable_xlsx": 1,
+  "enable_log_append": 1,
+  "enable_veusz": 1,
+  "output_base_dir": "c:\\users\\wwallace\\onedrive - national radio astronomy observatory\\documents\\github\\gbo_maser_control\\ab_meter_output",
+  "fits_dir": "c:\\users\\wwallace\\onedrive - national radio astronomy observatory\\documents\\github\\gbo_maser_control\\ab_meter_output\\fits",
+  "csv_dir": "c:\\users\\wwallace\\onedrive - national radio astronomy observatory\\documents\\github\\gbo_maser_control\\ab_meter_output\\csv",
+  "xlsx_dir": "c:\\users\\wwallace\\onedrive - national radio astronomy observatory\\documents\\github\\gbo_maser_control\\ab_meter_output\\xlsx",
+  "veusz_dir": "c:\\users\\wwallace\\onedrive - national radio astronomy observatory\\documents\\github\\gbo_maser_control\\ab_meter_output\\veusz",
+  "log_dir": "c:\\users\\wwallace\\onedrive - national radio astronomy observatory\\documents\\github\\gbo_maser_control\\ab_meter_output\\logs"
+}
+2026-05-12T13:33:35 | INFO     | ABMonitor | Logger initialised — output: c:\users\wwallace\onedrive - national radio astronomy observatory\documents\github\gbo_maser_control\ab_meter_output\logs\ab_monitor.log
+2026-05-12T13:33:35 | INFO     | ABMonitor | AB Power Meter Monitor starting up.
+2026-05-12T13:33:35 | INFO     | ABMonitor | Configuration: {
+  "ip_base": "10.16.130",
+  "octet_start": 50,
+  "octet_end": 51,
+  "sample_period": 15,
+  "headless_loop_count": 100,
+  "mem_flush_threshold_mb": 256,
+  "mem_free_min_mb": 512,
+  "enable_gui": 0,
+  "enable_fits": 1,
+  "enable_csv": 1,
+  "enable_xlsx": 1,
+  "enable_log_append": 1,
+  "enable_veusz": 1,
+  "output_base_dir": "c:\\users\\wwallace\\onedrive - national radio astronomy observatory\\documents\\github\\gbo_maser_control\\ab_meter_output",
+  "fits_dir": "c:\\users\\wwallace\\onedrive - national radio astronomy observatory\\documents\\github\\gbo_maser_control\\ab_meter_output\\fits",
+  "csv_dir": "c:\\users\\wwallace\\onedrive - national radio astronomy observatory\\documents\\github\\gbo_maser_control\\ab_meter_output\\csv",
+  "xlsx_dir": "c:\\users\\wwallace\\onedrive - national radio astronomy observatory\\documents\\github\\gbo_maser_control\\ab_meter_output\\xlsx",
+  "veusz_dir": "c:\\users\\wwallace\\onedrive - national radio astronomy observatory\\documents\\github\\gbo_maser_control\\ab_meter_output\\veusz",
+  "log_dir": "c:\\users\\wwallace\\onedrive - national radio astronomy observatory\\documents\\github\\gbo_maser_control\\ab_meter_output\\logs"
+}
+2026-05-12T13:33:35 | INFO     | ABMonitor | Headless loop starting — 100 cycles, sample period 15.0 s, output: c:\users\wwallace\onedrive - national radio astronomy observatory\documents\github\gbo_maser_control\ab_meter_output
+2026-05-12T13:33:35 | INFO     | ABMonitor | --- Headless cycle 1 / 100 ---
+2026-05-12T13:33:35 | INFO     | ABMonitor | Polling device 10.16.130.50 …
+2026-05-12T13:33:35 | DEBUG    | ABMonitor | Fetched http://10.16.130.50/0 — 2461 bytes
+2026-05-12T13:33:35 | DEBUG    | ABMonitor | Parsed table 'Device_Configuration_Table' — 31 rows
+2026-05-12T13:33:35 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.50_Device_Configuration_Table
+2026-05-12T13:33:35 | DEBUG    | ABMonitor | Fetched http://10.16.130.50/1 — 1351 bytes
+2026-05-12T13:33:35 | DEBUG    | ABMonitor | Parsed table 'Communications_Configuration_Table' — 15 rows
+2026-05-12T13:33:35 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.50_Communications_Configuration_Table
+2026-05-12T13:33:35 | DEBUG    | ABMonitor | Fetched http://10.16.130.50/2 — 1929 bytes
+2026-05-12T13:33:35 | DEBUG    | ABMonitor | Parsed table 'Voltage_Current_Table' — 24 rows
+2026-05-12T13:33:35 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.50_Voltage_Current_Table
+2026-05-12T13:33:36 | DEBUG    | ABMonitor | Fetched http://10.16.130.50/3 — 2100 bytes
+2026-05-12T13:33:36 | DEBUG    | ABMonitor | Parsed table 'Real_Time_Power_Table' — 26 rows
+2026-05-12T13:33:36 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.50_Real_Time_Power_Table
+2026-05-12T13:33:36 | DEBUG    | ABMonitor | Fetched http://10.16.130.50/4 — 925 bytes
+2026-05-12T13:33:36 | DEBUG    | ABMonitor | Parsed table 'Cumulative_Power_Table' — 8 rows
+2026-05-12T13:33:36 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.50_Cumulative_Power_Table
+2026-05-12T13:33:36 | DEBUG    | ABMonitor | Fetched http://10.16.130.50/5 — 1746 bytes
+2026-05-12T13:33:36 | DEBUG    | ABMonitor | Parsed table 'Demand_Data_Table' — 18 rows
+2026-05-12T13:33:36 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.50_Demand_Data_Table
+2026-05-12T13:33:36 | DEBUG    | ABMonitor | Fetched http://10.16.130.50/6 — 2158 bytes
+2026-05-12T13:33:36 | DEBUG    | ABMonitor | Parsed table 'Diagnostic_Table' — 31 rows
+2026-05-12T13:33:36 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.50_Diagnostic_Table
+2026-05-12T13:33:36 | DEBUG    | ABMonitor | Fetched http://10.16.130.50/7 — 2129 bytes
+2026-05-12T13:33:36 | DEBUG    | ABMonitor | Parsed table 'Voltage_Current_Snapshot_Log_Table' — 27 rows
+2026-05-12T13:33:36 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.50_Voltage_Current_Snapshot_Log_Table
+2026-05-12T13:33:37 | DEBUG    | ABMonitor | Fetched http://10.16.130.50/8 — 2316 bytes
+2026-05-12T13:33:37 | DEBUG    | ABMonitor | Parsed table 'Power_Snapshot_Log_Table' — 30 rows
+2026-05-12T13:33:37 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.50_Power_Snapshot_Log_Table
+2026-05-12T13:33:37 | DEBUG    | ABMonitor | Fetched http://10.16.130.50/9 — 1159 bytes
+2026-05-12T13:33:37 | DEBUG    | ABMonitor | Parsed table 'MinMax_Log_Table' — 12 rows
+2026-05-12T13:33:37 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.50_MinMax_Log_Table
+2026-05-12T13:33:37 | DEBUG    | ABMonitor | Fetched http://10.16.130.50/10 — 2158 bytes
+2026-05-12T13:33:37 | DEBUG    | ABMonitor | Parsed table 'Diagnostic_Table_Extended' — 31 rows
+2026-05-12T13:33:37 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.50_Diagnostic_Table_Extended
+2026-05-12T13:33:37 | INFO     | ABMonitor | Polling device 10.16.130.51 …
+2026-05-12T13:33:37 | DEBUG    | ABMonitor | Fetched http://10.16.130.51/0 — 2461 bytes
+2026-05-12T13:33:37 | DEBUG    | ABMonitor | Parsed table 'Device_Configuration_Table' — 31 rows
+2026-05-12T13:33:37 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.51_Device_Configuration_Table
+2026-05-12T13:33:37 | DEBUG    | ABMonitor | Fetched http://10.16.130.51/1 — 1351 bytes
+2026-05-12T13:33:37 | DEBUG    | ABMonitor | Parsed table 'Communications_Configuration_Table' — 15 rows
+2026-05-12T13:33:37 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.51_Communications_Configuration_Table
+2026-05-12T13:33:38 | DEBUG    | ABMonitor | Fetched http://10.16.130.51/2 — 1930 bytes
+2026-05-12T13:33:38 | DEBUG    | ABMonitor | Parsed table 'Voltage_Current_Table' — 24 rows
+2026-05-12T13:33:38 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.51_Voltage_Current_Table
+2026-05-12T13:33:38 | DEBUG    | ABMonitor | Fetched http://10.16.130.51/3 — 2096 bytes
+2026-05-12T13:33:38 | DEBUG    | ABMonitor | Parsed table 'Real_Time_Power_Table' — 26 rows
+2026-05-12T13:33:38 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.51_Real_Time_Power_Table
+2026-05-12T13:33:38 | DEBUG    | ABMonitor | Fetched http://10.16.130.51/4 — 923 bytes
+2026-05-12T13:33:38 | DEBUG    | ABMonitor | Parsed table 'Cumulative_Power_Table' — 8 rows
+2026-05-12T13:33:38 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.51_Cumulative_Power_Table
+2026-05-12T13:33:38 | DEBUG    | ABMonitor | Fetched http://10.16.130.51/5 — 1738 bytes
+2026-05-12T13:33:38 | DEBUG    | ABMonitor | Parsed table 'Demand_Data_Table' — 18 rows
+2026-05-12T13:33:38 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.51_Demand_Data_Table
+2026-05-12T13:33:39 | DEBUG    | ABMonitor | Fetched http://10.16.130.51/6 — 2157 bytes
+2026-05-12T13:33:39 | DEBUG    | ABMonitor | Parsed table 'Diagnostic_Table' — 31 rows
+2026-05-12T13:33:39 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.51_Diagnostic_Table
+2026-05-12T13:33:39 | DEBUG    | ABMonitor | Fetched http://10.16.130.51/7 — 2129 bytes
+2026-05-12T13:33:39 | DEBUG    | ABMonitor | Parsed table 'Voltage_Current_Snapshot_Log_Table' — 27 rows
+2026-05-12T13:33:39 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.51_Voltage_Current_Snapshot_Log_Table
+2026-05-12T13:33:39 | DEBUG    | ABMonitor | Fetched http://10.16.130.51/8 — 2316 bytes
+2026-05-12T13:33:39 | DEBUG    | ABMonitor | Parsed table 'Power_Snapshot_Log_Table' — 30 rows
+2026-05-12T13:33:39 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.51_Power_Snapshot_Log_Table
+2026-05-12T13:33:39 | DEBUG    | ABMonitor | Fetched http://10.16.130.51/9 — 1159 bytes
+2026-05-12T13:33:39 | DEBUG    | ABMonitor | Parsed table 'MinMax_Log_Table' — 12 rows
+2026-05-12T13:33:39 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.51_MinMax_Log_Table
+2026-05-12T13:33:39 | DEBUG    | ABMonitor | Fetched http://10.16.130.51/10 — 2157 bytes
+2026-05-12T13:33:39 | DEBUG    | ABMonitor | Parsed table 'Diagnostic_Table_Extended' — 31 rows
+2026-05-12T13:33:39 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.51_Diagnostic_Table_Extended
+2026-05-12T13:33:39 | DEBUG    | ABMonitor | Accumulator updated — 2 devices, local ts: 2026-05-12 13:33:39
+2026-05-12T13:33:39 | INFO     | ABMonitor | Named dicts updated from 2 device(s).
+2026-05-12T13:33:39 | INFO     | ABMonitor | Cycle 1 poll complete in 4.97 s — store 0.1 MB, free RAM 43906 MB
+2026-05-12T13:33:50 | INFO     | ABMonitor | --- Headless cycle 2 / 100 ---
+2026-05-12T13:33:50 | INFO     | ABMonitor | Polling device 10.16.130.50 …
+2026-05-12T13:33:50 | DEBUG    | ABMonitor | Fetched http://10.16.130.50/0 — 2461 bytes
+2026-05-12T13:33:50 | DEBUG    | ABMonitor | Parsed table 'Device_Configuration_Table' — 31 rows
+2026-05-12T13:33:50 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.50_Device_Configuration_Table
+2026-05-12T13:33:50 | DEBUG    | ABMonitor | Fetched http://10.16.130.50/1 — 1351 bytes
+2026-05-12T13:33:50 | DEBUG    | ABMonitor | Parsed table 'Communications_Configuration_Table' — 15 rows
+2026-05-12T13:33:50 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.50_Communications_Configuration_Table
+2026-05-12T13:33:50 | DEBUG    | ABMonitor | Fetched http://10.16.130.50/2 — 1929 bytes
+2026-05-12T13:33:50 | DEBUG    | ABMonitor | Parsed table 'Voltage_Current_Table' — 24 rows
+2026-05-12T13:33:50 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.50_Voltage_Current_Table
+2026-05-12T13:33:51 | DEBUG    | ABMonitor | Fetched http://10.16.130.50/3 — 2100 bytes
+2026-05-12T13:33:51 | DEBUG    | ABMonitor | Parsed table 'Real_Time_Power_Table' — 26 rows
+2026-05-12T13:33:51 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.50_Real_Time_Power_Table
+2026-05-12T13:33:51 | DEBUG    | ABMonitor | Fetched http://10.16.130.50/4 — 925 bytes
+2026-05-12T13:33:51 | DEBUG    | ABMonitor | Parsed table 'Cumulative_Power_Table' — 8 rows
+2026-05-12T13:33:51 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.50_Cumulative_Power_Table
+2026-05-12T13:33:51 | DEBUG    | ABMonitor | Fetched http://10.16.130.50/5 — 1747 bytes
+2026-05-12T13:33:51 | DEBUG    | ABMonitor | Parsed table 'Demand_Data_Table' — 18 rows
+2026-05-12T13:33:51 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.50_Demand_Data_Table
+2026-05-12T13:33:51 | DEBUG    | ABMonitor | Fetched http://10.16.130.50/6 — 2158 bytes
+2026-05-12T13:33:51 | DEBUG    | ABMonitor | Parsed table 'Diagnostic_Table' — 31 rows
+2026-05-12T13:33:51 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.50_Diagnostic_Table
+2026-05-12T13:33:51 | DEBUG    | ABMonitor | Fetched http://10.16.130.50/7 — 2129 bytes
+2026-05-12T13:33:51 | DEBUG    | ABMonitor | Parsed table 'Voltage_Current_Snapshot_Log_Table' — 27 rows
+2026-05-12T13:33:51 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.50_Voltage_Current_Snapshot_Log_Table
+2026-05-12T13:33:52 | DEBUG    | ABMonitor | Fetched http://10.16.130.50/8 — 2316 bytes
+2026-05-12T13:33:52 | DEBUG    | ABMonitor | Parsed table 'Power_Snapshot_Log_Table' — 30 rows
+2026-05-12T13:33:52 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.50_Power_Snapshot_Log_Table
+2026-05-12T13:33:52 | DEBUG    | ABMonitor | Fetched http://10.16.130.50/9 — 1159 bytes
+2026-05-12T13:33:52 | DEBUG    | ABMonitor | Parsed table 'MinMax_Log_Table' — 12 rows
+2026-05-12T13:33:52 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.50_MinMax_Log_Table
+2026-05-12T13:33:52 | DEBUG    | ABMonitor | Fetched http://10.16.130.50/10 — 2158 bytes
+2026-05-12T13:33:52 | DEBUG    | ABMonitor | Parsed table 'Diagnostic_Table_Extended' — 31 rows
+2026-05-12T13:33:52 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.50_Diagnostic_Table_Extended
+2026-05-12T13:33:52 | INFO     | ABMonitor | Polling device 10.16.130.51 …
+2026-05-12T13:33:52 | DEBUG    | ABMonitor | Fetched http://10.16.130.51/0 — 2461 bytes
+2026-05-12T13:33:52 | DEBUG    | ABMonitor | Parsed table 'Device_Configuration_Table' — 31 rows
+2026-05-12T13:33:52 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.51_Device_Configuration_Table
+2026-05-12T13:33:52 | DEBUG    | ABMonitor | Fetched http://10.16.130.51/1 — 1351 bytes
+2026-05-12T13:33:52 | DEBUG    | ABMonitor | Parsed table 'Communications_Configuration_Table' — 15 rows
+2026-05-12T13:33:52 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.51_Communications_Configuration_Table
+2026-05-12T13:33:53 | DEBUG    | ABMonitor | Fetched http://10.16.130.51/2 — 1930 bytes
+2026-05-12T13:33:53 | DEBUG    | ABMonitor | Parsed table 'Voltage_Current_Table' — 24 rows
+2026-05-12T13:33:53 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.51_Voltage_Current_Table
+2026-05-12T13:33:53 | DEBUG    | ABMonitor | Fetched http://10.16.130.51/3 — 2096 bytes
+2026-05-12T13:33:53 | DEBUG    | ABMonitor | Parsed table 'Real_Time_Power_Table' — 26 rows
+2026-05-12T13:33:53 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.51_Real_Time_Power_Table
+2026-05-12T13:33:53 | DEBUG    | ABMonitor | Fetched http://10.16.130.51/4 — 923 bytes
+2026-05-12T13:33:53 | DEBUG    | ABMonitor | Parsed table 'Cumulative_Power_Table' — 8 rows
+2026-05-12T13:33:53 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.51_Cumulative_Power_Table
+2026-05-12T13:33:53 | DEBUG    | ABMonitor | Fetched http://10.16.130.51/5 — 1738 bytes
+2026-05-12T13:33:53 | DEBUG    | ABMonitor | Parsed table 'Demand_Data_Table' — 18 rows
+2026-05-12T13:33:53 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.51_Demand_Data_Table
+2026-05-12T13:33:53 | DEBUG    | ABMonitor | Fetched http://10.16.130.51/6 — 2157 bytes
+2026-05-12T13:33:53 | DEBUG    | ABMonitor | Parsed table 'Diagnostic_Table' — 31 rows
+2026-05-12T13:33:53 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.51_Diagnostic_Table
+2026-05-12T13:33:54 | DEBUG    | ABMonitor | Fetched http://10.16.130.51/7 — 2129 bytes
+2026-05-12T13:33:54 | DEBUG    | ABMonitor | Parsed table 'Voltage_Current_Snapshot_Log_Table' — 27 rows
+2026-05-12T13:33:54 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.51_Voltage_Current_Snapshot_Log_Table
+2026-05-12T13:33:54 | DEBUG    | ABMonitor | Fetched http://10.16.130.51/8 — 2316 bytes
+2026-05-12T13:33:54 | DEBUG    | ABMonitor | Parsed table 'Power_Snapshot_Log_Table' — 30 rows
+2026-05-12T13:33:54 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.51_Power_Snapshot_Log_Table
+2026-05-12T13:33:54 | DEBUG    | ABMonitor | Fetched http://10.16.130.51/9 — 1159 bytes
+2026-05-12T13:33:54 | DEBUG    | ABMonitor | Parsed table 'MinMax_Log_Table' — 12 rows
+2026-05-12T13:33:54 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.51_MinMax_Log_Table
+2026-05-12T13:33:54 | DEBUG    | ABMonitor | Fetched http://10.16.130.51/10 — 2157 bytes
+2026-05-12T13:33:54 | DEBUG    | ABMonitor | Parsed table 'Diagnostic_Table_Extended' — 31 rows
+2026-05-12T13:33:54 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.51_Diagnostic_Table_Extended
+2026-05-12T13:33:54 | DEBUG    | ABMonitor | Accumulator updated — 2 devices, local ts: 2026-05-12 13:33:54
+2026-05-12T13:33:54 | INFO     | ABMonitor | Named dicts updated from 2 device(s).
+2026-05-12T13:33:54 | INFO     | ABMonitor | Cycle 2 poll complete in 4.62 s — store 0.1 MB, free RAM 43539 MB
+2026-05-12T13:34:05 | INFO     | ABMonitor | --- Headless cycle 3 / 100 ---
+2026-05-12T13:34:05 | INFO     | ABMonitor | Polling device 10.16.130.50 …
+2026-05-12T13:34:05 | DEBUG    | ABMonitor | Fetched http://10.16.130.50/0 — 2461 bytes
+2026-05-12T13:34:05 | DEBUG    | ABMonitor | Parsed table 'Device_Configuration_Table' — 31 rows
+2026-05-12T13:34:05 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.50_Device_Configuration_Table
+2026-05-12T13:34:05 | DEBUG    | ABMonitor | Fetched http://10.16.130.50/1 — 1351 bytes
+2026-05-12T13:34:05 | DEBUG    | ABMonitor | Parsed table 'Communications_Configuration_Table' — 15 rows
+2026-05-12T13:34:05 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.50_Communications_Configuration_Table
+2026-05-12T13:34:06 | DEBUG    | ABMonitor | Fetched http://10.16.130.50/2 — 1929 bytes
+2026-05-12T13:34:06 | DEBUG    | ABMonitor | Parsed table 'Voltage_Current_Table' — 24 rows
+2026-05-12T13:34:06 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.50_Voltage_Current_Table
+2026-05-12T13:34:06 | DEBUG    | ABMonitor | Fetched http://10.16.130.50/3 — 2100 bytes
+2026-05-12T13:34:06 | DEBUG    | ABMonitor | Parsed table 'Real_Time_Power_Table' — 26 rows
+2026-05-12T13:34:06 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.50_Real_Time_Power_Table
+2026-05-12T13:34:06 | DEBUG    | ABMonitor | Fetched http://10.16.130.50/4 — 925 bytes
+2026-05-12T13:34:06 | DEBUG    | ABMonitor | Parsed table 'Cumulative_Power_Table' — 8 rows
+2026-05-12T13:34:06 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.50_Cumulative_Power_Table
+2026-05-12T13:34:06 | DEBUG    | ABMonitor | Fetched http://10.16.130.50/5 — 1747 bytes
+2026-05-12T13:34:06 | DEBUG    | ABMonitor | Parsed table 'Demand_Data_Table' — 18 rows
+2026-05-12T13:34:06 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.50_Demand_Data_Table
+2026-05-12T13:34:06 | DEBUG    | ABMonitor | Fetched http://10.16.130.50/6 — 2162 bytes
+2026-05-12T13:34:06 | DEBUG    | ABMonitor | Parsed table 'Diagnostic_Table' — 31 rows
+2026-05-12T13:34:06 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.50_Diagnostic_Table
+2026-05-12T13:34:07 | DEBUG    | ABMonitor | Fetched http://10.16.130.50/7 — 2129 bytes
+2026-05-12T13:34:07 | DEBUG    | ABMonitor | Parsed table 'Voltage_Current_Snapshot_Log_Table' — 27 rows
+2026-05-12T13:34:07 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.50_Voltage_Current_Snapshot_Log_Table
+2026-05-12T13:34:07 | DEBUG    | ABMonitor | Fetched http://10.16.130.50/8 — 2316 bytes
+2026-05-12T13:34:07 | DEBUG    | ABMonitor | Parsed table 'Power_Snapshot_Log_Table' — 30 rows
+2026-05-12T13:34:07 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.50_Power_Snapshot_Log_Table
+2026-05-12T13:34:07 | DEBUG    | ABMonitor | Fetched http://10.16.130.50/9 — 1159 bytes
+2026-05-12T13:34:07 | DEBUG    | ABMonitor | Parsed table 'MinMax_Log_Table' — 12 rows
+2026-05-12T13:34:07 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.50_MinMax_Log_Table
+2026-05-12T13:34:07 | DEBUG    | ABMonitor | Fetched http://10.16.130.50/10 — 2158 bytes
+2026-05-12T13:34:07 | DEBUG    | ABMonitor | Parsed table 'Diagnostic_Table_Extended' — 31 rows
+2026-05-12T13:34:07 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.50_Diagnostic_Table_Extended
+2026-05-12T13:34:07 | INFO     | ABMonitor | Polling device 10.16.130.51 …
+2026-05-12T13:34:08 | DEBUG    | ABMonitor | Fetched http://10.16.130.51/0 — 2461 bytes
+2026-05-12T13:34:08 | DEBUG    | ABMonitor | Parsed table 'Device_Configuration_Table' — 31 rows
+2026-05-12T13:34:08 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.51_Device_Configuration_Table
+2026-05-12T13:34:08 | DEBUG    | ABMonitor | Fetched http://10.16.130.51/1 — 1351 bytes
+2026-05-12T13:34:08 | DEBUG    | ABMonitor | Parsed table 'Communications_Configuration_Table' — 15 rows
+2026-05-12T13:34:08 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.51_Communications_Configuration_Table
+2026-05-12T13:34:08 | DEBUG    | ABMonitor | Fetched http://10.16.130.51/2 — 1930 bytes
+2026-05-12T13:34:08 | DEBUG    | ABMonitor | Parsed table 'Voltage_Current_Table' — 24 rows
+2026-05-12T13:34:08 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.51_Voltage_Current_Table
+2026-05-12T13:34:08 | DEBUG    | ABMonitor | Fetched http://10.16.130.51/3 — 2095 bytes
+2026-05-12T13:34:08 | DEBUG    | ABMonitor | Parsed table 'Real_Time_Power_Table' — 26 rows
+2026-05-12T13:34:08 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.51_Real_Time_Power_Table
+2026-05-12T13:34:08 | DEBUG    | ABMonitor | Fetched http://10.16.130.51/4 — 923 bytes
+2026-05-12T13:34:08 | DEBUG    | ABMonitor | Parsed table 'Cumulative_Power_Table' — 8 rows
+2026-05-12T13:34:08 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.51_Cumulative_Power_Table
+2026-05-12T13:34:08 | DEBUG    | ABMonitor | Fetched http://10.16.130.51/5 — 1738 bytes
+2026-05-12T13:34:08 | DEBUG    | ABMonitor | Parsed table 'Demand_Data_Table' — 18 rows
+2026-05-12T13:34:08 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.51_Demand_Data_Table
+2026-05-12T13:34:09 | DEBUG    | ABMonitor | Fetched http://10.16.130.51/6 — 2157 bytes
+2026-05-12T13:34:09 | DEBUG    | ABMonitor | Parsed table 'Diagnostic_Table' — 31 rows
+2026-05-12T13:34:09 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.51_Diagnostic_Table
+2026-05-12T13:34:09 | DEBUG    | ABMonitor | Fetched http://10.16.130.51/7 — 2129 bytes
+2026-05-12T13:34:09 | DEBUG    | ABMonitor | Parsed table 'Voltage_Current_Snapshot_Log_Table' — 27 rows
+2026-05-12T13:34:09 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.51_Voltage_Current_Snapshot_Log_Table
+2026-05-12T13:34:09 | DEBUG    | ABMonitor | Fetched http://10.16.130.51/8 — 2316 bytes
+2026-05-12T13:34:09 | DEBUG    | ABMonitor | Parsed table 'Power_Snapshot_Log_Table' — 30 rows
+2026-05-12T13:34:09 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.51_Power_Snapshot_Log_Table
+2026-05-12T13:34:09 | DEBUG    | ABMonitor | Fetched http://10.16.130.51/9 — 1159 bytes
+2026-05-12T13:34:09 | DEBUG    | ABMonitor | Parsed table 'MinMax_Log_Table' — 12 rows
+2026-05-12T13:34:09 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.51_MinMax_Log_Table
+2026-05-12T13:34:10 | DEBUG    | ABMonitor | Fetched http://10.16.130.51/10 — 2157 bytes
+2026-05-12T13:34:10 | DEBUG    | ABMonitor | Parsed table 'Diagnostic_Table_Extended' — 31 rows
+2026-05-12T13:34:10 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.51_Diagnostic_Table_Extended
+2026-05-12T13:34:10 | DEBUG    | ABMonitor | Accumulator updated — 2 devices, local ts: 2026-05-12 13:34:10
+2026-05-12T13:34:10 | INFO     | ABMonitor | Named dicts updated from 2 device(s).
+2026-05-12T13:34:10 | INFO     | ABMonitor | Cycle 3 poll complete in 4.77 s — store 0.1 MB, free RAM 43664 MB
+2026-05-12T13:34:20 | INFO     | ABMonitor | --- Headless cycle 4 / 100 ---
+2026-05-12T13:34:20 | INFO     | ABMonitor | Polling device 10.16.130.50 …
+2026-05-12T13:34:20 | DEBUG    | ABMonitor | Fetched http://10.16.130.50/0 — 2461 bytes
+2026-05-12T13:34:20 | DEBUG    | ABMonitor | Parsed table 'Device_Configuration_Table' — 31 rows
+2026-05-12T13:34:20 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.50_Device_Configuration_Table
+2026-05-12T13:34:21 | DEBUG    | ABMonitor | Fetched http://10.16.130.50/1 — 1351 bytes
+2026-05-12T13:34:21 | DEBUG    | ABMonitor | Parsed table 'Communications_Configuration_Table' — 15 rows
+2026-05-12T13:34:21 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.50_Communications_Configuration_Table
+2026-05-12T13:34:21 | DEBUG    | ABMonitor | Fetched http://10.16.130.50/2 — 1929 bytes
+2026-05-12T13:34:21 | DEBUG    | ABMonitor | Parsed table 'Voltage_Current_Table' — 24 rows
+2026-05-12T13:34:21 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.50_Voltage_Current_Table
+2026-05-12T13:34:21 | DEBUG    | ABMonitor | Fetched http://10.16.130.50/3 — 2100 bytes
+2026-05-12T13:34:21 | DEBUG    | ABMonitor | Parsed table 'Real_Time_Power_Table' — 26 rows
+2026-05-12T13:34:21 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.50_Real_Time_Power_Table
+2026-05-12T13:34:21 | DEBUG    | ABMonitor | Fetched http://10.16.130.50/4 — 925 bytes
+2026-05-12T13:34:21 | DEBUG    | ABMonitor | Parsed table 'Cumulative_Power_Table' — 8 rows
+2026-05-12T13:34:21 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.50_Cumulative_Power_Table
+2026-05-12T13:34:21 | DEBUG    | ABMonitor | Fetched http://10.16.130.50/5 — 1747 bytes
+2026-05-12T13:34:21 | DEBUG    | ABMonitor | Parsed table 'Demand_Data_Table' — 18 rows
+2026-05-12T13:34:21 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.50_Demand_Data_Table
+2026-05-12T13:34:22 | DEBUG    | ABMonitor | Fetched http://10.16.130.50/6 — 2158 bytes
+2026-05-12T13:34:22 | DEBUG    | ABMonitor | Parsed table 'Diagnostic_Table' — 31 rows
+2026-05-12T13:34:22 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.50_Diagnostic_Table
+2026-05-12T13:34:22 | DEBUG    | ABMonitor | Fetched http://10.16.130.50/7 — 2129 bytes
+2026-05-12T13:34:22 | DEBUG    | ABMonitor | Parsed table 'Voltage_Current_Snapshot_Log_Table' — 27 rows
+2026-05-12T13:34:22 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.50_Voltage_Current_Snapshot_Log_Table
+2026-05-12T13:34:22 | DEBUG    | ABMonitor | Fetched http://10.16.130.50/8 — 2316 bytes
+2026-05-12T13:34:22 | DEBUG    | ABMonitor | Parsed table 'Power_Snapshot_Log_Table' — 30 rows
+2026-05-12T13:34:22 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.50_Power_Snapshot_Log_Table
+2026-05-12T13:34:22 | DEBUG    | ABMonitor | Fetched http://10.16.130.50/9 — 1159 bytes
+2026-05-12T13:34:22 | DEBUG    | ABMonitor | Parsed table 'MinMax_Log_Table' — 12 rows
+2026-05-12T13:34:22 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.50_MinMax_Log_Table
+2026-05-12T13:34:23 | DEBUG    | ABMonitor | Fetched http://10.16.130.50/10 — 2158 bytes
+2026-05-12T13:34:23 | DEBUG    | ABMonitor | Parsed table 'Diagnostic_Table_Extended' — 31 rows
+2026-05-12T13:34:23 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.50_Diagnostic_Table_Extended
+2026-05-12T13:34:23 | INFO     | ABMonitor | Polling device 10.16.130.51 …
+2026-05-12T13:34:23 | DEBUG    | ABMonitor | Fetched http://10.16.130.51/0 — 2461 bytes
+2026-05-12T13:34:23 | DEBUG    | ABMonitor | Parsed table 'Device_Configuration_Table' — 31 rows
+2026-05-12T13:34:23 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.51_Device_Configuration_Table
+2026-05-12T13:34:23 | DEBUG    | ABMonitor | Fetched http://10.16.130.51/1 — 1351 bytes
+2026-05-12T13:34:23 | DEBUG    | ABMonitor | Parsed table 'Communications_Configuration_Table' — 15 rows
+2026-05-12T13:34:23 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.51_Communications_Configuration_Table
+2026-05-12T13:34:23 | DEBUG    | ABMonitor | Fetched http://10.16.130.51/2 — 1930 bytes
+2026-05-12T13:34:23 | DEBUG    | ABMonitor | Parsed table 'Voltage_Current_Table' — 24 rows
+2026-05-12T13:34:23 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.51_Voltage_Current_Table
+2026-05-12T13:34:23 | DEBUG    | ABMonitor | Fetched http://10.16.130.51/3 — 2095 bytes
+2026-05-12T13:34:23 | DEBUG    | ABMonitor | Parsed table 'Real_Time_Power_Table' — 26 rows
+2026-05-12T13:34:23 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.51_Real_Time_Power_Table
+2026-05-12T13:34:23 | DEBUG    | ABMonitor | Fetched http://10.16.130.51/4 — 923 bytes
+2026-05-12T13:34:23 | DEBUG    | ABMonitor | Parsed table 'Cumulative_Power_Table' — 8 rows
+2026-05-12T13:34:23 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.51_Cumulative_Power_Table
+2026-05-12T13:34:24 | DEBUG    | ABMonitor | Fetched http://10.16.130.51/5 — 1738 bytes
+2026-05-12T13:34:24 | DEBUG    | ABMonitor | Parsed table 'Demand_Data_Table' — 18 rows
+2026-05-12T13:34:24 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.51_Demand_Data_Table
+2026-05-12T13:34:24 | DEBUG    | ABMonitor | Fetched http://10.16.130.51/6 — 2157 bytes
+2026-05-12T13:34:24 | DEBUG    | ABMonitor | Parsed table 'Diagnostic_Table' — 31 rows
+2026-05-12T13:34:24 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.51_Diagnostic_Table
+2026-05-12T13:34:24 | DEBUG    | ABMonitor | Fetched http://10.16.130.51/7 — 2129 bytes
+2026-05-12T13:34:24 | DEBUG    | ABMonitor | Parsed table 'Voltage_Current_Snapshot_Log_Table' — 27 rows
+2026-05-12T13:34:24 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.51_Voltage_Current_Snapshot_Log_Table
+2026-05-12T13:34:24 | DEBUG    | ABMonitor | Fetched http://10.16.130.51/8 — 2316 bytes
+2026-05-12T13:34:24 | DEBUG    | ABMonitor | Parsed table 'Power_Snapshot_Log_Table' — 30 rows
+2026-05-12T13:34:24 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.51_Power_Snapshot_Log_Table
+2026-05-12T13:34:24 | DEBUG    | ABMonitor | Fetched http://10.16.130.51/9 — 1159 bytes
+2026-05-12T13:34:24 | DEBUG    | ABMonitor | Parsed table 'MinMax_Log_Table' — 12 rows
+2026-05-12T13:34:24 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.51_MinMax_Log_Table
+2026-05-12T13:34:25 | DEBUG    | ABMonitor | Fetched http://10.16.130.51/10 — 2157 bytes
+2026-05-12T13:34:25 | DEBUG    | ABMonitor | Parsed table 'Diagnostic_Table_Extended' — 31 rows
+2026-05-12T13:34:25 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.51_Diagnostic_Table_Extended
+2026-05-12T13:34:25 | DEBUG    | ABMonitor | Accumulator updated — 2 devices, local ts: 2026-05-12 13:34:25
+2026-05-12T13:34:25 | INFO     | ABMonitor | Named dicts updated from 2 device(s).
+2026-05-12T13:34:25 | INFO     | ABMonitor | Cycle 4 poll complete in 4.58 s — store 0.2 MB, free RAM 43397 MB
+2026-05-12T13:34:35 | INFO     | ABMonitor | --- Headless cycle 5 / 100 ---
+2026-05-12T13:34:35 | INFO     | ABMonitor | Polling device 10.16.130.50 …
+2026-05-12T13:34:36 | DEBUG    | ABMonitor | Fetched http://10.16.130.50/0 — 2461 bytes
+2026-05-12T13:34:36 | DEBUG    | ABMonitor | Parsed table 'Device_Configuration_Table' — 31 rows
+2026-05-12T13:34:36 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.50_Device_Configuration_Table
+2026-05-12T13:34:36 | DEBUG    | ABMonitor | Fetched http://10.16.130.50/1 — 1351 bytes
+2026-05-12T13:34:36 | DEBUG    | ABMonitor | Parsed table 'Communications_Configuration_Table' — 15 rows
+2026-05-12T13:34:36 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.50_Communications_Configuration_Table
+2026-05-12T13:34:36 | DEBUG    | ABMonitor | Fetched http://10.16.130.50/2 — 1930 bytes
+2026-05-12T13:34:36 | DEBUG    | ABMonitor | Parsed table 'Voltage_Current_Table' — 24 rows
+2026-05-12T13:34:36 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.50_Voltage_Current_Table
+2026-05-12T13:34:36 | DEBUG    | ABMonitor | Fetched http://10.16.130.50/3 — 2098 bytes
+2026-05-12T13:34:36 | DEBUG    | ABMonitor | Parsed table 'Real_Time_Power_Table' — 26 rows
+2026-05-12T13:34:36 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.50_Real_Time_Power_Table
+2026-05-12T13:34:36 | DEBUG    | ABMonitor | Fetched http://10.16.130.50/4 — 925 bytes
+2026-05-12T13:34:36 | DEBUG    | ABMonitor | Parsed table 'Cumulative_Power_Table' — 8 rows
+2026-05-12T13:34:36 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.50_Cumulative_Power_Table
+2026-05-12T13:34:37 | DEBUG    | ABMonitor | Fetched http://10.16.130.50/5 — 1747 bytes
+2026-05-12T13:34:37 | DEBUG    | ABMonitor | Parsed table 'Demand_Data_Table' — 18 rows
+2026-05-12T13:34:37 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.50_Demand_Data_Table
+2026-05-12T13:34:37 | DEBUG    | ABMonitor | Fetched http://10.16.130.50/6 — 2158 bytes
+2026-05-12T13:34:37 | DEBUG    | ABMonitor | Parsed table 'Diagnostic_Table' — 31 rows
+2026-05-12T13:34:37 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.50_Diagnostic_Table
+2026-05-12T13:34:37 | DEBUG    | ABMonitor | Fetched http://10.16.130.50/7 — 2129 bytes
+2026-05-12T13:34:37 | DEBUG    | ABMonitor | Parsed table 'Voltage_Current_Snapshot_Log_Table' — 27 rows
+2026-05-12T13:34:37 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.50_Voltage_Current_Snapshot_Log_Table
+2026-05-12T13:34:37 | DEBUG    | ABMonitor | Fetched http://10.16.130.50/8 — 2316 bytes
+2026-05-12T13:34:37 | DEBUG    | ABMonitor | Parsed table 'Power_Snapshot_Log_Table' — 30 rows
+2026-05-12T13:34:37 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.50_Power_Snapshot_Log_Table
+2026-05-12T13:34:37 | DEBUG    | ABMonitor | Fetched http://10.16.130.50/9 — 1159 bytes
+2026-05-12T13:34:37 | DEBUG    | ABMonitor | Parsed table 'MinMax_Log_Table' — 12 rows
+2026-05-12T13:34:37 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.50_MinMax_Log_Table
+2026-05-12T13:34:38 | DEBUG    | ABMonitor | Fetched http://10.16.130.50/10 — 2158 bytes
+2026-05-12T13:34:38 | DEBUG    | ABMonitor | Parsed table 'Diagnostic_Table_Extended' — 31 rows
+2026-05-12T13:34:38 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.50_Diagnostic_Table_Extended
+2026-05-12T13:34:38 | INFO     | ABMonitor | Polling device 10.16.130.51 …
+2026-05-12T13:34:38 | DEBUG    | ABMonitor | Fetched http://10.16.130.51/0 — 2461 bytes
+2026-05-12T13:34:38 | DEBUG    | ABMonitor | Parsed table 'Device_Configuration_Table' — 31 rows
+2026-05-12T13:34:38 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.51_Device_Configuration_Table
+2026-05-12T13:34:38 | DEBUG    | ABMonitor | Fetched http://10.16.130.51/1 — 1351 bytes
+2026-05-12T13:34:38 | DEBUG    | ABMonitor | Parsed table 'Communications_Configuration_Table' — 15 rows
+2026-05-12T13:34:38 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.51_Communications_Configuration_Table
+2026-05-12T13:34:38 | DEBUG    | ABMonitor | Fetched http://10.16.130.51/2 — 1930 bytes
+2026-05-12T13:34:38 | DEBUG    | ABMonitor | Parsed table 'Voltage_Current_Table' — 24 rows
+2026-05-12T13:34:38 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.51_Voltage_Current_Table
+2026-05-12T13:34:39 | DEBUG    | ABMonitor | Fetched http://10.16.130.51/3 — 2095 bytes
+2026-05-12T13:34:39 | DEBUG    | ABMonitor | Parsed table 'Real_Time_Power_Table' — 26 rows
+2026-05-12T13:34:39 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.51_Real_Time_Power_Table
+2026-05-12T13:34:39 | DEBUG    | ABMonitor | Fetched http://10.16.130.51/4 — 923 bytes
+2026-05-12T13:34:39 | DEBUG    | ABMonitor | Parsed table 'Cumulative_Power_Table' — 8 rows
+2026-05-12T13:34:39 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.51_Cumulative_Power_Table
+2026-05-12T13:34:39 | DEBUG    | ABMonitor | Fetched http://10.16.130.51/5 — 1738 bytes
+2026-05-12T13:34:39 | DEBUG    | ABMonitor | Parsed table 'Demand_Data_Table' — 18 rows
+2026-05-12T13:34:39 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.51_Demand_Data_Table
+2026-05-12T13:34:39 | DEBUG    | ABMonitor | Fetched http://10.16.130.51/6 — 2157 bytes
+2026-05-12T13:34:39 | DEBUG    | ABMonitor | Parsed table 'Diagnostic_Table' — 31 rows
+2026-05-12T13:34:39 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.51_Diagnostic_Table
+2026-05-12T13:34:40 | DEBUG    | ABMonitor | Fetched http://10.16.130.51/7 — 2129 bytes
+2026-05-12T13:34:40 | DEBUG    | ABMonitor | Parsed table 'Voltage_Current_Snapshot_Log_Table' — 27 rows
+2026-05-12T13:34:40 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.51_Voltage_Current_Snapshot_Log_Table
+2026-05-12T13:34:40 | DEBUG    | ABMonitor | Fetched http://10.16.130.51/8 — 2316 bytes
+2026-05-12T13:34:40 | DEBUG    | ABMonitor | Parsed table 'Power_Snapshot_Log_Table' — 30 rows
+2026-05-12T13:34:40 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.51_Power_Snapshot_Log_Table
+2026-05-12T13:34:40 | DEBUG    | ABMonitor | Fetched http://10.16.130.51/9 — 1159 bytes
+2026-05-12T13:34:40 | DEBUG    | ABMonitor | Parsed table 'MinMax_Log_Table' — 12 rows
+2026-05-12T13:34:40 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.51_MinMax_Log_Table
+2026-05-12T13:34:40 | DEBUG    | ABMonitor | Fetched http://10.16.130.51/10 — 2157 bytes
+2026-05-12T13:34:40 | DEBUG    | ABMonitor | Parsed table 'Diagnostic_Table_Extended' — 31 rows
+2026-05-12T13:34:40 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.51_Diagnostic_Table_Extended
+2026-05-12T13:34:40 | DEBUG    | ABMonitor | Accumulator updated — 2 devices, local ts: 2026-05-12 13:34:40
+2026-05-12T13:34:40 | INFO     | ABMonitor | Named dicts updated from 2 device(s).
+2026-05-12T13:34:40 | INFO     | ABMonitor | Cycle 5 poll complete in 4.80 s — store 0.2 MB, free RAM 43482 MB
