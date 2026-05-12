@@ -102,7 +102,7 @@ ENABLE_VEUSZ = 1   # Write Veusz HDF5 project file(s) (.vszh5)
 # Number of poll cycles to run in headless mode.
 # 0 = run indefinitely until stopped (Ctrl-C or stop signal file).
 # N = run exactly N cycles then exit cleanly.
-HEADLESS_LOOP_COUNT = 0   # 0 = infinite loop; N = run N cycles then stop
+HEADLESS_LOOP_COUNT = 60   # 0 = infinite loop; N = run N cycles then stop
 
 # ---------------------------------------------------------------------------
 # Memory / flush thresholds (adaptive write scheduling)
@@ -119,7 +119,7 @@ MEM_FREE_MIN_MB = 512   # flush when system free RAM falls below N MB
 # ---------------------------------------------------------------------------
 IP_BASE = "10.16.130"  # First three octets (do NOT include trailing dot)
 IP_LAST_OCTET_START = 50           # Start of last-octet range (inclusive)
-IP_LAST_OCTET_END = 53           # End   of last-octet range (inclusive)
+IP_LAST_OCTET_END = 51           # End   of last-octet range (inclusive)
 
 # ---------------------------------------------------------------------------
 # Polling / timing
