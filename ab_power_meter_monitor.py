@@ -2033,6 +2033,8 @@ def launch_gui(
             self._thread: Optional[PollThread] = None
             self._dark_mode = False
             self._log_handler: Optional[logging.Handler] = None  # attached after widget is built
+            # Tracks in-flight background file flush so we never start two at once
+            self._flush_future: Optional["concurrent.futures.Future"] = None
 
             self._build_menu()
             self._build_central()      # builds self._log_console
@@ -2414,36 +2416,37 @@ def launch_gui(
 
         def _process_outputs(self, data: Dict, cfg: Dict) -> None:
             """
-            Dispatch data to enabled output modules based on GUI state.
+            Dispatch file-output writers to a background thread-pool so the
+            GUI poll cycle returns immediately and sampling is never blocked
+            by I/O.
 
-            Veusz output is intentionally NOT triggered here automatically;
-            it is an explicit user action via the 'Open in Veusz' button
-            so that the window only opens when requested.
+            Uses flush_outputs_parallel() — the same function used by the
+            headless loop.  A guard on self._flush_future prevents launching
+            a new flush while the previous one is still running, which would
+            risk concurrent writes to the same files.
+
+            Veusz is intentionally excluded — it is written once on Stop
+            (_do_stop) so it always contains the full accumulated dataset.
 
             Parameters
             ----------
             data : Dict
-                All-device data dict from poll_all_devices().
+                Unused directly; kept for signature compatibility.  All
+                writers pull from TIME_SERIES_STORE / ALL_DEVICE_DATA.
             cfg : Dict
                 Runtime config dict from _get_runtime_config().
             """
-            # Resolve runtime output directories from cfg (set by the GUI
-            # fields).  Fall back to the module-level constants only if the
-            # cfg key is absent, which should never happen in normal use.
-            fits_dir  = cfg.get("fits_dir",  FITS_DIR)
-            csv_dir   = cfg.get("csv_dir",   CSV_DIR)
-            xlsx_dir  = cfg.get("xlsx_dir",  XLSX_DIR)
-            veusz_dir = cfg.get("veusz_dir", VEUSZ_DIR)
-            log_dir   = cfg.get("log_dir",   LOG_DIR)
+            # If a previous flush is still running, skip this cycle's flush
+            # rather than risk overlapping writes.  The TIME_SERIES_STORE will
+            # include this cycle's data in the *next* flush that does fire.
+            if self._flush_future is not None and not self._flush_future.done():
+                logger.warning(
+                    "Previous output flush still running — skipping flush for this cycle. "
+                    "Consider increasing sample period if this recurs."
+                )
+                return
 
-            if cfg.get("enable_fits"):
-                write_fits(ALL_DEVICE_DATA, fits_dir)
-            if cfg.get("enable_csv"):
-                write_csv(ALL_DEVICE_DATA, csv_dir, append=bool(cfg.get("enable_log_append")))
-            if cfg.get("enable_xlsx"):
-                write_xlsx(ALL_DEVICE_DATA, xlsx_dir)
-            if cfg.get("enable_log_append"):
-                write_log_text(ALL_DEVICE_DATA, log_dir)
+            self._flush_future = flush_outputs_parallel(cfg)
             # Veusz is NOT written mid-loop — it is written once when polling
             # stops (_do_stop) so it contains all accumulated samples.
             # Use 'Open in Veusz' button to preview with latest data at any time.
@@ -2493,8 +2496,16 @@ def launch_gui(
             )
 
         def closeEvent(self, event) -> None:
-            """Ensure background thread stops cleanly on window close."""
-            self._do_stop()
+            """Ensure background thread and any in-flight flush stop cleanly."""
+            self._do_stop()   # stops PollThread and writes final Veusz
+            # Wait up to 30 s for any background file flush to complete so we
+            # do not close the process while CSV / XLSX / log is still writing.
+            if self._flush_future is not None and not self._flush_future.done():
+                logger.info("Waiting for background flush to finish before closing…")
+                try:
+                    self._flush_future.result(timeout=30)
+                except Exception as exc:
+                    logger.error("Flush error on close: %s", exc)
             # Detach the QTextEditHandler before the widget is destroyed
             # to prevent the logging framework writing to a dangling pointer.
             if self._log_handler is not None:
