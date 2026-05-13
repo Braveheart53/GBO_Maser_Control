@@ -84,7 +84,7 @@ abm.ENABLE_GUI = 0
 
 # HEADLESS_LOOP_COUNT = 1: each main() call polls all devices exactly once
 # then returns.  The outer loop in THIS script drives the repetition.
-abm.HEADLESS_LOOP_COUNT = 1
+abm.HEADLESS_LOOP_COUNT = 5
 
 # HEADLESS_SILENT = 1: ab_power_meter_monitor produces zero console output.
 # All file-based logging (log, CSV, XLSX, FITS, Veusz) still runs on disk.
