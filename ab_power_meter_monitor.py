@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-ab_power_meter_monitor.py
+# %% ab_power_meter_monitor.py Info
 =========================
 Allen-Bradley (Rockwell) Site Power Meter — Web Table Poller & Data Logger
 NRAO / GBO Site Infrastructure Monitoring Tool
@@ -20,14 +20,18 @@ combination of:
 IP address base: 10.16.130.{last_octet}
 Device range   : last octet 50 – 53  (configurable below)
 
-Author : W. Wallace — NRAO / Green Bank Observatory
-Date   : 2026-05-11
+# %%% AUthor Info
+@Author: W. Wallace — NRAO / Green Bank Observatory
+Date   : 2026-05-13
+Phone  : +1 (304) 456-2216
+Email  : wwallace@nrao.edu
+Email2 : naval.antennas@gmail.com 
 Python : 3.8+
 Version: 1.0.2
 Deps   : PySide6, matplotlib, requests, beautifulsoup4, lxml,
          astropy, openpyxl, veusz  (pip install each)
 
-Usage
+# %%% Usage
 -----
 Headless / scripted:
     python ab_power_meter_monitor.py
@@ -37,7 +41,7 @@ GUI mode (set ENABLE_GUI = 1 below or check the checkbox at launch):
 
 All output-enable switches can be overridden at runtime via the GUI.
 
-Notes on the HTML endpoint
+# %%% Notes on the HTML endpoint
 ---------------------------
 Each meter exposes 11 table pages at:
     http://<IP>/<page_index>
@@ -59,7 +63,7 @@ Table map (page index → human name):
 """
 
 # ===========================================================================
-#  STANDARD-LIBRARY IMPORTS
+# %% STANDARD-LIBRARY IMPORTS
 # ===========================================================================
 import os
 import sys
@@ -81,6 +85,7 @@ except ImportError:
     # flush threshold will not trigger, sentinel 9999 MB is returned
 
 # ===========================================================================
+# %% Switches
 #  ██████╗  ██████╗ ██╗    ██╗███████╗██████╗     ███████╗██╗    ██╗██╗████████╗ ██████╗██╗  ██╗███████╗███████╗
 #  ██╔══██╗██╔═══██╗██║    ██║██╔════╝██╔══██╗    ██╔════╝██║    ██║██║╚══██╔══╝██╔════╝██║  ██║██╔════╝██╔════╝
 #  ██████╔╝██║   ██║██║ █╗ ██║█████╗  ██████╔╝    ███████╗██║ █╗ ██║██║   ██║   ██║     ███████║█████╗  ███████╗
@@ -93,10 +98,10 @@ except ImportError:
 # ===========================================================================
 
 # ---------------------------------------------------------------------------
-# Feature / output enable switches  (0 = off, 1 = on)
+# %% Feature / output enable switches  (0 = off, 1 = on)
 # ---------------------------------------------------------------------------
 ENABLE_GUI = 0   # Show PyQt/PySide6 main window
-ENABLE_FITS = 0   # Write NRAO-compliant FITS files
+ENABLE_FITS = 1   # Write NRAO-compliant FITS files
 ENABLE_CSV = 0   # Write per-table CSV files
 ENABLE_XLSX = 1   # Write Excel workbook with charts
 # Append timestamped entries to Markdown log files (.md)
@@ -104,7 +109,7 @@ ENABLE_LOG_APPEND = 1
 ENABLE_VEUSZ = 1   # Write Veusz HDF5 project file(s) (.vszh5)
 
 # ---------------------------------------------------------------------------
-# Headless loop control
+# %% Headless loop control
 # ---------------------------------------------------------------------------
 # Number of poll cycles to run in headless mode.
 # 0 = run indefinitely until stopped (Ctrl-C or stop signal file).
@@ -112,7 +117,7 @@ ENABLE_VEUSZ = 1   # Write Veusz HDF5 project file(s) (.vszh5)
 HEADLESS_LOOP_COUNT = 1   # 0 = infinite loop; N = run N cycles then stop
 
 # ---------------------------------------------------------------------------
-# Headless console / dict output switches
+# %% Headless console / dict output switches
 # ---------------------------------------------------------------------------
 # These three switches control what is printed to stdout in headless mode.
 # All are independent; any combination is valid.
@@ -141,7 +146,7 @@ HEADLESS_SILENT = 1   # 1 = suppress ALL stdout/stderr console output;
 #     switches above when set to 1.
 
 # ---------------------------------------------------------------------------
-# Memory / flush thresholds (adaptive write scheduling)
+# %% Memory / flush thresholds (adaptive write scheduling)
 # ---------------------------------------------------------------------------
 # When the in-memory time-series store grows beyond MEM_FLUSH_THRESHOLD_MB
 # OR free system RAM drops below MEM_FREE_MIN_MB, an intermediate flush of
@@ -151,20 +156,20 @@ MEM_FLUSH_THRESHOLD_MB = 256   # flush when store occupies more than N MB
 MEM_FREE_MIN_MB = 512   # flush when system free RAM falls below N MB
 
 # ---------------------------------------------------------------------------
-# IP address configuration
+# %% IP address configuration
 # ---------------------------------------------------------------------------
 IP_BASE = "10.16.130"  # First three octets (do NOT include trailing dot)
 IP_LAST_OCTET_START = 50           # Start of last-octet range (inclusive)
 IP_LAST_OCTET_END = 51           # End   of last-octet range (inclusive)
 
 # ---------------------------------------------------------------------------
-# Polling / timing
+# %% Polling / timing
 # ---------------------------------------------------------------------------
 SAMPLE_PERIOD_SEC = 30    # Seconds between successive polls of all devices
 HTTP_TIMEOUT_SEC = 5     # Per-request HTTP timeout
 
 # ---------------------------------------------------------------------------
-# Output paths
+# %% Output paths
 # ---------------------------------------------------------------------------
 # PRIMARY OUTPUT ROOT — change OUTPUT_BASE_DIR to redirect ALL output
 # (logs, FITS, CSV, XLSX, Veusz) to a different location without touching
@@ -197,7 +202,7 @@ VEUSZ_DIR = os.path.join(OUTPUT_BASE_DIR, "veusz")  # Veusz HDF5 projects
 STOP_SIGNAL_FILE = os.path.join(OUTPUT_BASE_DIR, "STOP_COLLECTION")
 
 # ---------------------------------------------------------------------------
-# Table page-index → canonical name mapping
+# %% Table page-index → canonical name mapping
 # ---------------------------------------------------------------------------
 TABLE_NAMES: Dict[int, str] = {
     0:  "Device_Configuration_Table",
@@ -214,7 +219,7 @@ TABLE_NAMES: Dict[int, str] = {
 }
 
 # ---------------------------------------------------------------------------
-# Unit inference map: substring → unit label
+# %% Unit inference map: substring → unit label
 # Applied when building Veusz axis labels and FITS column units.
 # Keys are LOWER-CASE substrings found in parameter names.
 # ---------------------------------------------------------------------------
@@ -242,7 +247,7 @@ UNIT_MAP: List[Tuple[str, str]] = [
 
 
 # ===========================================================================
-#  LOGGING SETUP
+# %% LOGGING SETUP
 # ===========================================================================
 def _setup_logging(log_dir: str, append: bool = True) -> logging.Logger:
     """
@@ -272,12 +277,12 @@ def _setup_logging(log_dir: str, append: bool = True) -> logging.Logger:
     logger = logging.getLogger("ABMonitor")
     logger.setLevel(logging.DEBUG)
 
-    # File handler
+    # %%% File handler
     fh = logging.FileHandler(log_path, mode=file_mode, encoding="utf-8")
     fh.setLevel(logging.DEBUG)
     fh.setFormatter(fmt)
 
-    # Console handler
+    # %%% Console handler
     ch = logging.StreamHandler(sys.stdout)
     ch.setLevel(logging.INFO)
     ch.setFormatter(fmt)
@@ -296,7 +301,7 @@ logger: logging.Logger = _setup_logging(
 
 
 # ===========================================================================
-#  FITS ASCII SANITISER
+# %% FITS ASCII SANITISER
 # ===========================================================================
 def _fits_ascii(value: str) -> str:
     """
@@ -339,7 +344,7 @@ def _fits_ascii(value: str) -> str:
 
 
 # ===========================================================================
-#  UNIT INFERENCE HELPER
+# %% UNIT INFERENCE HELPER
 # ===========================================================================
 def infer_unit(param_name: str) -> str:
     """
@@ -363,7 +368,7 @@ def infer_unit(param_name: str) -> str:
 
 
 # ===========================================================================
-#  HTML FETCH & PARSE
+# %% HTML FETCH & PARSE
 # ===========================================================================
 def fetch_table_html(ip: str, page: int, timeout: int = HTTP_TIMEOUT_SEC) -> Optional[str]:
     """
@@ -523,7 +528,7 @@ def poll_all_devices(
 
 
 # ===========================================================================
-#  NAMED TABLE DICTS  (always populated; used by all output modules)
+# %% NAMED TABLE DICTS  (always populated; used by all output modules)
 #
 #  These 11 module-level dicts correspond to the 11 meter pages.
 #  They are populated by update_named_dicts() after each poll.
@@ -547,7 +552,7 @@ Diagnostic_Table_Extended:             Dict[str, Any] = {}
 ALL_DEVICE_DATA: Dict[str, Dict[str, Dict[str, Any]]] = {}
 
 # ===========================================================================
-#  TIME-SERIES ACCUMULATOR
+# %% TIME-SERIES ACCUMULATOR
 #  Columnar store: TIME_SERIES_STORE[ip][table_name] = {
 #      "timestamps_local": [str, ...],   # local-time strings, one per poll
 #      "columns":          {param: [val, ...]},  # growing list per parameter
@@ -615,6 +620,8 @@ def accumulate_poll(all_device_data: Dict[str, Dict[str, Dict[str, Any]]]) -> No
 
     logger.debug("Accumulator updated — %d devices, local ts: %s",
                  len(all_device_data), local_ts)
+
+# %% Memory Tracking
 
 
 def ts_store_size_mb() -> float:
@@ -701,6 +708,8 @@ def should_flush(cfg: Dict[str, Any]) -> bool:
         return True
     return False
 
+# %% Dict raw data update
+
 
 def update_named_dicts(all_data: Dict[str, Dict[str, Any]]) -> None:
     """
@@ -759,7 +768,7 @@ def update_named_dicts(all_data: Dict[str, Dict[str, Any]]) -> None:
 
 
 # ===========================================================================
-#  HELPER: EXTRACT NUMERIC SERIES FROM A TABLE DICT
+# %% HELPER: EXTRACT NUMERIC SERIES FROM A TABLE DICT
 # ===========================================================================
 def extract_numeric_series(table_dict: Dict[str, Any]) -> Dict[str, Tuple[float, str]]:
     """
@@ -789,10 +798,12 @@ def extract_numeric_series(table_dict: Dict[str, Any]) -> Dict[str, Tuple[float,
                 series[val] = (float(v), u)
     return series
 
+# %% Output Modules
+# ===========================================================================
+# %%% OUTPUT MODULE 1 — FITS
+# ===========================================================================
 
-# ===========================================================================
-#  OUTPUT MODULE 1 — FITS
-# ===========================================================================
+
 def write_fits(
     all_device_data: Dict[str, Dict[str, Dict[str, Any]]],
     fits_dir: str,
@@ -964,7 +975,7 @@ def write_fits(
 
 
 # ===========================================================================
-#  OUTPUT MODULE 2 — CSV
+# %%% OUTPUT MODULE 2 — CSV
 # ===========================================================================
 def write_csv(
     all_device_data: Dict[str, Dict[str, Dict[str, Any]]],
@@ -1094,7 +1105,7 @@ def write_csv(
 
 
 # ===========================================================================
-#  OUTPUT MODULE 3 — EXCEL (XLSX)
+# %%% OUTPUT MODULE 3 — EXCEL (XLSX)
 # ===========================================================================
 def write_xlsx(
     all_device_data: Dict[str, Dict[str, Dict[str, Any]]],
@@ -1260,7 +1271,7 @@ def write_xlsx(
 
 
 # ===========================================================================
-#  OUTPUT MODULE 4 — TEXT LOG APPEND
+# %%% OUTPUT MODULE 4 — TEXT LOG APPEND
 # ===========================================================================
 def write_log_text(
     all_device_data: Dict[str, Dict[str, Dict[str, Any]]],
@@ -1398,7 +1409,7 @@ def write_log_text(
 
 
 # ===========================================================================
-#  OUTPUT MODULE 5 — VEUSZ  (HDF5 format, Veusz ≥ 3.6 / 4.1)
+# %%% OUTPUT MODULE 5 — VEUSZ  (HDF5 format, Veusz ≥ 3.6 / 4.1)
 # ===========================================================================
 #
 #  Uses the veusz.embed.Embedded API to build the document in-process and
@@ -1937,7 +1948,7 @@ def flush_outputs_parallel(cfg: Dict[str, Any]) -> "concurrent.futures.Future":
 
 
 # ===========================================================================
-#  MATPLOTLIB PREVIEW HELPER (used by GUI)
+# %% MATPLOTLIB PREVIEW HELPER (used by GUI)
 # ===========================================================================
 def build_preview_figures(
     all_device_data: Dict[str, Dict[str, Dict[str, Any]]],
@@ -2036,7 +2047,7 @@ def build_preview_figures(
 
 
 # ===========================================================================
-#  GUI — PyQt (PySide6 via QtPy abstraction)
+# %% GUI — PyQt (PySide6 via QtPy abstraction)
 # ===========================================================================
 # QtPy transparently wraps PySide6 (or PyQt6 as fallback).
 # Set QT_API env var to force one: export QT_API=pyside6
@@ -2201,7 +2212,7 @@ def launch_gui(
         return
 
     # -----------------------------------------------------------------------
-    # Background polling thread
+    # %%% Background polling thread
     # -----------------------------------------------------------------------
     class PollThread(QThread):
         """Worker thread that polls devices on a configurable interval."""
@@ -2247,7 +2258,7 @@ def launch_gui(
             self._running = False
 
     # -----------------------------------------------------------------------
-    # Main Window
+    # %%% Main Window
     # -----------------------------------------------------------------------
     class MainWindow(QMainWindow):
         """
@@ -2353,7 +2364,7 @@ def launch_gui(
                 self._apply_dark()
 
         # ----------------------------------------------------------------
-        # Menu bar
+        # %%% Menu bar
         # ----------------------------------------------------------------
         def _build_menu(self) -> None:
             menubar = self.menuBar()
@@ -2778,7 +2789,7 @@ def launch_gui(
             )
 
         # ----------------------------------------------------------------
-        # Theme switching
+        # %%% Theme switching
         # ----------------------------------------------------------------
         def _toggle_theme(self) -> None:
             if self._dark_mode:
@@ -2797,7 +2808,7 @@ def launch_gui(
             self._dark_mode = False
 
         # ----------------------------------------------------------------
-        # About dialog
+        # %%% About dialog
         # ----------------------------------------------------------------
         def _show_about(self) -> None:
             from qtpy.QtWidgets import QMessageBox
@@ -2834,7 +2845,7 @@ def launch_gui(
             event.accept()
 
     # -----------------------------------------------------------------------
-    # Application entry point
+    # %%% Application entry point
     # -----------------------------------------------------------------------
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication(sys.argv)
 
@@ -2845,7 +2856,7 @@ def launch_gui(
 
 
 # ===========================================================================
-#  HEADLESS MODE — run without GUI
+# %% HEADLESS MODE — run without GUI
 # ===========================================================================
 # ===========================================================================
 #  HEADLESS CONSOLE OUTPUT HELPERS

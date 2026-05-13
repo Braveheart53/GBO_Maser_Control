@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-ab_meter_caller.py
+# %% ab_meter_caller.py Info
 ==================
 Example calling script for ab_power_meter_monitor.py.
 
@@ -12,7 +12,7 @@ TIME_SERIES_STORE — the same store that every output file (Veusz, CSV,
 XLSX, FITS) reads from.  This guarantees sample counts are always
 consistent across ALL_DATA and every generated file.
 
-Return structure  (abm.TIME_SERIES_STORE)
+# %%% Return structure  (abm.TIME_SERIES_STORE)
 -----------------------------------------
 ::
 
@@ -34,7 +34,7 @@ Return structure  (abm.TIME_SERIES_STORE)
         "10.16.130.53": { ... },
     }
 
-Switch configuration required in ab_power_meter_monitor.py
+# %%% Switch configuration required in ab_power_meter_monitor.py
 -----------------------------------------------------------
 The following switches MUST be set as shown for this pattern to work
 correctly.  Either edit the header of ab_power_meter_monitor.py directly,
@@ -47,19 +47,23 @@ or override them programmatically before calling main() as shown below.
 All other switches (ENABLE_FITS, ENABLE_CSV, ENABLE_XLSX, ENABLE_LOG_APPEND,
 ENABLE_VEUSZ) can remain at whatever value you want.
 
-Usage
+# %%% Usage
 -----
     python ab_meter_caller.py                    # single sample, then exit (default)
     python ab_meter_caller.py --count 0          # loop forever (Ctrl-C to stop)
     python ab_meter_caller.py --count 10         # 10 samples then exit
     python ab_meter_caller.py --count 10 --interval 60  # 10 samples, 60 s apart
 
-Author : W. Wallace — NRAO / Green Bank Observatory
+# %% AUthor Info
+@Author: W. Wallace — NRAO / Green Bank Observatory
 Date   : 2026-05-13
+Phone  : +1 (304) 456-2216
+Email  : wwallace@nrao.edu
+Email2 : naval.antennas@gmail.com 
 Python : 3.8+
 Version: 1.2.1
 """
-
+# %% Imorts
 import argparse
 import datetime
 import json
@@ -68,13 +72,14 @@ import time
 from typing import Dict, Any
 
 # ---------------------------------------------------------------------------
-# Import the monitor module and configure switches BEFORE calling main().
+# %%% Import the monitor module and configure switches BEFORE calling main().
 # ---------------------------------------------------------------------------
 import ab_power_meter_monitor as abm
 
+# %% Required Switches
 # ── Required overrides ──────────────────────────────────────────────────────
 abm.ENABLE_GUI = 0   # REQUIRED — GUI blocks forever
-abm.HEADLESS_LOOP_COUNT = 6   # REQUIRED — single poll per main() call
+abm.HEADLESS_LOOP_COUNT = 101   # REQUIRED — single poll per main() call
 abm.HEADLESS_SILENT = 1   # REQUIRED — zero module console output
 
 # Redundant with SILENT=1 but explicit is better than implicit.
@@ -90,7 +95,7 @@ abm.SAMPLE_PERIOD_SEC = 15   # internal sleep — not used when caller owns loop
 
 
 # ---------------------------------------------------------------------------
-# Accumulator accessor
+# %% Accumulator accessor
 # ---------------------------------------------------------------------------
 
 def get_all_data() -> Dict[str, Any]:
@@ -121,7 +126,7 @@ def get_all_data() -> Dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# Helpers
+# %% Helpers
 # ---------------------------------------------------------------------------
 
 def poll_once() -> None:
@@ -181,7 +186,7 @@ def summarise(iteration: int) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Main loop
+# %% Main loop
 # ---------------------------------------------------------------------------
 
 def run(count: int = 1, interval: float = 30.0) -> Dict[str, Any]:
@@ -270,7 +275,7 @@ def run(count: int = 1, interval: float = 30.0) -> Dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# Entry point
+# %%% Entry point
 # ---------------------------------------------------------------------------
 
 def _parse_args() -> argparse.Namespace:
@@ -293,6 +298,7 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+# %% Main
 if __name__ == "__main__":
     args = _parse_args()
     result = run(count=args.count, interval=args.interval)
