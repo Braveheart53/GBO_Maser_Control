@@ -1,0 +1,119 @@
+2026-05-13T10:46:05 | INFO     | ABMonitor | Logger initialised — output: c:\users\wwallace\onedrive - national radio astronomy observatory\documents\github\gbo_maser_control\ab_meter_output\logs\ab_monitor.log
+2026-05-13T10:46:05 | INFO     | ABMonitor | AB Power Meter Monitor starting up.
+2026-05-13T10:46:05 | INFO     | ABMonitor | Configuration: {
+  "ip_base": "10.16.130",
+  "octet_start": 50,
+  "octet_end": 53,
+  "sample_period": 30,
+  "headless_loop_count": 101,
+  "mem_flush_threshold_mb": 256,
+  "mem_free_min_mb": 512,
+  "headless_console_dicts_only": 0,
+  "headless_print_each_sample": 0,
+  "headless_print_cumulative": 0,
+  "headless_silent": 1,
+  "enable_gui": 0,
+  "enable_fits": 1,
+  "enable_csv": 1,
+  "enable_xlsx": 1,
+  "enable_log_append": 1,
+  "enable_veusz": 1,
+  "output_base_dir": "c:\\users\\wwallace\\onedrive - national radio astronomy observatory\\documents\\github\\gbo_maser_control\\ab_meter_output",
+  "fits_dir": "c:\\users\\wwallace\\onedrive - national radio astronomy observatory\\documents\\github\\gbo_maser_control\\ab_meter_output\\fits",
+  "csv_dir": "c:\\users\\wwallace\\onedrive - national radio astronomy observatory\\documents\\github\\gbo_maser_control\\ab_meter_output\\csv",
+  "xlsx_dir": "c:\\users\\wwallace\\onedrive - national radio astronomy observatory\\documents\\github\\gbo_maser_control\\ab_meter_output\\xlsx",
+  "veusz_dir": "c:\\users\\wwallace\\onedrive - national radio astronomy observatory\\documents\\github\\gbo_maser_control\\ab_meter_output\\veusz",
+  "log_dir": "c:\\users\\wwallace\\onedrive - national radio astronomy observatory\\documents\\github\\gbo_maser_control\\ab_meter_output\\logs"
+}
+2026-05-13T10:46:05 | INFO     | ABMonitor | Headless loop starting — 101 cycles, sample period 30.0 s, output: c:\users\wwallace\onedrive - national radio astronomy observatory\documents\github\gbo_maser_control\ab_meter_output
+2026-05-13T10:46:05 | INFO     | ABMonitor | --- Headless cycle 1 / 101 ---
+2026-05-13T10:46:05 | INFO     | ABMonitor | Polling device 10.16.130.50 …
+2026-05-13T10:46:06 | DEBUG    | ABMonitor | Fetched http://10.16.130.50/0 — 2461 bytes
+2026-05-13T10:46:06 | DEBUG    | ABMonitor | Parsed table 'Device_Configuration_Table' — 31 rows
+2026-05-13T10:46:06 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.50_Device_Configuration_Table
+2026-05-13T10:46:06 | DEBUG    | ABMonitor | Fetched http://10.16.130.50/1 — 1351 bytes
+2026-05-13T10:46:06 | DEBUG    | ABMonitor | Parsed table 'Communications_Configuration_Table' — 15 rows
+2026-05-13T10:46:06 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.50_Communications_Configuration_Table
+2026-05-13T10:46:06 | DEBUG    | ABMonitor | Fetched http://10.16.130.50/2 — 1929 bytes
+2026-05-13T10:46:06 | DEBUG    | ABMonitor | Parsed table 'Voltage_Current_Table' — 24 rows
+2026-05-13T10:46:06 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.50_Voltage_Current_Table
+2026-05-13T10:46:06 | DEBUG    | ABMonitor | Fetched http://10.16.130.50/3 — 2103 bytes
+2026-05-13T10:46:06 | DEBUG    | ABMonitor | Parsed table 'Real_Time_Power_Table' — 26 rows
+2026-05-13T10:46:06 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.50_Real_Time_Power_Table
+2026-05-13T10:46:06 | DEBUG    | ABMonitor | Fetched http://10.16.130.50/4 — 925 bytes
+2026-05-13T10:46:06 | DEBUG    | ABMonitor | Parsed table 'Cumulative_Power_Table' — 8 rows
+2026-05-13T10:46:06 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.50_Cumulative_Power_Table
+2026-05-13T10:46:07 | DEBUG    | ABMonitor | Fetched http://10.16.130.50/5 — 1746 bytes
+2026-05-13T10:46:07 | DEBUG    | ABMonitor | Parsed table 'Demand_Data_Table' — 18 rows
+2026-05-13T10:46:07 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.50_Demand_Data_Table
+2026-05-13T10:46:07 | DEBUG    | ABMonitor | Fetched http://10.16.130.50/6 — 2158 bytes
+2026-05-13T10:46:07 | DEBUG    | ABMonitor | Parsed table 'Diagnostic_Table' — 31 rows
+2026-05-13T10:46:07 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.50_Diagnostic_Table
+2026-05-13T10:46:07 | DEBUG    | ABMonitor | Fetched http://10.16.130.50/7 — 2129 bytes
+2026-05-13T10:46:07 | DEBUG    | ABMonitor | Parsed table 'Voltage_Current_Snapshot_Log_Table' — 27 rows
+2026-05-13T10:46:07 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.50_Voltage_Current_Snapshot_Log_Table
+2026-05-13T10:46:07 | DEBUG    | ABMonitor | Fetched http://10.16.130.50/8 — 2316 bytes
+2026-05-13T10:46:07 | DEBUG    | ABMonitor | Parsed table 'Power_Snapshot_Log_Table' — 30 rows
+2026-05-13T10:46:07 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.50_Power_Snapshot_Log_Table
+2026-05-13T10:46:08 | DEBUG    | ABMonitor | Fetched http://10.16.130.50/9 — 1159 bytes
+2026-05-13T10:46:08 | DEBUG    | ABMonitor | Parsed table 'MinMax_Log_Table' — 12 rows
+2026-05-13T10:46:08 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.50_MinMax_Log_Table
+2026-05-13T10:46:08 | DEBUG    | ABMonitor | Fetched http://10.16.130.50/10 — 2158 bytes
+2026-05-13T10:46:08 | DEBUG    | ABMonitor | Parsed table 'Diagnostic_Table_Extended' — 31 rows
+2026-05-13T10:46:08 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.50_Diagnostic_Table_Extended
+2026-05-13T10:46:08 | INFO     | ABMonitor | Polling device 10.16.130.51 …
+2026-05-13T10:46:08 | DEBUG    | ABMonitor | Fetched http://10.16.130.51/0 — 2461 bytes
+2026-05-13T10:46:08 | DEBUG    | ABMonitor | Parsed table 'Device_Configuration_Table' — 31 rows
+2026-05-13T10:46:08 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.51_Device_Configuration_Table
+2026-05-13T10:46:08 | DEBUG    | ABMonitor | Fetched http://10.16.130.51/1 — 1351 bytes
+2026-05-13T10:46:08 | DEBUG    | ABMonitor | Parsed table 'Communications_Configuration_Table' — 15 rows
+2026-05-13T10:46:08 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.51_Communications_Configuration_Table
+2026-05-13T10:46:08 | DEBUG    | ABMonitor | Fetched http://10.16.130.51/2 — 1931 bytes
+2026-05-13T10:46:08 | DEBUG    | ABMonitor | Parsed table 'Voltage_Current_Table' — 24 rows
+2026-05-13T10:46:08 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.51_Voltage_Current_Table
+2026-05-13T10:46:09 | DEBUG    | ABMonitor | Fetched http://10.16.130.51/3 — 2096 bytes
+2026-05-13T10:46:09 | DEBUG    | ABMonitor | Parsed table 'Real_Time_Power_Table' — 26 rows
+2026-05-13T10:46:09 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.51_Real_Time_Power_Table
+2026-05-13T10:46:09 | DEBUG    | ABMonitor | Fetched http://10.16.130.51/4 — 923 bytes
+2026-05-13T10:46:09 | DEBUG    | ABMonitor | Parsed table 'Cumulative_Power_Table' — 8 rows
+2026-05-13T10:46:09 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.51_Cumulative_Power_Table
+2026-05-13T10:46:09 | DEBUG    | ABMonitor | Fetched http://10.16.130.51/5 — 1738 bytes
+2026-05-13T10:46:09 | DEBUG    | ABMonitor | Parsed table 'Demand_Data_Table' — 18 rows
+2026-05-13T10:46:09 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.51_Demand_Data_Table
+2026-05-13T10:46:09 | DEBUG    | ABMonitor | Fetched http://10.16.130.51/6 — 2157 bytes
+2026-05-13T10:46:09 | DEBUG    | ABMonitor | Parsed table 'Diagnostic_Table' — 31 rows
+2026-05-13T10:46:09 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.51_Diagnostic_Table
+2026-05-13T10:46:10 | DEBUG    | ABMonitor | Fetched http://10.16.130.51/7 — 2129 bytes
+2026-05-13T10:46:10 | DEBUG    | ABMonitor | Parsed table 'Voltage_Current_Snapshot_Log_Table' — 27 rows
+2026-05-13T10:46:10 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.51_Voltage_Current_Snapshot_Log_Table
+2026-05-13T10:46:10 | DEBUG    | ABMonitor | Fetched http://10.16.130.51/8 — 2316 bytes
+2026-05-13T10:46:10 | DEBUG    | ABMonitor | Parsed table 'Power_Snapshot_Log_Table' — 30 rows
+2026-05-13T10:46:10 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.51_Power_Snapshot_Log_Table
+2026-05-13T10:46:10 | DEBUG    | ABMonitor | Fetched http://10.16.130.51/9 — 1159 bytes
+2026-05-13T10:46:10 | DEBUG    | ABMonitor | Parsed table 'MinMax_Log_Table' — 12 rows
+2026-05-13T10:46:10 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.51_MinMax_Log_Table
+2026-05-13T10:46:10 | DEBUG    | ABMonitor | Fetched http://10.16.130.51/10 — 2157 bytes
+2026-05-13T10:46:10 | DEBUG    | ABMonitor | Parsed table 'Diagnostic_Table_Extended' — 31 rows
+2026-05-13T10:46:10 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.51_Diagnostic_Table_Extended
+2026-05-13T10:46:10 | INFO     | ABMonitor | Polling device 10.16.130.52 …
+2026-05-13T10:46:15 | INFO     | ABMonitor | Signal 2 received — requesting clean stop after current poll.
+2026-05-13T10:46:15 | WARNING  | ABMonitor | Failed to fetch http://10.16.130.52/0: HTTPConnectionPool(host='10.16.130.52', port=80): Max retries exceeded with url: /0 (Caused by ConnectTimeoutError(<urllib3.connection.HTTPConnection object at 0x0000020EAB21FA30>, 'Connection to 10.16.130.52 timed out. (connect timeout=5)'))
+2026-05-13T10:46:15 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.52_Device_Configuration_Table
+2026-05-13T10:46:20 | INFO     | ABMonitor | Signal 2 received — requesting clean stop after current poll.
+2026-05-13T10:46:20 | WARNING  | ABMonitor | Failed to fetch http://10.16.130.52/1: HTTPConnectionPool(host='10.16.130.52', port=80): Max retries exceeded with url: /1 (Caused by ConnectTimeoutError(<urllib3.connection.HTTPConnection object at 0x0000020EAB20F430>, 'Connection to 10.16.130.52 timed out. (connect timeout=5)'))
+2026-05-13T10:46:20 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.52_Communications_Configuration_Table
+2026-05-13T10:46:25 | WARNING  | ABMonitor | Failed to fetch http://10.16.130.52/2: HTTPConnectionPool(host='10.16.130.52', port=80): Max retries exceeded with url: /2 (Caused by ConnectTimeoutError(<urllib3.connection.HTTPConnection object at 0x0000020EAB20FCD0>, 'Connection to 10.16.130.52 timed out. (connect timeout=5)'))
+2026-05-13T10:46:25 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.52_Voltage_Current_Table
+2026-05-13T10:46:30 | WARNING  | ABMonitor | Failed to fetch http://10.16.130.52/3: HTTPConnectionPool(host='10.16.130.52', port=80): Max retries exceeded with url: /3 (Caused by ConnectTimeoutError(<urllib3.connection.HTTPConnection object at 0x0000020EAB1FB760>, 'Connection to 10.16.130.52 timed out. (connect timeout=5)'))
+2026-05-13T10:46:30 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.52_Real_Time_Power_Table
+2026-05-13T10:46:35 | WARNING  | ABMonitor | Failed to fetch http://10.16.130.52/4: HTTPConnectionPool(host='10.16.130.52', port=80): Max retries exceeded with url: /4 (Caused by ConnectTimeoutError(<urllib3.connection.HTTPConnection object at 0x0000020EAB1FBEE0>, 'Connection to 10.16.130.52 timed out. (connect timeout=5)'))
+2026-05-13T10:46:35 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.52_Cumulative_Power_Table
+2026-05-13T10:46:40 | WARNING  | ABMonitor | Failed to fetch http://10.16.130.52/5: HTTPConnectionPool(host='10.16.130.52', port=80): Max retries exceeded with url: /5 (Caused by ConnectTimeoutError(<urllib3.connection.HTTPConnection object at 0x0000020EAB1FB9D0>, 'Connection to 10.16.130.52 timed out. (connect timeout=5)'))
+2026-05-13T10:46:40 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.52_Demand_Data_Table
+2026-05-13T10:46:45 | WARNING  | ABMonitor | Failed to fetch http://10.16.130.52/6: HTTPConnectionPool(host='10.16.130.52', port=80): Max retries exceeded with url: /6 (Caused by ConnectTimeoutError(<urllib3.connection.HTTPConnection object at 0x0000020EAB1FB100>, 'Connection to 10.16.130.52 timed out. (connect timeout=5)'))
+2026-05-13T10:46:45 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.52_Diagnostic_Table
+2026-05-13T10:46:50 | WARNING  | ABMonitor | Failed to fetch http://10.16.130.52/7: HTTPConnectionPool(host='10.16.130.52', port=80): Max retries exceeded with url: /7 (Caused by ConnectTimeoutError(<urllib3.connection.HTTPConnection object at 0x0000020EAB20F820>, 'Connection to 10.16.130.52 timed out. (connect timeout=5)'))
+2026-05-13T10:46:50 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.52_Voltage_Current_Snapshot_Log_Table
+2026-05-13T10:46:55 | INFO     | ABMonitor | Signal 2 received — requesting clean stop after current poll.
+2026-05-13T10:46:55 | WARNING  | ABMonitor | Failed to fetch http://10.16.130.52/8: HTTPConnectionPool(host='10.16.130.52', port=80): Max retries exceeded with url: /8 (Caused by ConnectTimeoutError(<urllib3.connection.HTTPConnection object at 0x0000020EAB21FEE0>, 'Connection to 10.16.130.52 timed out. (connect timeout=5)'))
+2026-05-13T10:46:55 | DEBUG    | ABMonitor | Stored dict key: 10.16.130.52_Power_Snapshot_Log_Table
