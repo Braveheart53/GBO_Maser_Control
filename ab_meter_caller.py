@@ -40,7 +40,7 @@ Usage
 Author : W. Wallace — NRAO / Green Bank Observatory
 Date   : 2026-05-11
 Python : 3.8+
-Version: 1.0.2
+Version: 1.0.3
 """
 
 import argparse
@@ -63,7 +63,7 @@ abm.ENABLE_GUI = 0
 
 # HEADLESS_LOOP_COUNT = 1: each main() call polls all devices exactly once
 # then returns.  The outer loop in THIS script drives the repetition.
-abm.HEADLESS_LOOP_COUNT = 1
+abm.HEADLESS_LOOP_COUNT = 3
 
 # HEADLESS_SILENT = 1: ab_power_meter_monitor produces zero console output.
 # All logging still goes to the log file on disk.
@@ -147,7 +147,7 @@ def summarise(results: dict, iteration: int) -> None:
 # Main loop
 # ---------------------------------------------------------------------------
 
-def run(count: int = 0, interval: float = 30.0) -> None:
+def run(count: int = 1, interval: float = 30.0) -> list:
     """
     Outer polling loop.
 
@@ -155,10 +155,27 @@ def run(count: int = 0, interval: float = 30.0) -> None:
     ----------
     count : int
         Number of iterations to run.  0 = run indefinitely (Ctrl-C to stop).
+        Default is 1 — single sample then exit.
     interval : float
         Seconds to wait between successive poll_once() calls.
         Set to 0 for back-to-back polling (useful for testing).
+
+    Returns
+    -------
+    list of dict
+        One entry per completed iteration.  Each entry is the nested dict
+        returned by abm.main()::
+
+            all_results[0]  # first sample
+            all_results[-1] # most recent sample
+            all_results[2]["10.16.130.50"]["Real_Time_Power_Table"]
+
+        Returns an empty list if no iterations completed (e.g. immediate
+        KeyboardInterrupt).
     """
+    # Accumulate every poll result here so the caller has the full history.
+    all_results: list = []
+
     infinite = (count == 0)
     iteration = 0
 
@@ -172,18 +189,20 @@ def run(count: int = 0, interval: float = 30.0) -> None:
             iteration += 1
             t_start = time.monotonic()
 
-            # ── Single poll — all 4 devices, all 11 tables ────────────────
-            results = poll_once()
-
-            # ── Your application logic goes here ──────────────────────────
-            # results is:
+            # ── Single poll — all devices, all 11 tables ──────────────────
+            # results shape:
             #   { "10.16.130.50": { "Real_Time_Power_Table": {...}, ... },
             #     "10.16.130.51": { ... },
             #     "10.16.130.52": { ... },
             #     "10.16.130.53": { ... } }
-            #
+            results = poll_once()
+
+            # Append this iteration's result to the running list.
+            all_results.append(results)
+
+            # ── Your application logic goes here ──────────────────────────
             # Access patterns:
-            #   results["10.16.130.50"]["Real_Time_Power_Table"]
+            #   all_results[-1]["10.16.130.50"]["Real_Time_Power_Table"]
             #   for ip, tables in results.items():
             #       tables["Voltage_Current_Table"]
             #
@@ -202,6 +221,8 @@ def run(count: int = 0, interval: float = 30.0) -> None:
 
     except KeyboardInterrupt:
         print(f"\nStopped after {iteration} iteration(s).")
+
+    return all_results
 
 
 # ---------------------------------------------------------------------------
@@ -230,4 +251,15 @@ def _parse_args() -> argparse.Namespace:
 
 if __name__ == "__main__":
     args = _parse_args()
-    run(count=args.count, interval=args.interval)
+    all_data = run(count=args.count, interval=args.interval)
+
+    # all_data is a list of nested dicts, one per completed iteration.
+    # Index examples:
+    #   all_data[0]                                        — first sample
+    #   all_data[-1]                                       — most recent sample
+    #   all_data[-1]["10.16.130.50"]["Real_Time_Power_Table"]  — specific table
+    #   for sample in all_data:                            — iterate all samples
+    #       for ip, tables in sample.items():
+    #           print(ip, tables["Voltage_Current_Table"])
+
+    print(f"\nCollection complete — {len(all_data)} sample(s) in all_data.")

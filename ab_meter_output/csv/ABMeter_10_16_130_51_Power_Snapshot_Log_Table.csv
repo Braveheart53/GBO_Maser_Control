@@ -1,7 +1,0 @@
-Timestamp_Local,L1 Real Power,L2 Real Power,L3 Real Power,Total Real Power,L1 Reactive Power,L2 Reactive Power,L3 Reactive Power,Total Reactive Power,L1 Apparent Power,L2 Apparent Power,L3 Apparent Power,Total Apparent Power,L1 True PF,L2 True PF,L3 True PF,Total True PF,L1 Displacement PF,L2 Displacement PF,L3 Displacement PF,Total Displacement PF,L1 Distortion PF,L2 Distortion PF,L3 Distortion PF,Total Distortion PF,Number Of Snapshot Logs Requested,Number Of Snapshot Logs Recieved (Counter),Number Of Snapshot Log Being Returned,Internal Identifier
-(units),W,W,W,W,VAR,VAR,VAR,VAR,VA,VA,VA,VA,%,%,%,%,%,%,%,%,%,%,%,%,,,,
-2026-05-13 11:53:13,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
-2026-05-13 11:55:25,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
-2026-05-13 11:55:56,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
-2026-05-13 11:56:26,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
-2026-05-13 11:56:59,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
