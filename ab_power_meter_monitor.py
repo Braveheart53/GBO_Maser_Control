@@ -100,7 +100,7 @@ except ImportError:
 # ---------------------------------------------------------------------------
 # %% Feature / output enable switches  (0 = off, 1 = on)
 # ---------------------------------------------------------------------------
-ENABLE_GUI = 0   # Show PyQt/PySide6 main window
+ENABLE_GUI = 1   # Show PyQt/PySide6 main window
 ENABLE_FITS = 1   # Write NRAO-compliant FITS files
 ENABLE_CSV = 0   # Write per-table CSV files
 ENABLE_XLSX = 1   # Write Excel workbook with charts
@@ -3327,7 +3327,7 @@ def run_headless(cfg: Dict[str, Any]) -> None:
 
 
 # ===========================================================================
-#  MAIN ENTRY POINT
+# %% MAIN ENTRY POINT
 # ===========================================================================
 def main() -> Dict[str, Dict[str, Dict]]:
     """
