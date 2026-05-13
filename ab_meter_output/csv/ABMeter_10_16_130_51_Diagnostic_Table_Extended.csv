@@ -1,0 +1,7 @@
+Timestamp_Local,Bulletin Number,MMFRN,Options Bit Field,Overall Status,MM ROM Status,MM RAM Status,NV RAM Status,Power Supply Check,Data Acquisition,MM Watchdog Timer,Real Time Clock Status,Battery Usage,SCC Status,SCC Type,SCC FRN,Number of DMs,DM Status,DM Self Test Results Word 1,DM Self Test Results Word 2,DM #1 FRN,DM #2 FRN,DM #3 FRN,Aux. Freq.,Fiber Loop Back Test Results,EEPROM Status,Device ID,General Purpose Status Bits,BT Error Status Word (Block Size ID),BT Error Status Word (Parameter Number)
+(units),,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+2026-05-13 11:53:13,1403.0,304.0,9.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,128.0,2.0,202.0,1.0,0.0,0.0,0.0,110.0,0.0,0.0,0.0,64.0,0.0,154.0,2.0,0.0,0.0
+2026-05-13 11:55:25,1403.0,304.0,9.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,128.0,2.0,202.0,1.0,0.0,0.0,0.0,110.0,0.0,0.0,0.0,64.0,0.0,154.0,2.0,0.0,0.0
+2026-05-13 11:55:56,1403.0,304.0,9.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,128.0,2.0,202.0,1.0,0.0,0.0,0.0,110.0,0.0,0.0,0.0,64.0,0.0,154.0,2.0,0.0,0.0
+2026-05-13 11:56:26,1403.0,304.0,9.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,128.0,2.0,202.0,1.0,0.0,0.0,0.0,110.0,0.0,0.0,0.0,64.0,0.0,154.0,2.0,0.0,0.0
+2026-05-13 11:56:59,1403.0,304.0,9.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,128.0,2.0,202.0,1.0,0.0,0.0,0.0,110.0,0.0,0.0,0.0,64.0,0.0,154.0,2.0,0.0,0.0

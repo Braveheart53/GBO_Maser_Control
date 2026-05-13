@@ -32,11 +32,15 @@ independent of the console switches and will still be written.
 
 Usage
 -----
-    python ab_meter_caller.py                   # loop forever (Ctrl-C to stop)
+    python ab_meter_caller.py                   # single sample, then exit (default)
+    python ab_meter_caller.py --count 0        # loop forever (Ctrl-C to stop)
     python ab_meter_caller.py --count 10        # run exactly 10 iterations
     python ab_meter_caller.py --interval 60     # 60-second pause between polls
 
 Author : W. Wallace — NRAO / Green Bank Observatory
+Date   : 2026-05-11
+Python : 3.8+
+Version: 1.0.2
 """
 
 import argparse
@@ -75,7 +79,7 @@ abm.HEADLESS_CONSOLE_DICTS_ONLY = 0
 abm.IP_BASE = "10.16.130"
 abm.IP_LAST_OCTET_START = 50
 abm.IP_LAST_OCTET_END = 51
-abm.SAMPLE_PERIOD_SEC = 30   # only affects internal sleep; not used here
+# abm.SAMPLE_PERIOD_SEC = 30   # only affects internal sleep; not used here
 
 
 # ---------------------------------------------------------------------------
@@ -212,8 +216,8 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--count", "-n",
         type=int,
-        default=0,
-        help="Number of poll iterations (0 = infinite)",
+        default=1,
+        help="Number of poll iterations (0 = infinite, default 1 = single sample)",
     )
     parser.add_argument(
         "--interval", "-i",

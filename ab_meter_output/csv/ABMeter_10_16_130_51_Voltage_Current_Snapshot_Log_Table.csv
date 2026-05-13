@@ -1,0 +1,7 @@
+Timestamp_Local,L1 Current,L2 Current,L3 Current,L4(Neutral) Current,3 Phase Average Current,Pos. Seq. Current,Neg. Seq. Current,Current Unbalanced,L1-L2 Voltage,L2-L3 Voltage,L3-L1 Voltage,AUX Voltage,3 Phase Average Voltage L-L,Pos. Seq. Voltage,Neg. Seq. Voltage,Voltage Unbalanced,L1-N Voltage,L2-N Voltage,L3-N Voltage,3 Phase Average Voltage L-N,Last Cycle Frequency,Phase Rotation,Number Of Snapshot Logs Requested,Number Of Snapshot Logs Recieved (Counter),Number Of Snapshot Log Being Returned
+(units),A,A,A,A,A,A,A,A,V,V,V,V,V,V,V,V,V,V,V,V,Hz,,,,
+2026-05-13 11:53:13,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+2026-05-13 11:55:25,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+2026-05-13 11:55:56,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+2026-05-13 11:56:26,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+2026-05-13 11:56:59,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
