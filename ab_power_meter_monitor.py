@@ -132,6 +132,10 @@ HEADLESS_LOOP_COUNT  = 0   # 0 = infinite loop; N = run N cycles then stop
 HEADLESS_CONSOLE_DICTS_ONLY  = 0   # 1 = dicts-only stdout; suppress all other text
 HEADLESS_PRINT_EACH_SAMPLE   = 0   # 1 = print 11 named dicts after every poll cycle
 HEADLESS_PRINT_CUMULATIVE    = 0   # 1 = print full TIME_SERIES_STORE at stop/flush
+HEADLESS_SILENT              = 0   # 1 = suppress ALL stdout/stderr console output;
+                                   #     file outputs (log, CSV, XLSX, FITS, Veusz)
+                                   #     are unaffected.  Overrides all other console
+                                   #     switches above when set to 1.
 
 # ---------------------------------------------------------------------------
 # Memory / flush thresholds (adaptive write scheduling)
@@ -2768,32 +2772,69 @@ def launch_gui(
 
 # Ordered list of all 11 named dict references used for console printing.
 # Built as a callable so it always picks up the current module-global values.
-def _get_named_dicts() -> Dict[str, Dict]:
+def _get_named_dicts() -> Dict[str, Dict[str, Dict]]:
     """
-    Return an ordered dict of the 11 module-level named table dicts.
+    Return a two-level dict of all polled devices and their 11 table dicts.
 
-    The values are the module globals as they stand at call time (always
-    the latest snapshot after the most recent poll cycle).
+    Structure
+    ---------
+    {
+        "10.16.130.50": {
+            "Device_Configuration_Table":         { ... },
+            "Communications_Configuration_Table": { ... },
+            "Voltage_Current_Table":              { ... },
+            ...  (all 11 tables present for this device)
+        },
+        "10.16.130.51": { ... },
+        ...
+    }
+
+    Device identity
+    ---------------
+    The outer key is the device IP address string as used throughout
+    ALL_DEVICE_DATA and the _meta["source_ip"] field inside each table
+    dict.  Each inner dict is the latest poll snapshot for that device;
+    tables not yet fetched for a device are absent from the inner dict.
+
+    Falls back gracefully to the first-device module-level globals if
+    ALL_DEVICE_DATA is empty (e.g. called before any poll has run).
+
+    Returns
+    -------
+    Dict[str, Dict[str, Dict]]
+        Keyed by IP string, then by table name.
     """
+    if ALL_DEVICE_DATA:
+        # Return a shallow copy of ALL_DEVICE_DATA so the caller cannot
+        # accidentally mutate the live module-level store.
+        return {
+            ip: dict(tables)
+            for ip, tables in ALL_DEVICE_DATA.items()
+        }
+
+    # No poll data yet — return the module globals under a placeholder key
+    # so the return shape is always Dict[ip -> Dict[tname -> dict]].
     return {
-        "Device_Configuration_Table":           Device_Configuration_Table,
-        "Communications_Configuration_Table":   Communications_Configuration_Table,
-        "Voltage_Current_Table":                Voltage_Current_Table,
-        "Real_Time_Power_Table":                Real_Time_Power_Table,
-        "Cumulative_Power_Table":               Cumulative_Power_Table,
-        "Demand_Data_Table":                    Demand_Data_Table,
-        "Diagnostic_Table":                     Diagnostic_Table,
-        "Voltage_Current_Snapshot_Log_Table":   Voltage_Current_Snapshot_Log_Table,
-        "Power_Snapshot_Log_Table":             Power_Snapshot_Log_Table,
-        "MinMax_Log_Table":                     MinMax_Log_Table,
-        "Diagnostic_Table_Extended":            Diagnostic_Table_Extended,
+        "(no data)": {
+            "Device_Configuration_Table":           Device_Configuration_Table,
+            "Communications_Configuration_Table":   Communications_Configuration_Table,
+            "Voltage_Current_Table":                Voltage_Current_Table,
+            "Real_Time_Power_Table":                Real_Time_Power_Table,
+            "Cumulative_Power_Table":               Cumulative_Power_Table,
+            "Demand_Data_Table":                    Demand_Data_Table,
+            "Diagnostic_Table":                     Diagnostic_Table,
+            "Voltage_Current_Snapshot_Log_Table":   Voltage_Current_Snapshot_Log_Table,
+            "Power_Snapshot_Log_Table":             Power_Snapshot_Log_Table,
+            "MinMax_Log_Table":                     MinMax_Log_Table,
+            "Diagnostic_Table_Extended":            Diagnostic_Table_Extended,
+        }
     }
 
 
 def _print_named_dicts(cycle: int, label: str = "current snapshot") -> None:
     """
-    Print all 11 named table dicts (latest poll snapshot, first device)
-    to stdout as pretty-printed JSON.
+    Print all 11 named table dicts for ALL devices to stdout as
+    pretty-printed JSON, keyed by device IP.
 
     Parameters
     ----------
@@ -2802,18 +2843,23 @@ def _print_named_dicts(cycle: int, label: str = "current snapshot") -> None:
     label : str
         Short description shown in the banner (e.g. "current snapshot").
     """
-    banner = f"  NAMED TABLE DICTS — cycle {cycle} ({label}, first device)"
+    all_devs = _get_named_dicts()
     print("\n" + "=" * 72)
-    print(banner)
+    print(f"  NAMED TABLE DICTS — cycle {cycle} ({label})")
+    print(f"  Devices: {list(all_devs.keys())}")
     print("=" * 72)
-    for dname, dval in _get_named_dicts().items():
-        print(f"\n  {dname}:")
-        if dval:
-            # Exclude _meta for brevity; show all other k/v
-            display = {k: str(v) for k, v in dval.items() if k != "_meta"}
-            print(json.dumps(display, indent=4))
-        else:
-            print("    (empty — no data fetched yet)")
+    for ip, tables in all_devs.items():
+        print(f"\n{'─' * 72}")
+        print(f"  Device: {ip}")
+        print(f"{'─' * 72}")
+        for dname, dval in tables.items():
+            print(f"\n  {dname}:")
+            if dval:
+                # Exclude _meta for brevity; show all other k/v
+                display = {k: str(v) for k, v in dval.items() if k != "_meta"}
+                print(json.dumps(display, indent=4))
+            else:
+                print("    (empty — no data fetched yet)")
 
 
 def _print_cumulative_store(cycle: int, reason: str = "end of loop") -> None:
@@ -2977,19 +3023,40 @@ def run_headless(cfg: Dict[str, Any]) -> None:
     cycle        = 0
     flush_future: Optional["concurrent.futures.Future"] = None
 
-    # Resolve console-output switches from cfg (header vars are the defaults)
-    dicts_only       = bool(cfg.get("headless_console_dicts_only",  HEADLESS_CONSOLE_DICTS_ONLY))
-    print_each       = bool(cfg.get("headless_print_each_sample",   HEADLESS_PRINT_EACH_SAMPLE))
-    print_cumulative = bool(cfg.get("headless_print_cumulative",    HEADLESS_PRINT_CUMULATIVE))
+    # Resolve console-output switches from cfg (header vars are the defaults).
+    # HEADLESS_SILENT overrides everything: no stdout, no stderr, no prints.
+    silent           = bool(cfg.get("headless_silent",              HEADLESS_SILENT))
+    dicts_only       = bool(cfg.get("headless_console_dicts_only",  HEADLESS_CONSOLE_DICTS_ONLY)) and not silent
+    print_each       = bool(cfg.get("headless_print_each_sample",   HEADLESS_PRINT_EACH_SAMPLE))  and not silent
+    print_cumulative = bool(cfg.get("headless_print_cumulative",    HEADLESS_PRINT_CUMULATIVE))   and not silent
 
-    # When HEADLESS_CONSOLE_DICTS_ONLY is set, redirect the root logger
-    # away from stdout so only our explicit print() calls appear on the
-    # terminal.  File handlers (log file) are left intact.
+    # Redirect console streams when suppression is requested.
+    # File handlers (log file on disk) are deliberately left intact in
+    # both cases — only the terminal streams are affected.
     _null_handler: Optional[logging.Handler] = None
-    if dicts_only:
+    _devnull_stdout = None
+    _devnull_stderr = None
+
+    if silent:
+        # Full silence: redirect stdout and stderr to /dev/null and strip
+        # all StreamHandlers from the root logger.
+        _devnull_stdout = open(os.devnull, "w", encoding="utf-8")  # noqa: WPS515
+        _devnull_stderr = open(os.devnull, "w", encoding="utf-8")
+        sys.stdout = _devnull_stdout
+        sys.stderr = _devnull_stderr
+        root_log = logging.getLogger()
+        for h in list(root_log.handlers):
+            if isinstance(h, logging.StreamHandler) and h.stream in (
+                sys.__stdout__, sys.__stderr__, sys.stdout, sys.stderr
+            ):
+                root_log.removeHandler(h)
+        _null_handler = logging.NullHandler()
+        root_log.addHandler(_null_handler)
+
+    elif dicts_only:
+        # Dicts-only: strip StreamHandlers but leave stdout open for print().
         _null_handler = logging.NullHandler()
         root_log = logging.getLogger()
-        # Remove any StreamHandlers pointing to stdout/stderr
         for h in list(root_log.handlers):
             if isinstance(h, logging.StreamHandler) and h.stream in (sys.stdout, sys.stderr):
                 root_log.removeHandler(h)
@@ -3129,16 +3196,60 @@ def run_headless(cfg: Dict[str, Any]) -> None:
     if print_cumulative:
         _print_cumulative_store(cycle, reason="end of loop")
 
+    # Restore stdout / stderr if they were redirected for silent mode.
+    # This ensures the interpreter is left in a clean state when main()
+    # returns to a caller that imported the module.
+    if silent:
+        sys.stdout = sys.__stdout__
+        sys.stderr = sys.__stderr__
+        if _devnull_stdout is not None:
+            try:
+                _devnull_stdout.close()
+            except OSError:
+                pass
+        if _devnull_stderr is not None:
+            try:
+                _devnull_stderr.close()
+            except OSError:
+                pass
+
 
 # ===========================================================================
 #  MAIN ENTRY POINT
 # ===========================================================================
-def main() -> None:
+def main() -> Dict[str, Dict[str, Dict]]:
     """
     Application entry point.
 
     Reads module-level switch variables, optionally launches the GUI
-    or runs a single headless poll cycle.
+    or runs a headless polling loop, then returns all device dicts so
+    callers can do::
+
+        from ab_power_meter_monitor import main
+        results = main()   # blocks until loop ends / GUI closes
+
+        # iterate all devices
+        for ip, tables in results.items():
+            print(ip, tables["Real_Time_Power_Table"])
+
+        # address a specific device + table directly
+        results["10.16.130.51"]["Voltage_Current_Table"]
+
+    Return shape::
+
+        {
+            "10.16.130.50": {
+                "Device_Configuration_Table":         { ... },
+                "Communications_Configuration_Table": { ... },
+                ...  # all 11 tables
+            },
+            "10.16.130.51": { ... },
+            "10.16.130.52": { ... },
+            "10.16.130.53": { ... },
+        }
+
+    When run directly (``python ab_power_meter_monitor.py``) the return
+    value is discarded by the ``if __name__ == "__main__"`` block.
     """
     # Build runtime config dict from module-level switches.
     # All derived output directories are populated here from OUTPUT_BASE_DIR
@@ -3155,6 +3266,7 @@ def main() -> None:
         "headless_console_dicts_only":   HEADLESS_CONSOLE_DICTS_ONLY,
         "headless_print_each_sample":    HEADLESS_PRINT_EACH_SAMPLE,
         "headless_print_cumulative":     HEADLESS_PRINT_CUMULATIVE,
+        "headless_silent":               HEADLESS_SILENT,
         "enable_gui":        ENABLE_GUI,     # used by main() branch logic only; not shown in GUI
         "enable_fits":       ENABLE_FITS,
         "enable_csv":        ENABLE_CSV,
@@ -3191,6 +3303,10 @@ def main() -> None:
             run_headless(cfg)
     else:
         run_headless(cfg)
+
+    # Return the 11 named dicts so callers that import and invoke main()
+    # directly receive the final snapshot without any extra steps.
+    return _get_named_dicts()
 
 
 if __name__ == "__main__":
