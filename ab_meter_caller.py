@@ -6,33 +6,33 @@ ab_meter_caller.py
 Example calling script for ab_power_meter_monitor.py.
 
 This script owns the outer loop.  On each iteration it instructs
-ab_power_meter_monitor to perform exactly ONE poll of all devices,
-accumulates the results into a time-series dict keyed by IP → table →
-parameter, and returns the full accumulated structure when done.
+ab_power_meter_monitor to perform exactly ONE poll of all devices then
+return.  Accumulation is handled entirely by the monitor module's own
+TIME_SERIES_STORE — the same store that every output file (Veusz, CSV,
+XLSX, FITS) reads from.  This guarantees sample counts are always
+consistent across ALL_DATA and every generated file.
 
-Return structure
-----------------
-``all_data`` is a nested dict with this shape::
+Return structure  (abm.TIME_SERIES_STORE)
+-----------------------------------------
+::
 
     {
         "10.16.130.50": {
             "Real_Time_Power_Table": {
-                "timestamps":  ["2026-05-13 12:00:00", "2026-05-13 12:00:30", ...],
-                "L1 Voltage":  [120.1, 120.2, ...],
-                "L2 Voltage":  [119.8, 119.9, ...],
-                # one key per numeric parameter; lists grow with each sample
+                "timestamps_local": ["2026-05-13 12:00:00", ...],
+                "columns": {
+                    "L1 Voltage": [120.1, 120.2, ...],   # one float per sample
+                    "L2 Voltage": [119.8, 119.9, ...],
+                    ...
+                },
+                "units": {"L1 Voltage": "V", ...},
             },
-            "Voltage_Current_Table": { ... },
-            # ... all 11 tables
+            ... # all 11 tables
         },
         "10.16.130.51": { ... },
         "10.16.130.52": { ... },
         "10.16.130.53": { ... },
     }
-
-Each sample appends one value to every parameter list and one timestamp
-string to the "timestamps" list, so all lists within a table are always
-the same length.
 
 Switch configuration required in ab_power_meter_monitor.py
 -----------------------------------------------------------
@@ -45,231 +45,132 @@ or override them programmatically before calling main() as shown below.
     HEADLESS_SILENT       = 1   # REQUIRED — suppress all module console output
 
 All other switches (ENABLE_FITS, ENABLE_CSV, ENABLE_XLSX, ENABLE_LOG_APPEND,
-ENABLE_VEUSZ) can remain at whatever value you want — file outputs are
-independent of the console switches and will still be written.
+ENABLE_VEUSZ) can remain at whatever value you want.
 
 Usage
 -----
     python ab_meter_caller.py                    # single sample, then exit (default)
     python ab_meter_caller.py --count 0          # loop forever (Ctrl-C to stop)
-    python ab_meter_caller.py --count 10         # run exactly 10 iterations
+    python ab_meter_caller.py --count 10         # 10 samples then exit
     python ab_meter_caller.py --count 10 --interval 60  # 10 samples, 60 s apart
 
 Author : W. Wallace — NRAO / Green Bank Observatory
 Date   : 2026-05-13
 Python : 3.8+
-Version: 1.2.0
+Version: 1.2.1
 """
 
 import argparse
-import copy
 import datetime
 import json
-import os
 import sys
 import time
 from typing import Dict, Any
 
 # ---------------------------------------------------------------------------
 # Import the monitor module and configure switches BEFORE calling main().
-# Overriding module-level variables here is equivalent to editing the header
-# switches in ab_power_meter_monitor.py — the module reads these values each
-# time main() is called.
 # ---------------------------------------------------------------------------
 import ab_power_meter_monitor as abm
 
 # ── Required overrides ──────────────────────────────────────────────────────
-# ENABLE_GUI must be 0: GUI mode blocks indefinitely; we need headless.
-abm.ENABLE_GUI = 0
+abm.ENABLE_GUI = 0   # REQUIRED — GUI blocks forever
+abm.HEADLESS_LOOP_COUNT = 6   # REQUIRED — single poll per main() call
+abm.HEADLESS_SILENT = 1   # REQUIRED — zero module console output
 
-# HEADLESS_LOOP_COUNT = 1: each main() call polls all devices exactly once
-# then returns.  The outer loop in THIS script drives the repetition.
-abm.HEADLESS_LOOP_COUNT = 5
-
-# HEADLESS_SILENT = 1: ab_power_meter_monitor produces zero console output.
-# All file-based logging (log, CSV, XLSX, FITS, Veusz) still runs on disk.
-abm.HEADLESS_SILENT = 1
-
-# Suppress the other console-print switches (redundant with SILENT=1,
-# but explicit is better than implicit).
+# Redundant with SILENT=1 but explicit is better than implicit.
 abm.HEADLESS_PRINT_EACH_SAMPLE = 0
 abm.HEADLESS_PRINT_CUMULATIVE = 0
 abm.HEADLESS_CONSOLE_DICTS_ONLY = 0
 
-# ── Optional: override IP range or sample period if needed ──────────────────
+# ── Optional: override IP range if needed ───────────────────────────────────
 abm.IP_BASE = "10.16.130"
 abm.IP_LAST_OCTET_START = 50
 abm.IP_LAST_OCTET_END = 51
-# abm.SAMPLE_PERIOD_SEC = 30   # internal sleep — not used when caller owns loop
+abm.SAMPLE_PERIOD_SEC = 15   # internal sleep — not used when caller owns loop
 
 
 # ---------------------------------------------------------------------------
-# Accumulator
+# Accumulator accessor
 # ---------------------------------------------------------------------------
 
-# Module-level accumulated time-series store.
-# Shape: { ip: { table_name: { "timestamps": [...], param: [...], ... } } }
-# Grows with every call to accumulate_sample().
-# Persisted to ALL_DATA_CACHE_FILE between runs so that successive
-# invocations of this script (each with --count 1) keep accumulating.
-ALL_DATA: Dict[str, Dict[str, Dict[str, Any]]] = {}
-
-# Path where ALL_DATA is saved/loaded between runs.
-# Set to None to disable persistence (in-memory only).
-ALL_DATA_CACHE_FILE: str = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)),
-    "ab_meter_caller_cache.json",
-)
-
-
-def load_cache() -> None:
+def get_all_data() -> Dict[str, Any]:
     """
-    Load ALL_DATA from the JSON cache file on disk (if it exists).
-    Call once at startup before the first poll so that successive runs
-    of this script continue accumulating rather than starting fresh.
+    Return abm.TIME_SERIES_STORE — the single authoritative accumulator.
+
+    This is the identical store that Veusz, CSV, XLSX, and FITS all read
+    from, so sample counts returned here will always match output files.
+
+    Structure
+    ---------
+    ::
+
+        {
+            ip: {
+                table_name: {
+                    "timestamps_local": [str, ...],   # one per sample
+                    "columns":          {param: [float|None, ...]},
+                    "units":            {param: str},
+                }
+            }
+        }
+
+    Returns a live reference — do not mutate.  Call copy.deepcopy() if
+    you need an independent snapshot.
     """
-    global ALL_DATA
-    if ALL_DATA_CACHE_FILE and os.path.isfile(ALL_DATA_CACHE_FILE):
-        try:
-            with open(ALL_DATA_CACHE_FILE, "r", encoding="utf-8") as fh:
-                ALL_DATA = json.load(fh)
-            print(f"[cache] Loaded {ALL_DATA_CACHE_FILE}")
-        except Exception as exc:
-            print(
-                f"[cache] WARNING — could not load cache: {exc}", file=sys.stderr)
-
-
-def save_cache() -> None:
-    """
-    Save ALL_DATA to the JSON cache file on disk.
-    Called after every successful accumulate_sample() so that the data
-    survives a crash or Ctrl-C on the next run.
-    """
-    if not ALL_DATA_CACHE_FILE:
-        return
-    try:
-        with open(ALL_DATA_CACHE_FILE, "w", encoding="utf-8") as fh:
-            json.dump(ALL_DATA, fh)
-    except Exception as exc:
-        print(
-            f"[cache] WARNING — could not save cache: {exc}", file=sys.stderr)
-
-
-def accumulate_sample(snapshot: dict, timestamp: str) -> None:
-    """
-    Merge one poll snapshot into ALL_DATA, appending each parameter value
-    to its running list.
-
-    Parameters
-    ----------
-    snapshot : dict
-        The nested dict returned by abm.main() / poll_once().
-        Shape: { ip: { table_name: { "_meta": ..., "#1": name,
-                                     "#1_value": float, "#1_unit": str, ... } } }
-    timestamp : str
-        ISO-style local timestamp string for this sample
-        (e.g. "2026-05-13 12:00:00").
-    """
-    # Work on a deep copy of the snapshot so that any later mutation of
-    # the module's internal dicts cannot corrupt the values we read here.
-    snapshot_copy = copy.deepcopy(snapshot)
-
-    for ip, tables in snapshot_copy.items():
-        # Ensure top-level IP key exists.
-        if ip not in ALL_DATA:
-            ALL_DATA[ip] = {}
-
-        for table_name, table_dict in tables.items():
-            # Ensure table key exists with an empty timestamp list.
-            if table_name not in ALL_DATA[ip]:
-                ALL_DATA[ip][table_name] = {"timestamps": []}
-
-            target = ALL_DATA[ip][table_name]
-
-            # Append the timestamp for this sample.
-            target["timestamps"].append(timestamp)
-
-            # Walk all numeric parameter values in the snapshot table.
-            # Keys of the form "#N_value" hold the float reading;
-            # the corresponding "#N" key holds the human-readable name.
-            for key, value in table_dict.items():
-                if not key.endswith("_value"):
-                    continue  # skip _meta, name keys, unit keys
-
-                # Derive the parameter name from the paired "#N" key.
-                # e.g. "#1_value" → base="#1" → param_name="L1 Voltage"
-                base = key.replace("_value", "", 1)   # safe strip of suffix
-                param_name = table_dict.get(
-                    base, key)       # fall back to raw key
-
-                # Initialise the list on first encounter.
-                if param_name not in target:
-                    target[param_name] = []
-
-                # Append the value (None if not a number).
-                try:
-                    target[param_name].append(float(value))
-                except (TypeError, ValueError):
-                    target[param_name].append(None)
-
-    # Persist to disk so successive single-run invocations keep accumulating.
-    save_cache()
+    return abm.TIME_SERIES_STORE
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
-def poll_once() -> dict:
+def poll_once() -> None:
     """
     Trigger one full poll of all devices by calling abm.main().
 
     abm.main() will:
-      1. Poll all devices in IP range.
-      2. Update TIME_SERIES_STORE inside the module with the new sample.
+      1. Poll all devices in the configured IP range.
+      2. Append results to abm.TIME_SERIES_STORE via accumulate_poll().
       3. Write enabled file outputs (FITS / CSV / XLSX / log / Veusz).
-      4. Return the nested snapshot dict.
 
-    Returns
-    -------
-    dict
-        Snapshot dict keyed by device IP, then table name.
-        Returns an empty dict if main() raises an unexpected exception.
+    The return value of abm.main() (a snapshot dict) is discarded here
+    because get_all_data() / TIME_SERIES_STORE is the authoritative source.
+    Any exception is printed to stderr and swallowed so the caller loop
+    continues on transient network errors.
     """
     try:
-        return abm.main()
+        abm.main()
     except Exception as exc:
-        # Always print errors to stderr so they are visible even in silent mode.
         print(f"[ab_meter_caller] ERROR during poll: {exc}", file=sys.stderr)
-        return {}
 
 
 def summarise(iteration: int) -> None:
     """
-    Print a compact human-readable summary of the current ALL_DATA state
-    to stdout after each poll.
+    Print a compact human-readable summary of the current TIME_SERIES_STORE
+    state to stdout after each poll.
 
-    Shows device count, sample count, and a preview of Real_Time_Power_Table
-    values for the most recent sample.  Replace or extend with your own logic.
+    Shows device count, accumulated sample count, and a preview of the most
+    recent Real_Time_Power_Table values.  Replace or extend with your own
+    application logic.
 
     Parameters
     ----------
     iteration : int
         Current loop iteration number (1-based).
     """
+    store = get_all_data()
     ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    devices = list(ALL_DATA.keys())
+    devices = list(store.keys())
     print(f"\n[{ts}] Iteration {iteration} — {len(devices)} device(s): {devices}")
 
-    for ip, tables in ALL_DATA.items():
+    for ip, tables in store.items():
         pwr = tables.get("Real_Time_Power_Table", {})
-        n_samples = len(pwr.get("timestamps", []))
+        n_samples = len(pwr.get("timestamps_local", []))
+        columns = pwr.get("columns", {})
 
-        # Build a preview dict of the most recent value for each parameter.
+        # Preview: most recent value for first 6 parameters.
         preview = {}
-        for param, values in pwr.items():
-            if param == "timestamps":
-                continue
+        for param, values in columns.items():
             if isinstance(values, list) and values:
                 preview[param] = values[-1]
             if len(preview) >= 6:
@@ -283,46 +184,52 @@ def summarise(iteration: int) -> None:
 # Main loop
 # ---------------------------------------------------------------------------
 
-def run(count: int = 1, interval: float = 30.0) -> Dict[str, Dict[str, Dict[str, Any]]]:
+def run(count: int = 1, interval: float = 30.0) -> Dict[str, Any]:
     """
-    Outer polling loop.  Calls poll_once() on each iteration and accumulates
-    results into ALL_DATA.
+    Outer polling loop.
+
+    Each iteration calls poll_once() which triggers one full device poll
+    and appends results to abm.TIME_SERIES_STORE.  No separate accumulation
+    is performed here — get_all_data() always reflects the true state.
 
     Parameters
     ----------
     count : int
-        Number of iterations to run.  0 = run indefinitely (Ctrl-C to stop).
+        Number of iterations.  0 = infinite (Ctrl-C to stop).
         Default is 1 — single sample then exit.
     interval : float
-        Seconds to wait between successive poll_once() calls, accounting for
-        the time the poll itself takes.  Set to 0 for back-to-back polling.
+        Seconds between successive poll_once() calls, accounting for
+        poll duration.  Set to 0 for back-to-back polling.
 
     Returns
     -------
     dict
-        ALL_DATA — the full accumulated time-series structure:
+        abm.TIME_SERIES_STORE — full accumulated time-series.
+        Structure documented in get_all_data() above.
+        Returns whatever has accumulated so far on KeyboardInterrupt.
 
-            {
-                "10.16.130.50": {
-                    "Real_Time_Power_Table": {
-                        "timestamps": ["2026-05-13 12:00:00", ...],
-                        "L1 Voltage": [120.1, 120.2, ...],
-                        ...
-                    },
-                    ...  # all 11 tables
-                },
-                "10.16.130.51": { ... },
-                ...
-            }
+    Access examples
+    ---------------
+    ::
 
-        All parameter lists grow by one entry per completed iteration.
-        Returns whatever has been accumulated so far on KeyboardInterrupt.
+        result = run(count=6, interval=30)
+
+        # timestamps for device .50, Real_Time_Power_Table
+        result["10.16.130.50"]["Real_Time_Power_Table"]["timestamps_local"]
+        # → ["2026-05-13 12:00:00", "2026-05-13 12:00:30", ...]   (6 entries)
+
+        # all L1 Voltage samples for device .50
+        result["10.16.130.50"]["Real_Time_Power_Table"]["columns"]["L1 Voltage"]
+        # → [120.1, 120.2, 120.3, 120.4, 120.5, 120.6]
+
+        # iterate all devices and tables
+        for ip, tables in result.items():
+            for tname, tdata in tables.items():
+                n   = len(tdata["timestamps_local"])
+                cols = tdata["columns"]
     """
     infinite = (count == 0)
     iteration = 0
-
-    # Load any previously accumulated data from disk before the first poll.
-    load_cache()
 
     print(f"ab_meter_caller starting — "
           f"{'infinite loop' if infinite else f'{count} iteration(s)'}, "
@@ -334,32 +241,18 @@ def run(count: int = 1, interval: float = 30.0) -> Dict[str, Dict[str, Dict[str,
             iteration += 1
             t_start = time.monotonic()
 
-            # Timestamp for this sample — recorded before the poll so it
-            # reflects when data collection began, not when it finished.
-            ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
             # ── Single poll — all devices, all 11 tables ──────────────────
-            snapshot = poll_once()
-
-            # ── Accumulate into ALL_DATA ───────────────────────────────────
-            # After this call:
-            #   ALL_DATA[ip][table_name]["timestamps"]  — grows by 1
-            #   ALL_DATA[ip][table_name][param_name]    — grows by 1
-            accumulate_sample(snapshot, ts)
+            # accumulate_poll() inside abm.main() appends to TIME_SERIES_STORE.
+            poll_once()
 
             # ── Your application logic goes here ───────────────────────────
-            # ALL_DATA now contains every sample collected so far.
+            # get_all_data() returns the live TIME_SERIES_STORE reference.
             #
-            # Access patterns:
-            #   ALL_DATA["10.16.130.50"]["Real_Time_Power_Table"]["L1 Voltage"]
-            #       → [120.1, 120.2, ...]   (one float per sample)
-            #
-            #   ALL_DATA["10.16.130.50"]["Real_Time_Power_Table"]["timestamps"]
-            #       → ["2026-05-13 12:00:00", ...]
-            #
-            #   for ip, tables in ALL_DATA.items():
-            #       for tname, tdata in tables.items():
-            #           print(ip, tname, tdata["timestamps"][-1])
+            #   data = get_all_data()
+            #   data["10.16.130.50"]["Real_Time_Power_Table"]["columns"]["L1 Voltage"]
+            #       → list of floats, one per completed sample so far
+            #   data["10.16.130.50"]["Real_Time_Power_Table"]["timestamps_local"]
+            #       → list of timestamp strings, same length as each column
 
             summarise(iteration)
 
@@ -373,7 +266,7 @@ def run(count: int = 1, interval: float = 30.0) -> Dict[str, Dict[str, Dict[str,
     except KeyboardInterrupt:
         print(f"\nStopped after {iteration} iteration(s).")
 
-    return ALL_DATA
+    return get_all_data()
 
 
 # ---------------------------------------------------------------------------
@@ -404,22 +297,22 @@ if __name__ == "__main__":
     args = _parse_args()
     result = run(count=args.count, interval=args.interval)
 
-    # result  ==  ALL_DATA  — full time-series, all devices, all tables.
+    # result is abm.TIME_SERIES_STORE — same source as every output file.
     #
-    # Quick access examples:
-    #   result["10.16.130.50"]["Real_Time_Power_Table"]["timestamps"]
-    #   result["10.16.130.50"]["Real_Time_Power_Table"]["L1 Voltage"]
+    # Access examples:
+    #   result["10.16.130.50"]["Real_Time_Power_Table"]["timestamps_local"]
+    #   result["10.16.130.50"]["Real_Time_Power_Table"]["columns"]["L1 Voltage"]
     #
     #   for ip, tables in result.items():
     #       for tname, tdata in tables.items():
-    #           n = len(tdata["timestamps"])
+    #           n = len(tdata["timestamps_local"])
     #           print(f"{ip} / {tname}: {n} sample(s)")
 
     total_samples = 0
     for ip, tables in result.items():
         for tname, tdata in tables.items():
-            n = len(tdata.get("timestamps", []))
+            n = len(tdata.get("timestamps_local", []))
             total_samples = max(total_samples, n)
 
     print(f"\nCollection complete — {total_samples} sample(s) accumulated "
-          f"across {len(result)} device(s) in ALL_DATA.")
+          f"across {len(result)} device(s).")
