@@ -23,10 +23,9 @@ Device range   : last octet 50 – 53  (configurable below)
 Author : W. Wallace — NRAO / Green Bank Observatory
 Date   : 2026-05-11
 Python : 3.8+
-Version: 1.0.0
+Version: 1.0.1
 Deps   : PySide6, matplotlib, requests, beautifulsoup4, lxml,
-         astropy, openpyxl, veusz  
-         (pip, conda, mamba, or uv install each)
+         astropy, openpyxl, veusz  (pip install each)
 
 Usage
 -----
@@ -96,7 +95,7 @@ except ImportError:
 # ---------------------------------------------------------------------------
 # Feature / output enable switches  (0 = off, 1 = on)
 # ---------------------------------------------------------------------------
-ENABLE_GUI = 0   # Show PyQt/PySide6 main window
+ENABLE_GUI = 1   # Show PyQt/PySide6 main window
 ENABLE_FITS = 1   # Write NRAO-compliant FITS files
 ENABLE_CSV = 1   # Write per-table CSV files
 ENABLE_XLSX = 1   # Write Excel workbook with charts
@@ -110,7 +109,7 @@ ENABLE_VEUSZ = 1   # Write Veusz HDF5 project file(s) (.vszh5)
 # Number of poll cycles to run in headless mode.
 # 0 = run indefinitely until stopped (Ctrl-C or stop signal file).
 # N = run exactly N cycles then exit cleanly.
-HEADLESS_LOOP_COUNT = 101   # 0 = infinite loop; N = run N cycles then stop
+HEADLESS_LOOP_COUNT = 0   # 0 = infinite loop; N = run N cycles then stop
 
 # ---------------------------------------------------------------------------
 # Headless console / dict output switches
@@ -136,7 +135,7 @@ HEADLESS_LOOP_COUNT = 101   # 0 = infinite loop; N = run N cycles then stop
 HEADLESS_CONSOLE_DICTS_ONLY = 0   # 1 = dicts-only stdout; suppress all other text
 HEADLESS_PRINT_EACH_SAMPLE = 0   # 1 = print 11 named dicts after every poll cycle
 HEADLESS_PRINT_CUMULATIVE = 0   # 1 = print full TIME_SERIES_STORE at stop/flush
-HEADLESS_SILENT = 1   # 1 = suppress ALL stdout/stderr console output;
+HEADLESS_SILENT = 0   # 1 = suppress ALL stdout/stderr console output;
 #     file outputs (log, CSV, XLSX, FITS, Veusz)
 #     are unaffected.  Overrides all other console
 #     switches above when set to 1.
@@ -156,12 +155,12 @@ MEM_FREE_MIN_MB = 512   # flush when system free RAM falls below N MB
 # ---------------------------------------------------------------------------
 IP_BASE = "10.16.130"  # First three octets (do NOT include trailing dot)
 IP_LAST_OCTET_START = 50           # Start of last-octet range (inclusive)
-IP_LAST_OCTET_END = 51           # End   of last-octet range (inclusive)
+IP_LAST_OCTET_END = 53           # End   of last-octet range (inclusive)
 
 # ---------------------------------------------------------------------------
 # Polling / timing
 # ---------------------------------------------------------------------------
-SAMPLE_PERIOD_SEC = 15    # Seconds between successive polls of all devices
+SAMPLE_PERIOD_SEC = 30    # Seconds between successive polls of all devices
 HTTP_TIMEOUT_SEC = 5     # Per-request HTTP timeout
 
 # ---------------------------------------------------------------------------
@@ -3232,13 +3231,18 @@ def run_headless(cfg: Dict[str, Any]) -> None:
                             "Previous flush still running — skipping mid-cycle flush.")
 
             # ── Wait for next cycle ──────────────────────────────────────────────────────────
-            # Sleep in 0.5 s chunks to remain responsive to stop signals.
-            remaining = sample_sec - (time.monotonic() - t_poll_start)
-            while remaining > 0 and not _HEADLESS_STOP.is_set():
-                if os.path.exists(STOP_SIGNAL_FILE):
-                    break
-                time.sleep(min(0.5, remaining))
-                remaining -= 0.5
+            # Skip the sleep entirely if this was the last required cycle so
+            # that callers with HEADLESS_LOOP_COUNT=1 return immediately
+            # without blocking for a full sample period first.
+            _last_cycle = (not infinite) and (cycle >= loop_count)
+            if not _last_cycle:
+                # Sleep in 0.5 s chunks to remain responsive to stop signals.
+                remaining = sample_sec - (time.monotonic() - t_poll_start)
+                while remaining > 0 and not _HEADLESS_STOP.is_set():
+                    if os.path.exists(STOP_SIGNAL_FILE):
+                        break
+                    time.sleep(min(0.5, remaining))
+                    remaining -= 0.5
 
     except KeyboardInterrupt:
         if not dicts_only:
