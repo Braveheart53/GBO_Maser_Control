@@ -55,27 +55,27 @@ import ab_power_meter_monitor as abm
 
 # ── Required overrides ──────────────────────────────────────────────────────
 # ENABLE_GUI must be 0: GUI mode blocks indefinitely; we need headless.
-abm.ENABLE_GUI           = 0
+abm.ENABLE_GUI = 0
 
 # HEADLESS_LOOP_COUNT = 1: each main() call polls all devices exactly once
 # then returns.  The outer loop in THIS script drives the repetition.
-abm.HEADLESS_LOOP_COUNT  = 1
+abm.HEADLESS_LOOP_COUNT = 1
 
 # HEADLESS_SILENT = 1: ab_power_meter_monitor produces zero console output.
 # All logging still goes to the log file on disk.
-abm.HEADLESS_SILENT      = 1
+abm.HEADLESS_SILENT = 1
 
 # Suppress the other console-print switches (redundant with SILENT=1,
 # but explicit is better than implicit).
-abm.HEADLESS_PRINT_EACH_SAMPLE   = 0
-abm.HEADLESS_PRINT_CUMULATIVE    = 0
-abm.HEADLESS_CONSOLE_DICTS_ONLY  = 0
+abm.HEADLESS_PRINT_EACH_SAMPLE = 0
+abm.HEADLESS_PRINT_CUMULATIVE = 0
+abm.HEADLESS_CONSOLE_DICTS_ONLY = 0
 
 # ── Optional: override IP range or sample period if needed ──────────────────
-# abm.IP_BASE             = "10.16.130"
-# abm.IP_LAST_OCTET_START = 50
-# abm.IP_LAST_OCTET_END   = 53
-# abm.SAMPLE_PERIOD_SEC   = 30   # only affects internal sleep; not used here
+abm.IP_BASE = "10.16.130"
+abm.IP_LAST_OCTET_START = 50
+abm.IP_LAST_OCTET_END = 51
+abm.SAMPLE_PERIOD_SEC = 30   # only affects internal sleep; not used here
 
 
 # ---------------------------------------------------------------------------
@@ -155,7 +155,7 @@ def run(count: int = 0, interval: float = 30.0) -> None:
         Seconds to wait between successive poll_once() calls.
         Set to 0 for back-to-back polling (useful for testing).
     """
-    infinite  = (count == 0)
+    infinite = (count == 0)
     iteration = 0
 
     print(f"ab_meter_caller starting — "
@@ -190,7 +190,7 @@ def run(count: int = 0, interval: float = 30.0) -> None:
             summarise(results, iteration)
 
             # ── Wait for next interval, accounting for poll duration ───────
-            elapsed   = time.monotonic() - t_start
+            elapsed = time.monotonic() - t_start
             remaining = interval - elapsed
             if remaining > 0 and (infinite or iteration < count):
                 print(f"  Next poll in {remaining:.1f}s …")
