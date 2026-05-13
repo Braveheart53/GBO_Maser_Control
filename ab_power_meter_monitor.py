@@ -23,8 +23,10 @@ Device range   : last octet 50 – 53  (configurable below)
 Author : W. Wallace — NRAO / Green Bank Observatory
 Date   : 2026-05-11
 Python : 3.8+
+Version: 1.0.0
 Deps   : PySide6, matplotlib, requests, beautifulsoup4, lxml,
-         astropy, openpyxl, veusz  (pip install each)
+         astropy, openpyxl, veusz  
+         (pip, conda, mamba, or uv install each)
 
 Usage
 -----
@@ -159,7 +161,7 @@ IP_LAST_OCTET_END = 51           # End   of last-octet range (inclusive)
 # ---------------------------------------------------------------------------
 # Polling / timing
 # ---------------------------------------------------------------------------
-SAMPLE_PERIOD_SEC = 30    # Seconds between successive polls of all devices
+SAMPLE_PERIOD_SEC = 15    # Seconds between successive polls of all devices
 HTTP_TIMEOUT_SEC = 5     # Per-request HTTP timeout
 
 # ---------------------------------------------------------------------------
