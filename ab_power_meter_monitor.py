@@ -27,7 +27,7 @@ Phone  : +1 (304) 456-2216
 Email  : wwallace@nrao.edu
 Email2 : naval.antennas@gmail.com 
 Python : 3.8+
-Version: 1.0.6
+Version: 1.0.7
 Deps   : PySide6, matplotlib, requests, beautifulsoup4, lxml,
          astropy, openpyxl, veusz  (pip install each)
 
@@ -104,8 +104,9 @@ ENABLE_GUI = 0   # Show PyQt/PySide6 main window
 ENABLE_FITS = 0   # Write NRAO-compliant FITS files
 ENABLE_CSV = 0   # Write per-table CSV files
 ENABLE_XLSX = 0   # Write Excel workbook with charts
-# Append timestamped entries to Markdown log files (.md)
-ENABLE_LOG_APPEND = 0
+ENABLE_LOG_APPEND = 0   # Write per-device Markdown (.md) data log tables
+ENABLE_LOG_FILE = 0   # Write ab_monitor.log (Python logging file handler)
+# Set to 0 to keep logging console-only (no file created)
 ENABLE_VEUSZ = 0   # Write Veusz HDF5 project file(s) (.vszh5)
 
 # ---------------------------------------------------------------------------
@@ -169,7 +170,7 @@ IP_LIST: List[str] = [
 # ---------------------------------------------------------------------------
 # %% Polling / timing
 # ---------------------------------------------------------------------------
-SAMPLE_PERIOD_SEC = 30    # Seconds between successive polls of all devices
+SAMPLE_PERIOD_SEC = 20    # Seconds between successive polls of all devices
 HTTP_TIMEOUT_SEC = 5     # Per-request HTTP timeout
 
 # ---------------------------------------------------------------------------
@@ -253,26 +254,32 @@ UNIT_MAP: List[Tuple[str, str]] = [
 # ===========================================================================
 # %% LOGGING SETUP
 # ===========================================================================
-def _setup_logging(log_dir: str, append: bool = True) -> logging.Logger:
+def _setup_logging(
+    log_dir: str,
+    append: bool = True,
+    enable_log_file: bool = True,
+) -> logging.Logger:
     """
     Initialise the module-level logger.
 
     Parameters
     ----------
     log_dir : str
-        Directory where the rotating log file will be written.
+        Directory where the log file will be written.  Ignored (and not
+        created) when ``enable_log_file`` is False.
     append : bool
         If True, append to existing log file; otherwise overwrite.
+    enable_log_file : bool
+        When True (default), attach a FileHandler that writes
+        ``ab_monitor.log`` to ``log_dir``.
+        When False, only a console StreamHandler is attached — no directory
+        is created and no file is written.
 
     Returns
     -------
     logging.Logger
         Configured logger instance.
     """
-    os.makedirs(log_dir, exist_ok=True)
-    log_path = os.path.join(log_dir, "ab_monitor.log")
-    file_mode = "a" if append else "w"
-
     fmt = logging.Formatter(
         fmt="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
         datefmt="%Y-%m-%dT%H:%M:%S",
@@ -281,27 +288,37 @@ def _setup_logging(log_dir: str, append: bool = True) -> logging.Logger:
     logger = logging.getLogger("ABMonitor")
     logger.setLevel(logging.DEBUG)
 
-    # %%% File handler
-    fh = logging.FileHandler(log_path, mode=file_mode, encoding="utf-8")
-    fh.setLevel(logging.DEBUG)
-    fh.setFormatter(fmt)
-
-    # %%% Console handler
+    # %%% Console handler — always present
     ch = logging.StreamHandler(sys.stdout)
     ch.setLevel(logging.INFO)
     ch.setFormatter(fmt)
 
     if not logger.handlers:
-        logger.addHandler(fh)
         logger.addHandler(ch)
 
-    logger.info("Logger initialised — output: %s", log_path)
+    # %%% File handler — only when enabled
+    if enable_log_file:
+        os.makedirs(log_dir, exist_ok=True)
+        log_path = os.path.join(log_dir, "ab_monitor.log")
+        file_mode = "a" if append else "w"
+        fh = logging.FileHandler(log_path, mode=file_mode, encoding="utf-8")
+        fh.setLevel(logging.DEBUG)
+        fh.setFormatter(fmt)
+        if not any(isinstance(h, logging.FileHandler) for h in logger.handlers):
+            logger.addHandler(fh)
+        logger.info("Logger initialised — output: %s", log_path)
+    else:
+        logger.info("Logger initialised — console only (ENABLE_LOG_FILE=0)")
+
     return logger
 
 
 # Global logger (module scope; re-initialised when log_dir changes)
 logger: logging.Logger = _setup_logging(
-    LOG_DIR, append=bool(ENABLE_LOG_APPEND))
+    LOG_DIR,
+    append=bool(ENABLE_LOG_APPEND),
+    enable_log_file=bool(ENABLE_LOG_FILE),
+)
 
 
 # ===========================================================================
@@ -920,11 +937,11 @@ def write_fits(
         ]
         if all_timestamps:
             first_ts = min(all_timestamps).replace(" ", "T")
-            last_ts  = max(all_timestamps).replace(" ", "T")
+            last_ts = max(all_timestamps).replace(" ", "T")
             primary_hdr["DATE-OBS"] = (_fits_ascii(first_ts),
-                                        "Local time of first accumulated sample")
+                                       "Local time of first accumulated sample")
             primary_hdr["DATE-END"] = (_fits_ascii(last_ts),
-                                        "Local time of last accumulated sample")
+                                       "Local time of last accumulated sample")
             primary_hdr["NSAMP"] = (
                 max(len(td.get("timestamps_local", []))
                     for td in ip_tables.values()),
@@ -1917,6 +1934,25 @@ def open_veusz_preview(
     write_veusz(all_device_data, veusz_dir, show_window=True)
 
 
+def _any_output_enabled(cfg: Dict[str, Any]) -> bool:
+    """
+    Return True if at least one file output is enabled in *cfg*.
+
+    Used to gate output directory creation — if every output switch is off
+    no directories are created on disk.
+
+    Covers: FITS, CSV, XLSX, Markdown log tables, log file, Veusz.
+    """
+    return any([
+        cfg.get("enable_fits"),
+        cfg.get("enable_csv"),
+        cfg.get("enable_xlsx"),
+        cfg.get("enable_log_append"),
+        cfg.get("enable_log_file"),
+        cfg.get("enable_veusz"),
+    ])
+
+
 def flush_outputs_parallel(cfg: Dict[str, Any]) -> "concurrent.futures.Future":
     """
     Dispatch non-Veusz output writers to a thread-pool executor so that
@@ -1941,6 +1977,12 @@ def flush_outputs_parallel(cfg: Dict[str, Any]) -> "concurrent.futures.Future":
         Future representing the background flush task.
     """
     def _do_flush() -> None:
+        # Skip entirely if no file output is enabled — avoids creating
+        # any output directories on disk.
+        if not _any_output_enabled(cfg):
+            logger.debug("All file outputs disabled — flush skipped.")
+            return
+
         fits_dir = cfg.get("fits_dir",  FITS_DIR)
         csv_dir = cfg.get("csv_dir",   CSV_DIR)
         xlsx_dir = cfg.get("xlsx_dir",  XLSX_DIR)
@@ -2050,9 +2092,9 @@ def build_preview_figures(
 
         # ── Per-table line plots ───────────────────────────────────────────
         for tname, tdata in tables.items():
-            columns    = tdata["columns"]
+            columns = tdata["columns"]
             timestamps = tdata["timestamps_local"]
-            n_samples  = len(timestamps)
+            n_samples = len(timestamps)
 
             if not columns or n_samples == 0:
                 continue
@@ -2068,7 +2110,7 @@ def build_preview_figures(
                 if len(values) != n_samples:
                     # Length mismatch — skip rather than crash.
                     continue
-                unit  = tdata["units"].get(param, "")
+                unit = tdata["units"].get(param, "")
                 label = f"{param} ({unit})" if unit else param
                 color = prop_cycle_colors[color_idx % len(prop_cycle_colors)]
                 ax.plot(
@@ -2086,7 +2128,7 @@ def build_preview_figures(
             if timestamps:
                 # Show at most ~8 evenly-spaced labels.
                 step = max(1, n_samples // 8)
-                tick_pos    = x[::step]
+                tick_pos = x[::step]
                 tick_labels = timestamps[::step]
                 ax.set_xticks(tick_pos)
                 ax.set_xticklabels(
@@ -2102,7 +2144,8 @@ def build_preview_figures(
                 borderaxespad=0,
             )
             fig.tight_layout(rect=(0, 0, 0.82, 1))   # room for legend
-            fig._ab_title = f"{ip} — {tname}"        # type: ignore[attr-defined]
+            # type: ignore[attr-defined]
+            fig._ab_title = f"{ip} — {tname}"
             figures.append(fig)
 
         # ── Overlay line plots by unit group ──────────────────────────────
@@ -2111,20 +2154,21 @@ def build_preview_figures(
             group_series: List[tuple] = []
 
             for tname, tdata in tables.items():
-                columns    = tdata["columns"]
+                columns = tdata["columns"]
                 timestamps = tdata["timestamps_local"]
-                n_samples  = len(timestamps)
+                n_samples = len(timestamps)
 
                 for param, values in columns.items():
                     if not any(s in param.lower() for s in substrings):
                         continue
                     if len(values) != n_samples or n_samples == 0:
                         continue
-                    unit  = tdata["units"].get(param, "")
+                    unit = tdata["units"].get(param, "")
                     label = f"{tname[:10]}/{param}"
                     if unit:
                         label += f" ({unit})"
-                    group_series.append((label, list(range(n_samples)), values))
+                    group_series.append(
+                        (label, list(range(n_samples)), values))
 
             if len(group_series) < 2:
                 continue
@@ -2152,7 +2196,8 @@ def build_preview_figures(
                 borderaxespad=0,
             )
             fig.tight_layout(rect=(0, 0, 0.82, 1))
-            fig._ab_title = f"{ip} — Overlay: {group_label}"  # type: ignore[attr-defined]
+            # type: ignore[attr-defined]
+            fig._ab_title = f"{ip} — Overlay: {group_label}"
             figures.append(fig)
 
     return figures
@@ -2580,14 +2625,15 @@ def launch_gui(
             grp = QGroupBox("Output Options")
             layout = QVBoxLayout()
 
-            # Check-boxes for the 5 file-output modes.
+            # Check-boxes for the 6 file-output modes.
             # NOTE: "Enable GUI" is intentionally omitted here — the GUI is
             # already running, so that switch is only meaningful in the
             # ENABLE_GUI header variable and has no in-app toggle.
             self._cb_fits = QCheckBox("Enable FITS output")
             self._cb_csv = QCheckBox("Enable CSV output")
             self._cb_xlsx = QCheckBox("Enable Excel (XLSX) output")
-            self._cb_log = QCheckBox("Append to log files")
+            self._cb_log = QCheckBox("Append to Markdown log tables (.md)")
+            self._cb_log_file = QCheckBox("Write ab_monitor.log file")
             self._cb_veusz = QCheckBox("Enable Veusz HDF5 output (.vszh5)")
 
             self._cb_fits.setChecked(
@@ -2596,12 +2642,15 @@ def launch_gui(
                 bool(self._switches.get("enable_csv",        ENABLE_CSV)))
             self._cb_xlsx.setChecked(
                 bool(self._switches.get("enable_xlsx",       ENABLE_XLSX)))
-            self._cb_log.setChecked(bool(self._switches.get(
-                "enable_log_append", ENABLE_LOG_APPEND)))
+            self._cb_log.setChecked(
+                bool(self._switches.get("enable_log_append", ENABLE_LOG_APPEND)))
+            self._cb_log_file.setChecked(
+                bool(self._switches.get("enable_log_file",   ENABLE_LOG_FILE)))
             self._cb_veusz.setChecked(
-                bool(self._switches.get("enable_veusz",    ENABLE_VEUSZ)))
+                bool(self._switches.get("enable_veusz",      ENABLE_VEUSZ)))
 
-            for cb in [self._cb_fits, self._cb_csv, self._cb_xlsx, self._cb_log, self._cb_veusz]:
+            for cb in [self._cb_fits, self._cb_csv, self._cb_xlsx,
+                       self._cb_log, self._cb_log_file, self._cb_veusz]:
                 layout.addWidget(cb)
 
             # --- Output root directory (drives FITS, CSV, XLSX, Veusz sub-dirs) ---
@@ -2741,6 +2790,7 @@ def launch_gui(
                 "enable_csv":        int(self._cb_csv.isChecked()),
                 "enable_xlsx":       int(self._cb_xlsx.isChecked()),
                 "enable_log_append": int(self._cb_log.isChecked()),
+                "enable_log_file":   int(self._cb_log_file.isChecked()),
                 "enable_veusz":      int(self._cb_veusz.isChecked()),
                 # Runtime output directories — derived from the GUI fields.
                 # All sub-dirs are built under output_base_dir unless the
@@ -3499,6 +3549,7 @@ def main() -> Dict[str, Dict[str, Dict]]:
         "enable_csv":        ENABLE_CSV,
         "enable_xlsx":       ENABLE_XLSX,
         "enable_log_append": ENABLE_LOG_APPEND,
+        "enable_log_file":   ENABLE_LOG_FILE,
         "enable_veusz":      ENABLE_VEUSZ,   # write Veusz HDF5 project file(s)
         # Output directories — all derived from OUTPUT_BASE_DIR.
         # Change OUTPUT_BASE_DIR at the top of the file to relocate everything.
