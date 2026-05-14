@@ -61,7 +61,7 @@ Phone  : +1 (304) 456-2216
 Email  : wwallace@nrao.edu
 Email2 : naval.antennas@gmail.com 
 Python : 3.8+
-Version: 1.2.2
+Version: 1.2.3
 """
 # %% Imorts
 import argparse
@@ -93,9 +93,7 @@ abm.HEADLESS_CONSOLE_DICTS_ONLY = 0
 #   abm.IP_LIST = ["10.16.130.50", "10.16.130.53"]
 abm.IP_LIST = [
     "10.16.130.50",
-    "10.16.130.51",
-    "10.16.130.52",
-    "10.16.130.53",
+    "10.16.130.51"
 ]
 abm.SAMPLE_PERIOD_SEC = 15   # internal sleep — not used when caller owns loop
 
@@ -155,24 +153,30 @@ def poll_once() -> None:
         print(f"[ab_meter_caller] ERROR during poll: {exc}", file=sys.stderr)
 
 
-def summarise(iteration: int) -> None:
+def summarise(iteration: int, total: int = 0) -> None:
     """
     Print a compact human-readable summary of the current TIME_SERIES_STORE
     state to stdout after each poll.
 
-    Shows device count, accumulated sample count, and a preview of the most
-    recent Real_Time_Power_Table values.  Replace or extend with your own
-    application logic.
+    Shows caller-level progress (N of M), device count, accumulated sample
+    count, and a preview of the most recent Real_Time_Power_Table values.
+    Replace or extend with your own application logic.
 
     Parameters
     ----------
     iteration : int
         Current loop iteration number (1-based).
+    total : int
+        Total number of iterations requested by the caller.  0 = infinite.
     """
     store = get_all_data()
     ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     devices = list(store.keys())
-    print(f"\n[{ts}] Iteration {iteration} — {len(devices)} device(s): {devices}")
+
+    # Progress from the caller's perspective — always accurate.
+    progress = f"{iteration} of {'inf' if total == 0 else total}"
+
+    print(f"\n[{ts}] Poll {progress} — {len(devices)} device(s): {devices}")
 
     for ip, tables in store.items():
         pwr = tables.get("Real_Time_Power_Table", {})
@@ -265,7 +269,7 @@ def run(count: int = 1, interval: float = 30.0) -> Dict[str, Any]:
             #   data["10.16.130.50"]["Real_Time_Power_Table"]["timestamps_local"]
             #       → list of timestamp strings, same length as each column
 
-            summarise(iteration)
+            summarise(iteration, total=count)
 
             # ── Wait for next interval, accounting for poll duration ───────
             elapsed = time.monotonic() - t_start

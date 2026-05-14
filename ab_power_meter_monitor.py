@@ -27,7 +27,7 @@ Phone  : +1 (304) 456-2216
 Email  : wwallace@nrao.edu
 Email2 : naval.antennas@gmail.com 
 Python : 3.8+
-Version: 1.0.4
+Version: 1.0.6
 Deps   : PySide6, matplotlib, requests, beautifulsoup4, lxml,
          astropy, openpyxl, veusz  (pip install each)
 
@@ -164,6 +164,8 @@ MEM_FREE_MIN_MB = 512   # flush when system free RAM falls below N MB
 IP_LIST: List[str] = [
     "10.16.130.50",
     "10.16.130.51",
+    "10.16.130.52",
+    "10.16.130.53",
 ]
 
 # ---------------------------------------------------------------------------
@@ -810,8 +812,13 @@ def write_fits(
     fits_dir: str,
 ) -> None:
     """
-    Write NRAO-compliant FITS files — one file per device, one BinTableHDU
-    per meter table containing the FULL accumulated time-series.
+    Write NRAO-compliant FITS files — one persistent file per device,
+    overwritten on every call so it always contains the FULL accumulated
+    time-series from TIME_SERIES_STORE.
+
+    Filename is fixed per device (no timestamp in the name) so successive
+    flushes in both GUI and headless modes append to the same file on disk
+    rather than creating a new file per sample.
 
     Layout (each BinTableHDU)
     -------------------------
@@ -826,6 +833,7 @@ def write_fits(
       - DATE-OBS in ISO-8601 format (first sample timestamp)
       - DATE-END in ISO-8601 format (last sample timestamp)
       - NSAMP keyword: number of accumulated poll cycles
+      - DATE-WRT: UTC timestamp of this particular write
       - BUNIT keyword on each column where units are known
       - All string header values are 7-bit ASCII (NOST 100-2.0 sect. 4.4.2)
 
@@ -850,7 +858,7 @@ def write_fits(
     os.makedirs(fits_dir, exist_ok=True)
     now_utc = datetime.datetime.utcnow()
 
-    # Take a thread-safe snapshot of the full accumulated store
+    # Take a thread-safe snapshot of the full accumulated store.
     with _TS_LOCK:
         ts_snapshot = {
             ip: {
@@ -866,9 +874,11 @@ def write_fits(
 
     for ip in all_device_data:
         safe_ip = ip.replace(".", "_")
+        # Fixed filename per device — no timestamp so every write overwrites
+        # the same file, keeping a single up-to-date file with all samples.
         filename = os.path.join(
             fits_dir,
-            f"ABMeter_{safe_ip}_{now_utc.strftime('%Y%m%dT%H%M%S')}.fits",
+            f"ABMeter_{safe_ip}.fits",
         )
 
         hdu_list = [astrofits.PrimaryHDU()]
@@ -884,7 +894,11 @@ def write_fits(
         primary_hdr["OBSERVER"] = (_fits_ascii("WWallace"),     "W. Wallace")
         primary_hdr["DATE-OBS"] = (
             _fits_ascii(now_utc.isoformat(timespec="seconds") + "Z"),
-            "UTC file-creation time",
+            "UTC of first sample in file",
+        )
+        primary_hdr["DATE-WRT"] = (
+            _fits_ascii(now_utc.isoformat(timespec="seconds") + "Z"),
+            "UTC timestamp of this write",
         )
         primary_hdr["FILENAME"] = (_fits_ascii(
             os.path.basename(filename)), "FITS file name")
@@ -897,6 +911,27 @@ def write_fits(
         )
 
         ip_tables = ts_snapshot.get(ip, {})
+
+        # Determine the true first and last sample timestamps across all
+        # tables for this device so DATE-OBS reflects the data, not the
+        # write time.
+        all_timestamps = [
+            ts
+            for tdata in ip_tables.values()
+            for ts in tdata.get("timestamps_local", [])
+        ]
+        if all_timestamps:
+            first_ts = min(all_timestamps).replace(" ", "T")
+            last_ts  = max(all_timestamps).replace(" ", "T")
+            primary_hdr["DATE-OBS"] = (_fits_ascii(first_ts),
+                                        "Local time of first accumulated sample")
+            primary_hdr["DATE-END"] = (_fits_ascii(last_ts),
+                                        "Local time of last accumulated sample")
+            primary_hdr["NSAMP"] = (
+                max(len(td.get("timestamps_local", []))
+                    for td in ip_tables.values()),
+                "Maximum accumulated poll cycles across all tables",
+            )
 
         for tname, tdata in ip_tables.items():
             timestamps = tdata["timestamps_local"]
@@ -2017,9 +2052,9 @@ def build_preview_figures(
 
         # ── Per-table line plots ───────────────────────────────────────────
         for tname, tdata in tables.items():
-            columns = tdata["columns"]
+            columns    = tdata["columns"]
             timestamps = tdata["timestamps_local"]
-            n_samples = len(timestamps)
+            n_samples  = len(timestamps)
 
             if not columns or n_samples == 0:
                 continue
@@ -2035,7 +2070,7 @@ def build_preview_figures(
                 if len(values) != n_samples:
                     # Length mismatch — skip rather than crash.
                     continue
-                unit = tdata["units"].get(param, "")
+                unit  = tdata["units"].get(param, "")
                 label = f"{param} ({unit})" if unit else param
                 color = prop_cycle_colors[color_idx % len(prop_cycle_colors)]
                 ax.plot(
@@ -2053,7 +2088,7 @@ def build_preview_figures(
             if timestamps:
                 # Show at most ~8 evenly-spaced labels.
                 step = max(1, n_samples // 8)
-                tick_pos = x[::step]
+                tick_pos    = x[::step]
                 tick_labels = timestamps[::step]
                 ax.set_xticks(tick_pos)
                 ax.set_xticklabels(
@@ -2069,8 +2104,7 @@ def build_preview_figures(
                 borderaxespad=0,
             )
             fig.tight_layout(rect=(0, 0, 0.82, 1))   # room for legend
-            # type: ignore[attr-defined]
-            fig._ab_title = f"{ip} — {tname}"
+            fig._ab_title = f"{ip} — {tname}"        # type: ignore[attr-defined]
             figures.append(fig)
 
         # ── Overlay line plots by unit group ──────────────────────────────
@@ -2079,21 +2113,20 @@ def build_preview_figures(
             group_series: List[tuple] = []
 
             for tname, tdata in tables.items():
-                columns = tdata["columns"]
+                columns    = tdata["columns"]
                 timestamps = tdata["timestamps_local"]
-                n_samples = len(timestamps)
+                n_samples  = len(timestamps)
 
                 for param, values in columns.items():
                     if not any(s in param.lower() for s in substrings):
                         continue
                     if len(values) != n_samples or n_samples == 0:
                         continue
-                    unit = tdata["units"].get(param, "")
+                    unit  = tdata["units"].get(param, "")
                     label = f"{tname[:10]}/{param}"
                     if unit:
                         label += f" ({unit})"
-                    group_series.append(
-                        (label, list(range(n_samples)), values))
+                    group_series.append((label, list(range(n_samples)), values))
 
             if len(group_series) < 2:
                 continue
@@ -2121,8 +2154,7 @@ def build_preview_figures(
                 borderaxespad=0,
             )
             fig.tight_layout(rect=(0, 0, 0.82, 1))
-            # type: ignore[attr-defined]
-            fig._ab_title = f"{ip} — Overlay: {group_label}"
+            fig._ab_title = f"{ip} — Overlay: {group_label}"  # type: ignore[attr-defined]
             figures.append(fig)
 
     return figures
@@ -3216,29 +3248,34 @@ def run_headless(cfg: Dict[str, Any]) -> None:
     _devnull_stderr = None
 
     if silent:
-        # Full silence: redirect stdout and stderr to /dev/null and strip
-        # all StreamHandlers from the root logger.
+        # Full silence: strip all console StreamHandlers FIRST (while
+        # sys.__stdout__ still matches the handler's captured stream),
+        # then redirect stdout/stderr to /dev/null.
+        # Order matters: handlers are compared against sys.__stdout__ and
+        # sys.__stderr__ before redirection so the match is reliable.
+        root_log = logging.getLogger()
+        for h in list(root_log.handlers):
+            if isinstance(h, logging.StreamHandler) and getattr(
+                h, "stream", None
+            ) in (sys.__stdout__, sys.__stderr__):
+                root_log.removeHandler(h)
+        root_log.addHandler(logging.NullHandler())
+        # Now redirect the actual streams.
         _devnull_stdout = open(os.devnull, "w", encoding="utf-8")  # noqa: WPS515
         _devnull_stderr = open(os.devnull, "w", encoding="utf-8")
         sys.stdout = _devnull_stdout
         sys.stderr = _devnull_stderr
-        root_log = logging.getLogger()
-        for h in list(root_log.handlers):
-            if isinstance(h, logging.StreamHandler) and h.stream in (
-                sys.__stdout__, sys.__stderr__, sys.stdout, sys.stderr
-            ):
-                root_log.removeHandler(h)
-        _null_handler = logging.NullHandler()
-        root_log.addHandler(_null_handler)
 
     elif dicts_only:
-        # Dicts-only: strip StreamHandlers but leave stdout open for print().
-        _null_handler = logging.NullHandler()
+        # Dicts-only: strip console StreamHandlers but leave stdout open
+        # for print() calls in the caller.
         root_log = logging.getLogger()
         for h in list(root_log.handlers):
-            if isinstance(h, logging.StreamHandler) and h.stream in (sys.stdout, sys.stderr):
+            if isinstance(h, logging.StreamHandler) and getattr(
+                h, "stream", None
+            ) in (sys.__stdout__, sys.__stderr__):
                 root_log.removeHandler(h)
-        root_log.addHandler(_null_handler)
+        root_log.addHandler(logging.NullHandler())
 
     if not dicts_only:
         logger.info(
