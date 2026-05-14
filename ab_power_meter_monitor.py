@@ -27,7 +27,7 @@ Phone  : +1 (304) 456-2216
 Email  : wwallace@nrao.edu
 Email2 : naval.antennas@gmail.com 
 Python : 3.8+
-Version: 1.0.2
+Version: 1.0.3
 Deps   : PySide6, matplotlib, requests, beautifulsoup4, lxml,
          astropy, openpyxl, veusz  (pip install each)
 
@@ -1956,14 +1956,23 @@ def build_preview_figures(
     """
     Build a list of matplotlib Figure objects for GUI preview display.
 
+    Reads from TIME_SERIES_STORE (the authoritative accumulator) so that
+    each figure shows a growing line plot across ALL samples collected so
+    far, not just the most recent snapshot.  The ``all_device_data``
+    parameter is accepted for API compatibility but is not used — the
+    store is the canonical source.
+
     Creates:
-      • One figure per table (per device) showing all numeric params as a bar chart.
-      • One overlay figure per unit-group containing data across tables.
+      • One figure per table per device — one line per numeric parameter,
+        x-axis = sample index, growing with each poll.
+      • One overlay figure per unit-group (VEUSZ_OVERLAY_GROUPS) per
+        device — all matching parameters on a single axes.
 
     Parameters
     ----------
     all_device_data : Dict
-        Nested dict: {ip: {table_name: parsed_dict}}
+        Accepted for API compatibility; not used internally.
+        TIME_SERIES_STORE is read directly.
 
     Returns
     -------
@@ -1974,7 +1983,6 @@ def build_preview_figures(
         import matplotlib
         matplotlib.use("Agg")   # non-interactive backend for embedding
         import matplotlib.pyplot as plt
-        import matplotlib.ticker as ticker
     except ImportError as exc:
         logger.error("matplotlib not available — preview skipped: %s", exc)
         return []
@@ -1987,60 +1995,130 @@ def build_preview_figures(
     figures: List[Any] = []
     prop_cycle_colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
 
-    for ip, tables in all_device_data.items():
-        # --- Per-table figures ---
-        for tname, tdict in tables.items():
-            series = extract_numeric_series(tdict)
-            if not series:
+    # Snapshot the store under lock so we read a consistent view.
+    with _TS_LOCK:
+        store_snapshot = {
+            ip: {
+                tname: {
+                    "timestamps_local": list(tdata.get("timestamps_local", [])),
+                    "columns": {
+                        col: list(vals)
+                        for col, vals in tdata.get("columns", {}).items()
+                    },
+                    "units": dict(tdata.get("units", {})),
+                }
+                for tname, tdata in tables.items()
+            }
+            for ip, tables in TIME_SERIES_STORE.items()
+        }
+
+    for ip, tables in store_snapshot.items():
+
+        # ── Per-table line plots ───────────────────────────────────────────
+        for tname, tdata in tables.items():
+            columns    = tdata["columns"]
+            timestamps = tdata["timestamps_local"]
+            n_samples  = len(timestamps)
+
+            if not columns or n_samples == 0:
                 continue
 
-            params = list(series.keys())
-            values = [series[p][0] for p in params]
-            units = [series[p][1] for p in params]
+            # x-axis: integer sample indices so the axis always starts at 0
+            # regardless of how many samples have been collected.
+            x = list(range(n_samples))
 
             fig, ax = plt.subplots(figsize=(10, 4))
-            x_pos = range(len(params))
-            bars = ax.bar(
-                x_pos, values, color=prop_cycle_colors[:len(params)] * 10)
-            ax.set_xticks(list(x_pos))
-            ax.set_xticklabels(params, rotation=45, ha="right", fontsize=7)
-            ax.set_title(f"{tname}\n{ip}", fontsize=9)
+            color_idx = 0
+
+            for param, values in columns.items():
+                if len(values) != n_samples:
+                    # Length mismatch — skip rather than crash.
+                    continue
+                unit  = tdata["units"].get(param, "")
+                label = f"{param} ({unit})" if unit else param
+                color = prop_cycle_colors[color_idx % len(prop_cycle_colors)]
+                ax.plot(
+                    x, values,
+                    label=label,
+                    color=color,
+                    linewidth=1.4,
+                    marker="o",
+                    markersize=3,
+                )
+                color_idx += 1
+
+            # x-axis tick labels: show timestamps when available, otherwise
+            # show sample numbers.  Rotate and thin to avoid crowding.
+            if timestamps:
+                # Show at most ~8 evenly-spaced labels.
+                step = max(1, n_samples // 8)
+                tick_pos    = x[::step]
+                tick_labels = timestamps[::step]
+                ax.set_xticks(tick_pos)
+                ax.set_xticklabels(
+                    tick_labels, rotation=35, ha="right", fontsize=6)
+            ax.set_xlabel("Sample index")
             ax.set_ylabel("Value")
-            ax.grid(axis="y", alpha=0.3)
-            fig.tight_layout()
-            fig._ab_title = f"{ip} — {tname}"  # type: ignore[attr-defined]
+            ax.set_title(f"{tname}\n{ip}", fontsize=9)
+            ax.grid(alpha=0.3)
+            ax.legend(
+                fontsize=6,
+                loc="upper left",
+                bbox_to_anchor=(1.01, 1),
+                borderaxespad=0,
+            )
+            fig.tight_layout(rect=(0, 0, 0.82, 1))   # room for legend
+            fig._ab_title = f"{ip} — {tname}"        # type: ignore[attr-defined]
             figures.append(fig)
 
-        # --- Overlay figures by unit group ---
+        # ── Overlay line plots by unit group ──────────────────────────────
         for group_label, substrings in VEUSZ_OVERLAY_GROUPS.items():
-            group_params: List[str] = []
-            group_values: List[float] = []
-            group_labels: List[str] = []
+            # Collect (param_label, values_list) pairs that match this group.
+            group_series: List[tuple] = []
 
-            for tname, tdict in tables.items():
-                series = extract_numeric_series(tdict)
-                for param, (val, unit) in series.items():
-                    if any(s in param.lower() for s in substrings):
-                        group_params.append(param)
-                        group_values.append(val)
-                        group_labels.append(f"{tname[:12]}\n{param[:20]}")
+            for tname, tdata in tables.items():
+                columns    = tdata["columns"]
+                timestamps = tdata["timestamps_local"]
+                n_samples  = len(timestamps)
 
-            if len(group_values) < 2:
+                for param, values in columns.items():
+                    if not any(s in param.lower() for s in substrings):
+                        continue
+                    if len(values) != n_samples or n_samples == 0:
+                        continue
+                    unit  = tdata["units"].get(param, "")
+                    label = f"{tname[:10]}/{param}"
+                    if unit:
+                        label += f" ({unit})"
+                    group_series.append((label, list(range(n_samples)), values))
+
+            if len(group_series) < 2:
                 continue
 
             fig, ax = plt.subplots(figsize=(10, 4))
-            x_pos = range(len(group_labels))
-            ax.bar(x_pos, group_values,
-                   color=prop_cycle_colors[:len(group_labels)] * 10)
-            ax.set_xticks(list(x_pos))
-            ax.set_xticklabels(group_labels, rotation=45,
-                               ha="right", fontsize=7)
-            ax.set_title(f"Overlay: {group_label}\n{ip}", fontsize=9)
+            for c_idx, (label, x, values) in enumerate(group_series):
+                color = prop_cycle_colors[c_idx % len(prop_cycle_colors)]
+                ax.plot(
+                    x, values,
+                    label=label,
+                    color=color,
+                    linewidth=1.4,
+                    marker="o",
+                    markersize=3,
+                )
+
+            ax.set_xlabel("Sample index")
             ax.set_ylabel(group_label)
-            ax.grid(axis="y", alpha=0.3)
-            fig.tight_layout()
-            # type: ignore[attr-defined]
-            fig._ab_title = f"{ip} — Overlay: {group_label}"
+            ax.set_title(f"Overlay: {group_label}\n{ip}", fontsize=9)
+            ax.grid(alpha=0.3)
+            ax.legend(
+                fontsize=6,
+                loc="upper left",
+                bbox_to_anchor=(1.01, 1),
+                borderaxespad=0,
+            )
+            fig.tight_layout(rect=(0, 0, 0.82, 1))
+            fig._ab_title = f"{ip} — Overlay: {group_label}"  # type: ignore[attr-defined]
             figures.append(fig)
 
     return figures
