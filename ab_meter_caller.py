@@ -61,7 +61,7 @@ Phone  : +1 (304) 456-2216
 Email  : wwallace@nrao.edu
 Email2 : naval.antennas@gmail.com 
 Python : 3.8+
-Version: 1.2.1
+Version: 1.2.2
 """
 # %% Imorts
 import argparse
@@ -79,7 +79,7 @@ import ab_power_meter_monitor as abm
 # %% Required Switches
 # ── Required overrides ──────────────────────────────────────────────────────
 abm.ENABLE_GUI = 0   # REQUIRED — GUI blocks forever
-abm.HEADLESS_LOOP_COUNT = 101   # REQUIRED — single poll per main() call
+abm.HEADLESS_LOOP_COUNT = 1     # REQUIRED — single poll per main() call
 abm.HEADLESS_SILENT = 1   # REQUIRED — zero module console output
 
 # Redundant with SILENT=1 but explicit is better than implicit.
@@ -87,10 +87,16 @@ abm.HEADLESS_PRINT_EACH_SAMPLE = 0
 abm.HEADLESS_PRINT_CUMULATIVE = 0
 abm.HEADLESS_CONSOLE_DICTS_ONLY = 0
 
-# ── Optional: override IP range if needed ───────────────────────────────────
-abm.IP_BASE = "10.16.130"
-abm.IP_LAST_OCTET_START = 50
-abm.IP_LAST_OCTET_END = 51
+# ── Optional: override IP list if needed ───────────────────────────────────
+# Replace IP_LIST to poll a specific subset of devices.  Full IP strings only.
+# Example: monitor only .50 and .53:
+#   abm.IP_LIST = ["10.16.130.50", "10.16.130.53"]
+abm.IP_LIST = [
+    "10.16.130.50",
+    "10.16.130.51",
+    "10.16.130.52",
+    "10.16.130.53",
+]
 abm.SAMPLE_PERIOD_SEC = 15   # internal sleep — not used when caller owns loop
 
 

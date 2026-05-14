@@ -27,7 +27,7 @@ Phone  : +1 (304) 456-2216
 Email  : wwallace@nrao.edu
 Email2 : naval.antennas@gmail.com 
 Python : 3.8+
-Version: 1.0.3
+Version: 1.0.4
 Deps   : PySide6, matplotlib, requests, beautifulsoup4, lxml,
          astropy, openpyxl, veusz  (pip install each)
 
@@ -158,9 +158,13 @@ MEM_FREE_MIN_MB = 512   # flush when system free RAM falls below N MB
 # ---------------------------------------------------------------------------
 # %% IP address configuration
 # ---------------------------------------------------------------------------
-IP_BASE = "10.16.130"  # First three octets (do NOT include trailing dot)
-IP_LAST_OCTET_START = 50           # Start of last-octet range (inclusive)
-IP_LAST_OCTET_END = 51           # End   of last-octet range (inclusive)
+# Explicit list of device IP addresses to poll.  Add or remove entries to
+# target any combination of devices regardless of sequential ordering.
+# Example: monitor only .50 and .53 → ["10.16.130.50", "10.16.130.53"]
+IP_LIST: List[str] = [
+    "10.16.130.50",
+    "10.16.130.51",
+]
 
 # ---------------------------------------------------------------------------
 # %% Polling / timing
@@ -483,25 +487,20 @@ def parse_html_table(html: str, table_name: str, ip: str, page: int) -> Dict[str
 
 
 def poll_all_devices(
-    ip_base: str,
-    octet_start: int,
-    octet_end: int,
+    ip_list: List[str],
     table_names: Dict[int, str],
 ) -> Dict[str, Dict[str, Any]]:
     """
-    Poll all tables from all devices in the IP range.
+    Poll all tables from every device in ``ip_list``.
 
-    For each device (last-octet from octet_start to octet_end inclusive)
-    and each of the 11 table pages, fetch and parse the HTML.
+    Iterates over an explicit list of full IP address strings so that
+    non-contiguous devices (e.g. .50 and .53 only) can be monitored
+    without polling the addresses in between.
 
     Parameters
     ----------
-    ip_base : str
-        First three IP octets, e.g. '10.16.130'.
-    octet_start : int
-        First value of last octet to poll.
-    octet_end : int
-        Last  value of last octet to poll (inclusive).
+    ip_list : List[str]
+        Full IP address strings to poll, e.g. ["10.16.130.50", "10.16.130.53"].
     table_names : Dict[int, str]
         Mapping of page index → canonical table name.
 
@@ -513,8 +512,10 @@ def poll_all_devices(
     """
     all_data: Dict[str, Dict[str, Any]] = {}
 
-    for last_octet in range(octet_start, octet_end + 1):
-        ip = f"{ip_base}.{last_octet}"
+    for ip in ip_list:
+        ip = ip.strip()
+        if not ip:
+            continue
         logger.info("Polling device %s …", ip)
 
         for page_idx, tname in table_names.items():
@@ -2016,9 +2017,9 @@ def build_preview_figures(
 
         # ── Per-table line plots ───────────────────────────────────────────
         for tname, tdata in tables.items():
-            columns    = tdata["columns"]
+            columns = tdata["columns"]
             timestamps = tdata["timestamps_local"]
-            n_samples  = len(timestamps)
+            n_samples = len(timestamps)
 
             if not columns or n_samples == 0:
                 continue
@@ -2034,7 +2035,7 @@ def build_preview_figures(
                 if len(values) != n_samples:
                     # Length mismatch — skip rather than crash.
                     continue
-                unit  = tdata["units"].get(param, "")
+                unit = tdata["units"].get(param, "")
                 label = f"{param} ({unit})" if unit else param
                 color = prop_cycle_colors[color_idx % len(prop_cycle_colors)]
                 ax.plot(
@@ -2052,7 +2053,7 @@ def build_preview_figures(
             if timestamps:
                 # Show at most ~8 evenly-spaced labels.
                 step = max(1, n_samples // 8)
-                tick_pos    = x[::step]
+                tick_pos = x[::step]
                 tick_labels = timestamps[::step]
                 ax.set_xticks(tick_pos)
                 ax.set_xticklabels(
@@ -2068,7 +2069,8 @@ def build_preview_figures(
                 borderaxespad=0,
             )
             fig.tight_layout(rect=(0, 0, 0.82, 1))   # room for legend
-            fig._ab_title = f"{ip} — {tname}"        # type: ignore[attr-defined]
+            # type: ignore[attr-defined]
+            fig._ab_title = f"{ip} — {tname}"
             figures.append(fig)
 
         # ── Overlay line plots by unit group ──────────────────────────────
@@ -2077,20 +2079,21 @@ def build_preview_figures(
             group_series: List[tuple] = []
 
             for tname, tdata in tables.items():
-                columns    = tdata["columns"]
+                columns = tdata["columns"]
                 timestamps = tdata["timestamps_local"]
-                n_samples  = len(timestamps)
+                n_samples = len(timestamps)
 
                 for param, values in columns.items():
                     if not any(s in param.lower() for s in substrings):
                         continue
                     if len(values) != n_samples or n_samples == 0:
                         continue
-                    unit  = tdata["units"].get(param, "")
+                    unit = tdata["units"].get(param, "")
                     label = f"{tname[:10]}/{param}"
                     if unit:
                         label += f" ({unit})"
-                    group_series.append((label, list(range(n_samples)), values))
+                    group_series.append(
+                        (label, list(range(n_samples)), values))
 
             if len(group_series) < 2:
                 continue
@@ -2118,7 +2121,8 @@ def build_preview_figures(
                 borderaxespad=0,
             )
             fig.tight_layout(rect=(0, 0, 0.82, 1))
-            fig._ab_title = f"{ip} — Overlay: {group_label}"  # type: ignore[attr-defined]
+            # type: ignore[attr-defined]
+            fig._ab_title = f"{ip} — Overlay: {group_label}"
             figures.append(fig)
 
     return figures
@@ -2312,9 +2316,7 @@ def launch_gui(
                         f"[{datetime.datetime.now().strftime('%H:%M:%S')}] Polling …"
                     )
                     data = poll_all_devices(
-                        ip_base=self.config["ip_base"],
-                        octet_start=self.config["octet_start"],
-                        octet_end=self.config["octet_end"],
+                        ip_list=self.config["ip_list"],
                         table_names=TABLE_NAMES,
                     )
                     update_named_dicts(data)
@@ -2506,23 +2508,22 @@ def launch_gui(
             self.setCentralWidget(central)
 
         def _build_ip_group(self) -> QGroupBox:
-            """Build the IP address range control group."""
-            grp = QGroupBox("IP Address Range  (10.16.130.X)")
+            """Build the IP address list control group."""
+            grp = QGroupBox("Device IP Addresses")
             layout = QGridLayout()
 
-            layout.addWidget(QLabel("Last Octet Start:"), 0, 0)
-            self._spin_ip_start = QSpinBox()
-            self._spin_ip_start.setRange(1, 254)
-            self._spin_ip_start.setValue(self._switches.get(
-                "octet_start", IP_LAST_OCTET_START))
-            layout.addWidget(self._spin_ip_start, 0, 1)
-
-            layout.addWidget(QLabel("Last Octet End:"), 1, 0)
-            self._spin_ip_end = QSpinBox()
-            self._spin_ip_end.setRange(1, 254)
-            self._spin_ip_end.setValue(
-                self._switches.get("octet_end", IP_LAST_OCTET_END))
-            layout.addWidget(self._spin_ip_end, 1, 1)
+            layout.addWidget(QLabel("IP List (comma-separated):"), 0, 0)
+            # Pre-populate from the header switch list or the switches dict.
+            default_ips = ", ".join(
+                self._switches.get("ip_list", IP_LIST)
+            )
+            self._le_ip_list = QLineEdit(default_ips)
+            self._le_ip_list.setToolTip(
+                "Comma-separated full IP addresses to poll.\n"
+                "Example: 10.16.130.50, 10.16.130.53"
+            )
+            self._le_ip_list.setMinimumWidth(260)
+            layout.addWidget(self._le_ip_list, 0, 1)
 
             grp.setLayout(layout)
             return grp
@@ -2695,10 +2696,14 @@ def launch_gui(
             """Collect current GUI state into a config dict."""
             base = self._le_out_dir.text().strip() or OUTPUT_BASE_DIR
             log = self._le_log_dir.text().strip() or os.path.join(base, "logs")
+            # Parse the comma-separated IP list from the GUI field.
+            # Strip whitespace, drop any empty tokens.
+            raw_ips = self._le_ip_list.text()
+            ip_list = [ip.strip() for ip in raw_ips.split(",") if ip.strip()]
+            if not ip_list:
+                ip_list = list(IP_LIST)   # fall back to header default
             return {
-                "ip_base":           IP_BASE,
-                "octet_start":       self._spin_ip_start.value(),
-                "octet_end":         self._spin_ip_end.value(),
+                "ip_list":           ip_list,
                 "sample_period":     self._spin_period.value(),
                 # enable_gui is not surfaced in the GUI (already running);
                 # it is read directly from the ENABLE_GUI module variable.
@@ -2728,9 +2733,7 @@ def launch_gui(
             # functions.  Always pass ALL_DEVICE_DATA to those functions, never
             # the raw flat 'data' return value.
             data = poll_all_devices(
-                ip_base=cfg["ip_base"],
-                octet_start=cfg["octet_start"],
-                octet_end=cfg["octet_end"],
+                ip_list=cfg["ip_list"],
                 table_names=TABLE_NAMES,
             )
             # populates ALL_DEVICE_DATA
@@ -3282,9 +3285,7 @@ def run_headless(cfg: Dict[str, Any]) -> None:
             t_poll_start = time.monotonic()
 
             data = poll_all_devices(
-                ip_base=cfg["ip_base"],
-                octet_start=cfg["octet_start"],
-                octet_end=cfg["octet_end"],
+                ip_list=cfg["ip_list"],
                 table_names=TABLE_NAMES,
             )
             update_named_dicts(data)  # also calls accumulate_poll()
@@ -3448,9 +3449,7 @@ def main() -> Dict[str, Dict[str, Dict]]:
     # run_headless() so that caller overrides (abm.HEADLESS_LOOP_COUNT = 1)
     # are always honoured.  The copies in cfg below are kept only for logging.
     cfg: Dict[str, Any] = {
-        "ip_base":           IP_BASE,
-        "octet_start":       IP_LAST_OCTET_START,
-        "octet_end":         IP_LAST_OCTET_END,
+        "ip_list":           list(IP_LIST),   # explicit device IP list
         "sample_period":          SAMPLE_PERIOD_SEC,
         "headless_loop_count":          HEADLESS_LOOP_COUNT,
         "mem_flush_threshold_mb":        MEM_FLUSH_THRESHOLD_MB,
