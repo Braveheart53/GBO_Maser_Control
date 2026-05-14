@@ -27,7 +27,7 @@ Phone  : +1 (304) 456-2216
 Email  : wwallace@nrao.edu
 Email2 : naval.antennas@gmail.com 
 Python : 3.8+
-Version: 1.0.7
+Version: 1.0.9
 Deps   : PySide6, matplotlib, requests, beautifulsoup4, lxml,
          astropy, openpyxl, veusz  (pip install each)
 
@@ -100,14 +100,14 @@ except ImportError:
 # ---------------------------------------------------------------------------
 # %% Feature / output enable switches  (0 = off, 1 = on)
 # ---------------------------------------------------------------------------
-ENABLE_GUI = 0   # Show PyQt/PySide6 main window
-ENABLE_FITS = 0   # Write NRAO-compliant FITS files
-ENABLE_CSV = 0   # Write per-table CSV files
-ENABLE_XLSX = 0   # Write Excel workbook with charts
-ENABLE_LOG_APPEND = 0   # Write per-device Markdown (.md) data log tables
-ENABLE_LOG_FILE = 0   # Write ab_monitor.log (Python logging file handler)
-# Set to 0 to keep logging console-only (no file created)
-ENABLE_VEUSZ = 0   # Write Veusz HDF5 project file(s) (.vszh5)
+ENABLE_GUI        = 1   # Show PyQt/PySide6 main window
+ENABLE_FITS       = 1   # Write NRAO-compliant FITS files
+ENABLE_CSV        = 0   # Write per-table CSV files
+ENABLE_XLSX       = 1   # Write Excel workbook with charts
+ENABLE_LOG_APPEND = 1   # Write per-device Markdown (.md) data log tables
+ENABLE_LOG_FILE   = 1   # Write ab_monitor.log (Python logging file handler)
+                        # Set to 0 to keep logging console-only (no file created)
+ENABLE_VEUSZ      = 1   # Write Veusz HDF5 project file(s) (.vszh5)
 
 # ---------------------------------------------------------------------------
 # %% Headless loop control
@@ -164,13 +164,15 @@ MEM_FREE_MIN_MB = 512   # flush when system free RAM falls below N MB
 # Example: monitor only .50 and .53 → ["10.16.130.50", "10.16.130.53"]
 IP_LIST: List[str] = [
     "10.16.130.50",
-    "10.16.130.51"
+    "10.16.130.51",
+    "10.16.130.52",
+    "10.16.130.53",
 ]
 
 # ---------------------------------------------------------------------------
 # %% Polling / timing
 # ---------------------------------------------------------------------------
-SAMPLE_PERIOD_SEC = 20    # Seconds between successive polls of all devices
+SAMPLE_PERIOD_SEC = 30    # Seconds between successive polls of all devices
 HTTP_TIMEOUT_SEC = 5     # Per-request HTTP timeout
 
 # ---------------------------------------------------------------------------
@@ -313,11 +315,14 @@ def _setup_logging(
     return logger
 
 
-# Global logger (module scope; re-initialised when log_dir changes)
+# Global logger — always initialised console-only at module/import scope.
+# This avoids creating the logs/ directory on disk just because the module
+# was imported.  The file handler (and the logs/ directory) are added inside
+# main() after the runtime cfg is finalised and ENABLE_LOG_FILE is confirmed.
 logger: logging.Logger = _setup_logging(
     LOG_DIR,
     append=bool(ENABLE_LOG_APPEND),
-    enable_log_file=bool(ENABLE_LOG_FILE),
+    enable_log_file=False,          # console-only at import time
 )
 
 
@@ -937,11 +942,11 @@ def write_fits(
         ]
         if all_timestamps:
             first_ts = min(all_timestamps).replace(" ", "T")
-            last_ts = max(all_timestamps).replace(" ", "T")
+            last_ts  = max(all_timestamps).replace(" ", "T")
             primary_hdr["DATE-OBS"] = (_fits_ascii(first_ts),
-                                       "Local time of first accumulated sample")
+                                        "Local time of first accumulated sample")
             primary_hdr["DATE-END"] = (_fits_ascii(last_ts),
-                                       "Local time of last accumulated sample")
+                                        "Local time of last accumulated sample")
             primary_hdr["NSAMP"] = (
                 max(len(td.get("timestamps_local", []))
                     for td in ip_tables.values()),
@@ -1984,9 +1989,9 @@ def flush_outputs_parallel(cfg: Dict[str, Any]) -> "concurrent.futures.Future":
             return
 
         fits_dir = cfg.get("fits_dir",  FITS_DIR)
-        csv_dir = cfg.get("csv_dir",   CSV_DIR)
+        csv_dir  = cfg.get("csv_dir",   CSV_DIR)
         xlsx_dir = cfg.get("xlsx_dir",  XLSX_DIR)
-        log_dir = cfg.get("log_dir",   LOG_DIR)
+        log_dir  = cfg.get("log_dir",   LOG_DIR)
 
         tasks = []
         if cfg.get("enable_fits"):
@@ -2092,9 +2097,9 @@ def build_preview_figures(
 
         # ── Per-table line plots ───────────────────────────────────────────
         for tname, tdata in tables.items():
-            columns = tdata["columns"]
+            columns    = tdata["columns"]
             timestamps = tdata["timestamps_local"]
-            n_samples = len(timestamps)
+            n_samples  = len(timestamps)
 
             if not columns or n_samples == 0:
                 continue
@@ -2110,7 +2115,7 @@ def build_preview_figures(
                 if len(values) != n_samples:
                     # Length mismatch — skip rather than crash.
                     continue
-                unit = tdata["units"].get(param, "")
+                unit  = tdata["units"].get(param, "")
                 label = f"{param} ({unit})" if unit else param
                 color = prop_cycle_colors[color_idx % len(prop_cycle_colors)]
                 ax.plot(
@@ -2128,7 +2133,7 @@ def build_preview_figures(
             if timestamps:
                 # Show at most ~8 evenly-spaced labels.
                 step = max(1, n_samples // 8)
-                tick_pos = x[::step]
+                tick_pos    = x[::step]
                 tick_labels = timestamps[::step]
                 ax.set_xticks(tick_pos)
                 ax.set_xticklabels(
@@ -2144,8 +2149,7 @@ def build_preview_figures(
                 borderaxespad=0,
             )
             fig.tight_layout(rect=(0, 0, 0.82, 1))   # room for legend
-            # type: ignore[attr-defined]
-            fig._ab_title = f"{ip} — {tname}"
+            fig._ab_title = f"{ip} — {tname}"        # type: ignore[attr-defined]
             figures.append(fig)
 
         # ── Overlay line plots by unit group ──────────────────────────────
@@ -2154,21 +2158,20 @@ def build_preview_figures(
             group_series: List[tuple] = []
 
             for tname, tdata in tables.items():
-                columns = tdata["columns"]
+                columns    = tdata["columns"]
                 timestamps = tdata["timestamps_local"]
-                n_samples = len(timestamps)
+                n_samples  = len(timestamps)
 
                 for param, values in columns.items():
                     if not any(s in param.lower() for s in substrings):
                         continue
                     if len(values) != n_samples or n_samples == 0:
                         continue
-                    unit = tdata["units"].get(param, "")
+                    unit  = tdata["units"].get(param, "")
                     label = f"{tname[:10]}/{param}"
                     if unit:
                         label += f" ({unit})"
-                    group_series.append(
-                        (label, list(range(n_samples)), values))
+                    group_series.append((label, list(range(n_samples)), values))
 
             if len(group_series) < 2:
                 continue
@@ -2196,8 +2199,7 @@ def build_preview_figures(
                 borderaxespad=0,
             )
             fig.tight_layout(rect=(0, 0, 0.82, 1))
-            # type: ignore[attr-defined]
-            fig._ab_title = f"{ip} — Overlay: {group_label}"
+            fig._ab_title = f"{ip} — Overlay: {group_label}"  # type: ignore[attr-defined]
             figures.append(fig)
 
     return figures
@@ -2629,12 +2631,12 @@ def launch_gui(
             # NOTE: "Enable GUI" is intentionally omitted here — the GUI is
             # already running, so that switch is only meaningful in the
             # ENABLE_GUI header variable and has no in-app toggle.
-            self._cb_fits = QCheckBox("Enable FITS output")
-            self._cb_csv = QCheckBox("Enable CSV output")
-            self._cb_xlsx = QCheckBox("Enable Excel (XLSX) output")
-            self._cb_log = QCheckBox("Append to Markdown log tables (.md)")
+            self._cb_fits     = QCheckBox("Enable FITS output")
+            self._cb_csv      = QCheckBox("Enable CSV output")
+            self._cb_xlsx     = QCheckBox("Enable Excel (XLSX) output")
+            self._cb_log      = QCheckBox("Append to Markdown log tables (.md)")
             self._cb_log_file = QCheckBox("Write ab_monitor.log file")
-            self._cb_veusz = QCheckBox("Enable Veusz HDF5 output (.vszh5)")
+            self._cb_veusz    = QCheckBox("Enable Veusz HDF5 output (.vszh5)")
 
             self._cb_fits.setChecked(
                 bool(self._switches.get("enable_fits",       ENABLE_FITS)))
@@ -3459,8 +3461,11 @@ def run_headless(cfg: Dict[str, Any]) -> None:
         write_veusz(ALL_DEVICE_DATA, veusz_dir)
 
     if not dicts_only:
-        logger.info("All outputs written. Output directory: %s",
-                    cfg.get("output_base_dir", OUTPUT_BASE_DIR))
+        if _any_output_enabled(cfg):
+            logger.info("All outputs written. Output directory: %s",
+                        cfg.get("output_base_dir", OUTPUT_BASE_DIR))
+        else:
+            logger.info("No File Output Selected, Nothing Generated")
 
     # ── End-of-loop console output ──────────────────────────────────────────────
     # Always print the final snapshot dicts (this matches the original
@@ -3561,11 +3566,39 @@ def main() -> Dict[str, Dict[str, Dict]]:
         "log_dir":           LOG_DIR,
     }
 
-    # Create all output directories now that cfg is finalised.
-    for d in [cfg["output_base_dir"], cfg["log_dir"],
-              cfg["fits_dir"], cfg["csv_dir"],
-              cfg["xlsx_dir"],  cfg["veusz_dir"]]:
-        os.makedirs(d, exist_ok=True)
+    # Create only the output directories that are actually needed.
+    # If every file-output switch is disabled (including the log file),
+    # no directories are created on disk at all — the output tree stays
+    # completely absent until at least one output is enabled.
+    if _any_output_enabled(cfg):
+        # Always create the base dir when any output is active.
+        os.makedirs(cfg["output_base_dir"], exist_ok=True)
+        # Sub-dirs — only when their corresponding output is enabled.
+        if cfg.get("enable_fits"):
+            os.makedirs(cfg["fits_dir"],  exist_ok=True)
+        if cfg.get("enable_csv"):
+            os.makedirs(cfg["csv_dir"],   exist_ok=True)
+        if cfg.get("enable_xlsx"):
+            os.makedirs(cfg["xlsx_dir"],  exist_ok=True)
+        if cfg.get("enable_veusz"):
+            os.makedirs(cfg["veusz_dir"], exist_ok=True)
+        # logs/ dir is handled by _setup_logging() which already gates
+        # makedirs behind enable_log_file.  write_log_text() (Markdown
+        # tables) also calls makedirs only when invoked, which only
+        # happens when enable_log_append is set in _do_flush / run_headless.
+        if cfg.get("enable_log_append") or cfg.get("enable_log_file"):
+            os.makedirs(cfg["log_dir"],   exist_ok=True)
+
+    # Re-initialise logger now that cfg is finalised.
+    # The module-scope logger was created console-only (no FileHandler) to
+    # avoid touching disk on import.  Here we attach the FileHandler — and
+    # create logs/ — only when ENABLE_LOG_FILE is actually on.
+    global logger  # noqa: PLW0603  (intentional module-global re-bind)
+    logger = _setup_logging(
+        cfg["log_dir"],
+        append=bool(cfg.get("enable_log_append", ENABLE_LOG_APPEND)),
+        enable_log_file=bool(cfg.get("enable_log_file", ENABLE_LOG_FILE)),
+    )
 
     logger.info("AB Power Meter Monitor starting up.")
     logger.info("Configuration: %s", json.dumps(cfg, indent=2))
