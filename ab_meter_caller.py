@@ -61,7 +61,7 @@ Phone  : +1 (304) 456-2216
 Email  : wwallace@nrao.edu
 Email2 : naval.antennas@gmail.com 
 Python : 3.8+
-Version: 1.2.3
+Version: 1.2.4
 """
 # %% Imorts
 import argparse
@@ -95,7 +95,8 @@ abm.IP_LIST = [
     "10.16.130.50",
     "10.16.130.51"
 ]
-abm.SAMPLE_PERIOD_SEC = 15   # internal sleep — not used when caller owns loop
+# abm.SAMPLE_PERIOD_SEC is set dynamically from the interval arg in run()
+# — do not set it here as it would override the caller's value.
 
 
 # ---------------------------------------------------------------------------
@@ -245,6 +246,10 @@ def run(count: int = 1, interval: float = 30.0) -> Dict[str, Any]:
     """
     infinite = (count == 0)
     iteration = 0
+
+    # Sync the monitor's SAMPLE_PERIOD_SEC with the caller's interval so
+    # any internal cfg logging or reporting reflects the actual wait time.
+    abm.SAMPLE_PERIOD_SEC = interval
 
     print(f"ab_meter_caller starting — "
           f"{'infinite loop' if infinite else f'{count} iteration(s)'}, "
