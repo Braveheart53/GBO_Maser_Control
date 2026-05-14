@@ -23,7 +23,14 @@ The OUTPUT_BASE_DIR value must match the one configured in
 ab_power_meter_monitor.py.  Edit the constant below if you have changed
 the default location.
 
-Author : W. Wallace — NRAO / Green Bank Observatory
+# AUthor Info
+@Author: W. Wallace — NRAO / Green Bank Observatory
+Date   : 2026-05-13
+Phone  : +1 (304) 456-2216
+Email  : wwallace@nrao.edu
+Email2 : naval.antennas@gmail.com 
+Python : 3.8+
+Version: 1.0.0
 """
 import os
 import sys
@@ -45,7 +52,8 @@ def main() -> None:
         print(f"Stop-signal file created: {STOP_SIGNAL_FILE}")
         print("The headless monitor will finish its current poll and exit cleanly.")
     except OSError as exc:
-        print(f"ERROR: Could not create stop-signal file: {exc}", file=sys.stderr)
+        print(
+            f"ERROR: Could not create stop-signal file: {exc}", file=sys.stderr)
         sys.exit(1)
 
 

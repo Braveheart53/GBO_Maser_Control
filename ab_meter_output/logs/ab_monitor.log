@@ -8453,3 +8453,4 @@
 2026-05-13T15:10:46 | INFO     | ABMonitor | Veusz HDF5 project saved: c:\users\wwallace\onedrive - national radio astronomy observatory\documents\github\gbo_maser_control\ab_meter_output\veusz\ABMeter_10_16_130_50.vszh5
 2026-05-13T15:10:46 | DEBUG    | ABMonitor | Veusz: loaded 228 datasets (6 samples each) for 10.16.130.51
 2026-05-13T15:10:53 | INFO     | ABMonitor | Veusz HDF5 project saved: c:\users\wwallace\onedrive - national radio astronomy observatory\documents\github\gbo_maser_control\ab_meter_output\veusz\ABMeter_10_16_130_51.vszh5
+2026-05-13T15:12:12 | INFO     | ABMonitor | Signal 2 received — requesting clean stop after current poll.
