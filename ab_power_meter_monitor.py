@@ -27,7 +27,7 @@ Phone  : +1 (304) 456-2216
 Email  : wwallace@nrao.edu
 Email2 : naval.antennas@gmail.com 
 Python : 3.8+
-Version: 1.1.5
+Version: 1.1.8
 Deps   : PySide6, matplotlib, requests, beautifulsoup4, lxml,
          astropy, openpyxl, veusz  (pip install each)
 
@@ -207,6 +207,34 @@ VEUSZ_DIR = os.path.join(OUTPUT_BASE_DIR, "veusz")  # Veusz HDF5 projects
 # PNG preview cache — one file per (device × table/overlay), overwritten
 # each poll cycle (~50-150 KB each). Fixed disk use regardless of run duration.
 PREVIEW_CACHE_DIR = os.path.join(OUTPUT_BASE_DIR, "preview_cache")
+
+# ---------------------------------------------------------------------------
+# Veusz / preview overlay groups — parameters whose names contain any listed
+# substring are overlaid on a single graph, grouped by physical quantity.
+# Keys become the page/graph title; values are lowercase substring lists.
+# ---------------------------------------------------------------------------
+VEUSZ_OVERLAY_GROUPS: Dict[str, List[str]] = {
+    "Voltage L-L (V)":      ["l1-l2", "l2-l3", "l3-l1",
+                              "neg. seq", "aux volt"],
+    "Voltage L-N (V)":      ["l1-n voltage", "l2-n voltage", "l3-n voltage",
+                              "average voltage l-n"],
+    "Real Power (W)":       ["l1 real power", "l2 real power",
+                              "l3 real power", "total real power"],
+    "Reactive Power (VAR)": ["l1 reactive", "l2 reactive",
+                              "l3 reactive", "total reactive"],
+    "Apparent Power (VA)":  ["l1 apparent", "l2 apparent",
+                              "l3 apparent", "total apparent"],
+    "True PF (%)":          ["l1 true pf", "l2 true pf",
+                              "l3 true pf", "total true pf"],
+    "Displacement PF (%)":  ["l1 displacement", "l2 displacement",
+                              "l3 displacement", "total displacement"],
+    "Distortion PF (%)":    ["l1 distortion", "l2 distortion",
+                              "l3 distortion", "total distortion"],
+    "Current (A)":          ["l1 current", "l2 current", "l3 current",
+                              "neutral current", "ground current"],
+    "Frequency (Hz)":       ["frequency"],
+    "Energy (kWh)":         ["energy", "kwh"],
+}
 
 # Path to the stop-signal file.  Touch this file (or run ab_stop.py) to
 # request a clean shutdown of the headless loop.  Deleted automatically
@@ -942,6 +970,13 @@ def write_fits(
     for ip in all_device_data:
         safe_ip = ip.replace('.', '_')
         filename = os.path.join(fits_dir, f'ABMeter_{safe_ip}.fits')
+        if not append and os.path.exists(filename):
+            try:
+                os.remove(filename)
+                logger.debug('FITS: removed existing file for fresh write: %s',
+                             filename)
+            except Exception as exc:
+                logger.warning('FITS: could not remove %s: %s', filename, exc)
         existing_tables = _read_existing_fits(filename)
         ip_tables = ts_snapshot.get(ip, {})
         merged_tables = {}
@@ -950,18 +985,18 @@ def write_fits(
 
         hdu_list = [astrofits.PrimaryHDU()]
         hdr = hdu_list[0].header
-        hdr['TELESCOP'] = (_fits_ascii('GBT'), 'Green Bank Telescope facility')
-        hdr['INSTRUME'] = (_fits_ascii('ABPowerMeter'), 'Allen-Bradley 1403 Site Power Meter')
-        hdr['ORIGIN'] = (_fits_ascii('NRAO-GBO'), 'National Radio Astronomy Observatory')
+        hdr['TELESCOP'] = (_fits_ascii('GBT'), 'Green Bank Telescope')
+        hdr['INSTRUME'] = (_fits_ascii('ABPowerMeter'), 'AB 1403 Power Meter')
+        hdr['ORIGIN'] = (_fits_ascii('NRAO-GBO'), 'NRAO-Green Bank')
         hdr['OBSERVER'] = (_fits_ascii('WWallace'), 'W. Wallace')
-        hdr['DATE-WRT'] = (_fits_ascii(now_utc.isoformat(timespec='seconds') + 'Z'), 'UTC timestamp of this write')
+        hdr['DATE-WRT'] = (_fits_ascii(now_utc.isoformat(timespec='seconds') + 'Z'), 'UTC write timestamp')
         hdr['FILENAME'] = (_fits_ascii(os.path.basename(filename)), 'FITS file name')
-        hdr['DEVIP'] = (_fits_ascii(ip), 'Source device IP address')
+        hdr['DEVIP'] = (_fits_ascii(ip), 'Device IP')
         all_ts = [ts for td in merged_tables.values() for ts in td.get('timestamps_local', [])]
         if all_ts:
-            hdr['DATE-OBS'] = (_fits_ascii(min(all_ts).replace(' ', 'T')), 'Local time of first accumulated sample')
-            hdr['DATE-END'] = (_fits_ascii(max(all_ts).replace(' ', 'T')), 'Local time of last accumulated sample')
-            hdr['NSAMP'] = (max(len(td.get('timestamps_local', [])) for td in merged_tables.values()), 'Maximum accumulated poll cycles across all tables')
+            hdr['DATE-OBS'] = (_fits_ascii(min(all_ts).replace(' ', 'T')), 'First sample local time')
+            hdr['DATE-END'] = (_fits_ascii(max(all_ts).replace(' ', 'T')), 'Last sample local time')
+            hdr['NSAMP'] = (max(len(td.get('timestamps_local', [])) for td in merged_tables.values()), 'Max poll cycles all tables')
 
         for tname, tdata in merged_tables.items():
             timestamps = tdata.get('timestamps_local', [])
@@ -975,9 +1010,9 @@ def write_fits(
                 fits_cols.append(astrofits.Column(name=_fits_ascii(str(param)[:68]), format='D', unit=_fits_ascii(units_map.get(param, 'dimensionless') or 'dimensionless'), array=arr))
             hdu = astrofits.BinTableHDU.from_columns(fits_cols)
             hdu.header['EXTNAME'] = _fits_ascii(tname[:8])
-            hdu.header['TBLNAME'] = _fits_ascii(tname)
+            hdu.header['TBLNAME'] = _fits_ascii(tname[:60])
             hdu.header['SRCIP'] = _fits_ascii(ip)
-            hdu.header['NSAMP'] = (len(timestamps), 'Number of accumulated poll cycles')
+            hdu.header['NSAMP'] = (len(timestamps), 'Poll cycle count')
             hdu.header['DATE-OBS'] = _fits_ascii(timestamps[0].replace(' ', 'T'))
             hdu.header['DATE-END'] = _fits_ascii(timestamps[-1].replace(' ', 'T'))
             hdu_list.append(hdu)
@@ -1039,7 +1074,12 @@ def write_csv(
         safe_ip = ip.replace(".", "_")
         for tname, tdata in tables.items():
             filename = os.path.join(csv_dir, f"ABMeter_{safe_ip}_{tname}.csv")
-            is_new = (not append) or (not os.path.exists(filename)) or not append
+            if not append and os.path.exists(filename):
+                try:
+                    os.remove(filename)
+                except Exception:
+                    pass
+            is_new = (not append) or (not os.path.exists(filename))
 
             timestamps = tdata["timestamps_local"]
             columns = tdata["columns"]
@@ -1123,30 +1163,27 @@ def write_csv(
 def write_xlsx(
     all_device_data: Dict[str, Dict[str, Dict[str, Any]]],
     xlsx_dir: str,
+    append: bool = True,
 ) -> None:
     """
-    Write an Excel workbook per device in COLUMNAR time-series format.
+    Write one Excel workbook per device in columnar time-series format.
 
-    Layout (each sheet = one table)
-    --------------------------------
-    Row 1   : Header  — Timestamp_Local | <param1> | <param2> | ...
-    Row 2   : Units   — (units)         | <unit1>  | <unit2>  | ...
-    Rows 3+ : Data    — local timestamp + values (one row per poll cycle).
-
-    An openpyxl LineChart is appended to each sheet showing all numeric
-    parameters as overlaid lines vs. sample index (robust to any N samples).
-
-    The workbook is overwritten each time (XLSX does not support true row
-    append without reloading the full file anyway).  All accumulated samples
-    from TIME_SERIES_STORE are written.
+    append=True  — open the existing workbook, detect how many data rows
+                   are already on each sheet, append ONLY the new rows,
+                   then rebuild the chart to cover the full new range.
+    append=False — delete any existing workbook first, then write the
+                   complete TIME_SERIES_STORE snapshot from scratch.
 
     Parameters
     ----------
     all_device_data : Dict
-        Nested dict: {ip: {table_name: parsed_dict}} (directory only;
-        data comes from TIME_SERIES_STORE).
+        {ip: {table_name: parsed_dict}} — used for iteration; actual data
+        comes from TIME_SERIES_STORE.
     xlsx_dir : str
         Output directory path.
+    append : bool
+        True  — incremental append (default).
+        False — delete existing, write fresh.
     """
     try:
         import openpyxl
@@ -1162,162 +1199,179 @@ def write_xlsx(
         snapshot = {
             ip: {
                 tname: {
-                    "timestamps_local": list(tdata["timestamps_local"]),
-                    "columns": {p: list(v) for p, v in tdata["columns"].items()},
-                    "units":   dict(tdata["units"]),
+                    "timestamps_local": list(tdata.get("timestamps_local", [])),
+                    "columns": {p: list(v)
+                                for p, v in tdata.get("columns", {}).items()},
+                    "units": dict(tdata.get("units", {})),
                 }
                 for tname, tdata in tables.items()
             }
             for ip, tables in TIME_SERIES_STORE.items()
         }
 
+    header_font  = Font(name="Calibri", bold=True,  color="FFFFFF")
+    header_fill  = PatternFill(fill_type="solid", fgColor="1F4E79")
+    units_font   = Font(name="Calibri", bold=False, color="FFFFFF", italic=True)
+    units_fill   = PatternFill(fill_type="solid", fgColor="2E75B6")
+    center_align = Alignment(horizontal="center")
+
+    def _rebuild_chart(ws, ip_addr, tname, params, columns, n_total_rows):
+        """Remove stale charts and add a fresh LineChart over all rows."""
+        try:
+            ws._charts.clear()
+        except Exception:
+            pass
+        numeric_cols = [
+            ci for ci, p in enumerate(params, start=2)
+            if any(isinstance(v, (int, float))
+                   for v in columns.get(p, []) if v is not None)
+        ]
+        if n_total_rows < 2 or not numeric_cols:
+            return
+        try:
+            chart = LineChart()
+            chart.title  = f"{tname} — {ip_addr}"
+            chart.style  = 10
+            chart.y_axis.title = "Value"
+            chart.x_axis.title = "Poll cycle (timestamp)"
+            chart.width  = 26
+            chart.height = 15
+            for nc in numeric_cols[:12]:
+                chart.add_data(
+                    Reference(ws, min_col=nc, max_col=nc,
+                              min_row=1, max_row=n_total_rows + 2),
+                    titles_from_data=True,
+                )
+            chart.set_categories(
+                Reference(ws, min_col=1, min_row=3,
+                          max_row=n_total_rows + 2),
+            )
+            ws.add_chart(chart, f"A{n_total_rows + 5}")
+        except Exception as exc:
+            logger.warning("XLSX chart rebuild failed %s/%s: %s",
+                           ip_addr, tname, exc)
+
     for ip, tables in snapshot.items():
-        safe_ip = ip.replace(".", "_")
+        safe_ip  = ip.replace(".", "_")
         filename = os.path.join(xlsx_dir, f"ABMeter_{safe_ip}.xlsx")
 
-        wb = openpyxl.Workbook()
-        wb.remove(wb.active)   # remove default blank sheet
+        if not append and os.path.exists(filename):
+            try:
+                os.remove(filename)
+                logger.debug("XLSX: removed existing file for fresh write: %s", filename)
+            except Exception as exc:
+                logger.warning("XLSX: could not remove %s: %s", filename, exc)
 
-        header_font = Font(name="Calibri", bold=True, color="FFFFFF")
-        header_fill = PatternFill(fill_type="solid", fgColor="1F4E79")
-        units_fill = PatternFill(fill_type="solid", fgColor="2E75B6")
-        units_font = Font(name="Calibri", bold=False,
-                          color="FFFFFF", italic=True)
-        header_align = Alignment(horizontal="center")
+        if append and os.path.exists(filename):
+            try:
+                wb = openpyxl.load_workbook(filename)
+            except Exception as exc:
+                logger.warning("XLSX load failed (%s) — creating fresh: %s",
+                               filename, exc)
+                wb = openpyxl.Workbook()
+                wb.remove(wb.active)
+        else:
+            wb = openpyxl.Workbook()
+            wb.remove(wb.active)
 
         for tname, tdata in tables.items():
-            timestamps = tdata["timestamps_local"]
-            columns = tdata["columns"]
-            units_map = tdata["units"]
-            params = list(columns.keys())
-
+            timestamps = tdata.get("timestamps_local", [])
+            columns    = tdata.get("columns", {})
+            units_map  = tdata.get("units", {})
+            params     = list(columns.keys())
             if not timestamps:
                 continue
 
-            safe_name = tname[:31].replace(
-                "/", "_").replace("\\", "_").replace("*", "_")
-            ws = wb.create_sheet(title=safe_name)
+            safe_name = (tname[:31]
+                         .replace("/", "_")
+                         .replace("\\", "_")
+                         .replace("*", "_"))
 
-            # ── Row 1: Headers ──
-            header_row = ["Timestamp_Local"] + params
-            for col_idx, hdr in enumerate(header_row, start=1):
-                cell = ws.cell(row=1, column=col_idx, value=hdr)
-                cell.font = header_font
-                cell.fill = header_fill
-                cell.alignment = header_align
+            if safe_name in wb.sheetnames:
+                ws = wb[safe_name]
+                existing_data_rows = max(0, ws.max_row - 2)
+                existing_params = [
+                    ws.cell(row=1, column=c).value
+                    for c in range(2, ws.max_column + 1)
+                ]
+                if existing_params != params:
+                    del wb[safe_name]
+                    ws = wb.create_sheet(title=safe_name)
+                    existing_data_rows = 0
+            else:
+                ws = wb.create_sheet(title=safe_name)
+                existing_data_rows = 0
 
-            # ── Row 2: Units ──
-            units_row = ["(units)"] + [units_map.get(p, "") for p in params]
-            for col_idx, u in enumerate(units_row, start=1):
-                cell = ws.cell(row=2, column=col_idx, value=u)
-                cell.font = units_font
-                cell.fill = units_fill
-                cell.alignment = header_align
+            if existing_data_rows == 0:
+                for ci, hdr in enumerate(
+                        ["Timestamp_Local"] + params, start=1):
+                    c = ws.cell(row=1, column=ci, value=hdr)
+                    c.font = header_font
+                    c.fill = header_fill
+                    c.alignment = center_align
+                for ci, u in enumerate(
+                        ["(units)"] + [units_map.get(p, "") for p in params],
+                        start=1):
+                    c = ws.cell(row=2, column=ci, value=u)
+                    c.font = units_font
+                    c.fill = units_fill
+                    c.alignment = center_align
+                ws.freeze_panes = "A3"
 
-            # ── Rows 3+: Data (one row per poll cycle) ──
-            for i, ts in enumerate(timestamps):
-                data_row_idx = i + 3
-                ws.cell(row=data_row_idx, column=1, value=ts)
-                for col_idx, param in enumerate(params, start=2):
-                    val = columns[param][i] if i < len(
-                        columns[param]) else None
-                    cell = ws.cell(row=data_row_idx, column=col_idx, value=val)
+            new_ts = timestamps[existing_data_rows:]
+            for offset, ts in enumerate(new_ts):
+                abs_i   = existing_data_rows + offset
+                row_idx = abs_i + 3
+                ws.cell(row=row_idx, column=1, value=ts)
+                for ci, param in enumerate(params, start=2):
+                    vals = columns.get(param, [])
+                    val  = vals[abs_i] if abs_i < len(vals) else None
+                    cell = ws.cell(row=row_idx, column=ci, value=val)
                     if isinstance(val, (int, float)):
                         cell.number_format = "0.000000"
 
-            n_data_rows = len(timestamps)
-
-            # ── Auto-size columns ──
             for col in ws.columns:
-                max_len = 0
-                col_letter = col[0].column_letter
-                for cell in col:
-                    try:
-                        max_len = max(max_len, len(str(cell.value or "")))
-                    except Exception:
-                        pass
-                ws.column_dimensions[col_letter].width = min(max_len + 4, 40)
+                maxlen = max(
+                    (len(str(c.value or "")) for c in col), default=8)
+                ws.column_dimensions[
+                    col[0].column_letter].width = min(maxlen + 4, 40)
 
-            # ── Freeze header + units rows ──
-            ws.freeze_panes = "A3"
-
-            # ── Line chart — numeric params vs sample index ──
-            numeric_cols = [
-                col_idx
-                for col_idx, p in enumerate(params, start=2)
-                if any(isinstance(v, (int, float)) for v in columns[p] if v is not None)
-            ]
-
-            if n_data_rows >= 2 and numeric_cols:
-                try:
-                    chart = LineChart()
-                    chart.title = f"{tname} — {ip}"
-                    chart.style = 10
-                    chart.y_axis.title = "Value"
-                    chart.x_axis.title = "Sample (poll cycle)"
-                    chart.width = 24
-                    chart.height = 14
-
-                    # cap at 12 series for legibility
-                    for nc in numeric_cols[:12]:
-                        data_ref = Reference(
-                            ws,
-                            min_col=nc, max_col=nc,
-                            min_row=1, max_row=n_data_rows + 2,
-                        )
-                        chart.add_data(data_ref, titles_from_data=True)
-
-                    # x-axis categories = Timestamp_Local column
-                    cat_ref = Reference(
-                        ws, min_col=1, min_row=3, max_row=n_data_rows + 2)
-                    chart.set_categories(cat_ref)
-                    ws.add_chart(chart, f"A{n_data_rows + 5}")
-                except Exception as exc:
-                    logger.warning(
-                        "Chart creation failed for sheet '%s': %s", safe_name, exc)
+            _rebuild_chart(ws, ip, tname, params, columns, len(timestamps))
 
         try:
             wb.save(filename)
-            logger.info("XLSX written (columnar): %s", filename)
+            total_rows = sum(
+                max(0, len(t.get("timestamps_local", [])))
+                for t in tables.values()
+            )
+            logger.info("XLSX %s (%d total rows in store → file): %s",
+                        "appended to" if append else "(re)written",
+                        total_rows, filename)
         except Exception as exc:
             logger.error("XLSX save failed for %s: %s", ip, exc)
 
 
-# ===========================================================================
-# %%% OUTPUT MODULE 4 — TEXT LOG APPEND
-# ===========================================================================
 def write_log_text(
     all_device_data: Dict[str, Dict[str, Dict[str, Any]]],
     log_dir: str,
     append: bool = True,
 ) -> None:
     """
-    Append new poll rows to per-device, per-table Markdown log files (.md).
+    Write one Markdown (.md) log file per device in columnar time-series format.
 
-    Each file is a valid GitHub-Flavoured Markdown document containing:
-
-    * A level-2 heading with device IP and table name.
-    * A GFM pipe table:
-
-      | Timestamp_Local     | Param1 (unit) | Param2 (unit) | ...
-      |---------------------|---------------|---------------|----
-      | 2026-05-12 08:30:00 | 120.1         | 119.8         | ...
-      | 2026-05-12 08:31:00 | 120.3         | 119.6         | ...
-
-    The header and separator rows are written only once when the file is
-    created.  Subsequent calls append only new data rows (rows not yet
-    persisted), determined by counting existing non-empty, non-separator
-    lines after the header.
-
-    Files are named:  ABMeter_<ip>_<table_name>.md
+    append=True  — scan the existing file to count already-written data rows
+                   per table, then append ONLY the new rows.
+    append=False — delete any existing file, then write the full snapshot.
 
     Parameters
     ----------
     all_device_data : Dict
-        Nested dict: {ip: {table_name: parsed_dict}} (directory only;
-        data is read from TIME_SERIES_STORE).
+        {ip: {table_name: parsed_dict}} — iteration; data from TIME_SERIES_STORE.
     log_dir : str
-        Directory in which to create/append Markdown log files.
+        Output directory path.
+    append : bool
+        True  — incremental append (default).
+        False — delete existing, write fresh.
     """
     os.makedirs(log_dir, exist_ok=True)
 
@@ -1325,9 +1379,10 @@ def write_log_text(
         snapshot = {
             ip: {
                 tname: {
-                    "timestamps_local": list(tdata["timestamps_local"]),
-                    "columns": {p: list(v) for p, v in tdata["columns"].items()},
-                    "units":   dict(tdata["units"]),
+                    "timestamps_local": list(tdata.get("timestamps_local", [])),
+                    "columns": {p: list(v)
+                                for p, v in tdata.get("columns", {}).items()},
+                    "units": dict(tdata.get("units", {})),
                 }
                 for tname, tdata in tables.items()
             }
@@ -1335,159 +1390,105 @@ def write_log_text(
         }
 
     for ip, tables in snapshot.items():
-        safe_ip = ip.replace(".", "_")
-        for tname, tdata in tables.items():
-            timestamps = tdata["timestamps_local"]
-            columns = tdata["columns"]
-            units_map = tdata["units"]
-            params = list(columns.keys())
+        safe_ip  = ip.replace(".", "_")
+        filename = os.path.join(log_dir, f"ABMeter_{safe_ip}.md")
 
+        if not append and os.path.exists(filename):
+            try:
+                os.remove(filename)
+                logger.debug("Markdown: removed existing file for fresh write: %s",
+                             filename)
+            except Exception as exc:
+                logger.warning("Markdown: could not remove %s: %s", filename, exc)
+
+        for tname, tdata in tables.items():
+            timestamps = tdata.get("timestamps_local", [])
+            columns    = tdata.get("columns", {})
+            units_map  = tdata.get("units", {})
+            params     = list(columns.keys())
             if not timestamps:
                 continue
 
-            filename = os.path.join(log_dir, f"ABMeter_{safe_ip}_{tname}.md")
+            existing_data_rows = 0
+            file_exists = os.path.exists(filename)
 
-            # ----------------------------------------------------------------
-            # Count data rows already persisted.
-            # File structure (lines):
-            #   1  ## heading
-            #   2  blank
-            #   3  | header row |
-            #   4  | :--- separator |
-            #   5+ | data rows |
-            # Non-data lines to skip = 4 (heading, blank, header, separator).
-            # ----------------------------------------------------------------
-            HEADER_LINES = 4   # heading + blank + table header + separator
-            existing_rows = 0
-            is_new = (not append) or (not os.path.exists(filename))
-            if not is_new:
+            if append and file_exists:
                 try:
+                    in_table = False
                     with open(filename, "r", encoding="utf-8") as fh:
-                        all_lines = [l for l in fh if l.strip()]
-                    # Non-empty lines minus the 3 non-data lines (heading,
-                    # header row, separator row — blank line collapses to 0).
-                    existing_rows = max(0, len(all_lines) - 3)
+                        for line in fh:
+                            line = line.rstrip()
+                            if f"### {tname}" in line:
+                                in_table = True
+                                existing_data_rows = 0
+                                continue
+                            if in_table:
+                                if line.startswith("###") and tname not in line:
+                                    in_table = False
+                                    continue
+                                if (line.startswith("|")
+                                        and "---" not in line
+                                        and not line.startswith("| Timestamp")
+                                        and not line.startswith("| (units)")):
+                                    existing_data_rows += 1
                 except Exception:
-                    existing_rows = 0
-                    is_new = True
+                    existing_data_rows = 0
 
-            # Build column header labels: "Param (unit)" or just "Param"
-            col_labels = ["Timestamp_Local"] + [
-                f"{p} ({units_map[p]})" if units_map.get(p) else p
-                for p in params
-            ]
+            new_timestamps = timestamps[existing_data_rows:]
+            if not new_timestamps and file_exists and append:
+                continue
 
-            # Column widths for alignment (min 3 chars for GFM separator).
-            # Width = max of header label width and widest data value seen.
-            col_widths = [max(3, len(h)) for h in col_labels]
-            for i, ts in enumerate(timestamps):
-                col_widths[0] = max(col_widths[0], len(ts))
-                for j, p in enumerate(params, start=1):
-                    val = columns[p][i] if (
-                        i < len(columns[p]) and columns[p][i] is not None) else ""
-                    col_widths[j] = max(col_widths[j], len(str(val)))
-
-            def _md_row(cells: List[str]) -> str:
-                """Format a list of cell strings as a padded GFM table row."""
-                padded = [str(c).ljust(col_widths[k])
-                          for k, c in enumerate(cells)]
-                return "| " + " | ".join(padded) + " |"
-
-            def _md_sep() -> str:
-                """GFM left-aligned separator row."""
-                return "|" + "|".join("-" * (w + 2) for w in col_widths) + "|"
-
+            mode = "a" if (append and file_exists) else "w"
             try:
-                with open(filename, "a" if append else "w", encoding="utf-8") as fh:
-                    if is_new:
-                        # Heading + blank line + GFM table header + separator
-                        fh.write(f"## {ip} — {tname}\n\n")
-                        fh.write(_md_row(col_labels) + "\n")
-                        fh.write(_md_sep() + "\n")
+                with open(filename, mode, encoding="utf-8") as fh:
+                    if mode == "w":
+                        fh.write(f"# AB Power Meter Log — {ip}\n\n")
+                        fh.write(
+                            "Generated: "
+                            + datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                            + "\n\n"
+                        )
 
-                    # Append only rows not yet written
-                    for i in range(existing_rows, len(timestamps)):
-                        ts = timestamps[i]
-                        row = [ts] + [
-                            str(columns[p][i])
-                            if (p in columns and i < len(columns[p]) and columns[p][i] is not None)
-                            else ""
-                            for p in params
-                        ]
-                        fh.write(_md_row(row) + "\n")
+                    if mode == "w" or existing_data_rows == 0:
+                        fh.write(f"\n### {tname}\n\n")
+                        fh.write(
+                            "| Timestamp_Local | "
+                            + " | ".join(params)
+                            + " |\n"
+                        )
+                        fh.write(
+                            "| --- | "
+                            + " | ".join(["---"] * len(params))
+                            + " |\n"
+                        )
+                        fh.write(
+                            "| (units) | "
+                            + " | ".join(
+                                units_map.get(p, "") for p in params)
+                            + " |\n"
+                        )
 
-                logger.debug("Markdown log written: %s", filename)
+                    for offset, ts in enumerate(new_timestamps):
+                        abs_i = existing_data_rows + offset
+                        vals  = []
+                        for param in params:
+                            col = columns.get(param, [])
+                            v   = col[abs_i] if abs_i < len(col) else ""
+                            vals.append(str(v) if v is not None else "")
+                        fh.write(
+                            f"| {ts} | "
+                            + " | ".join(vals)
+                            + " |\n"
+                        )
+
+                logger.debug(
+                    "Markdown %s (table %s, %d new rows): %s",
+                    "appended" if append else "written",
+                    tname, len(new_timestamps), filename,
+                )
             except Exception as exc:
-                logger.error(
-                    "Markdown log write failed for %s / %s: %s", ip, tname, exc)
-
-
-# ===========================================================================
-# %%% OUTPUT MODULE 5 — VEUSZ  (HDF5 format, Veusz ≥ 3.6 / 4.1)
-# ===========================================================================
-#
-#  Uses the veusz.embed.Embedded API to build the document in-process and
-#  saves with mode='hdf5', producing a .vszh5 (HDF5-backed) project file.
-#
-#  Veusz HDF5 format stores all datasets natively in HDF5 groups, which
-#  gives better performance and lossless numeric fidelity compared to the
-#  legacy plain-text .vsz format.
-#
-#  References:
-#    • Veusz 3.6 changelog — introduced stable HDF5 save API
-#    • Veusz 4.1 — HDF5 is now the recommended/default format
-#    • doc.Save(path, mode='hdf5')  — core API call
-#    • File extension convention: .vszh5
-# ===========================================================================
-
-# Groups of parameter name substrings that share the same SI unit for overlay
-# Overlay group display names use spaces (human-readable page/legend titles).
-# The keys appear verbatim in Veusz page titles and key widget titles.
-VEUSZ_OVERLAY_GROUPS: Dict[str, List[str]] = {
-    "Current A":              ["current"],
-    "Voltage L-L (V)":        ["l1-l2 voltage", "l2-l3 voltage", "l3-l1 voltage",
-                               "3 phase average voltage l-l", "pos. seq. voltage",
-                               "neg. seq. voltage", "aux voltage"],
-    "Voltage L-N (V)":        ["l1-n voltage", "l2-n voltage", "l3-n voltage",
-                               "3 phase average voltage l-n"],
-    "Real Power (W)":         ["l1 real power", "l2 real power", "l3 real power",
-                               "total real power"],
-    "Reactive Power (VAR)":   ["l1 reactive power", "l2 reactive power",
-                               "l3 reactive power", "total reactive power"],
-    "Apparent Power (VA)":    ["l1 apparent power", "l2 apparent power",
-                               "l3 apparent power", "total apparent power"],
-    "True PF (%)": ["l1 true pf", "l2 true pf", "l3 true pf",
-                    "total true pf"],
-    "Displacement PF (%)": ["l1 displacement pf", "l2 displacement pf",
-                            "l3 displacement pf", "total displacement pf"],
-    "Distortion PF (%)": ["l1 distortion pf", "l2 distortion pf",
-                          "l3 distortion pf", "total distortion pf"],
-}
-
-
-def _veusz_safe(name: str) -> str:
-    """
-    Convert a parameter name to a Veusz-safe dataset identifier.
-
-    Veusz dataset names must not contain spaces, slashes, dots, parentheses
-    or other non-word characters.  This function replaces those with
-    underscores and strips anything else, returning a string no longer
-    than 64 characters.
-
-    Parameters
-    ----------
-    name : str
-        Raw parameter name (e.g. 'L1-L2 Voltage', 'L4(Neutral) Current').
-
-    Returns
-    -------
-    str
-        A valid Veusz dataset name (alphanumerics + underscores only).
-    """
-    import re
-    s = name.replace(" ", "_").replace(".", "_").replace("/", "_")
-    s = re.sub(r"[^\w]", "", s)
-    return s[:64]
+                logger.error("Markdown write failed for %s/%s: %s",
+                             ip, tname, exc)
 
 
 def write_veusz(
@@ -1608,47 +1609,56 @@ def write_veusz(
                 timestamps = tstore.get("timestamps_local", [])
                 n_samples = len(timestamps)
 
-                # ----------------------------------------------------------------
-                # Timestamp text dataset — one per table.
-                # Named:  ts_<tname_safe>   e.g. ts_Real_Time_Power_Table
-                # Used as tickLabels on the x-axis of every graph in this table's
-                # page so that real local-time strings appear instead of integers.
-                # doc.SetDataText() is available in Veusz 3.6+ and 4.x.
-                # ----------------------------------------------------------------
-                ts_ds_name = _veusz_safe(f"ts_{tname}")
+                ip_last = ip.split('.')[-1]
+                dt_ds_name = _veusz_safe(f"{ip_last}_dt_{tname}")
+                ts_ds_name = _veusz_safe(f"{ip_last}_ts_{tname}")
+                dt_vals = _veusz_datetime_values(list(timestamps)) if timestamps else []
+                if dt_vals:
+                    doc.SetData(dt_ds_name, dt_vals)
+                    try:
+                        if hasattr(doc, 'TagDatasets'):
+                            doc.TagDatasets([dt_ds_name], [_veusz_safe(f"ip_{ip_last}")])
+                    except Exception:
+                        pass
+                else:
+                    dt_ds_name = None
                 if timestamps:
                     try:
                         doc.SetDataText(ts_ds_name, list(timestamps))
+                        try:
+                            if hasattr(doc, 'TagDatasets'):
+                                doc.TagDatasets([ts_ds_name], [_veusz_safe(f"ip_{ip_last}")])
+                        except Exception:
+                            pass
                     except AttributeError:
-                        # Older Veusz build without SetDataText — fall back
-                        # gracefully; x-axis will show integer indices only.
                         ts_ds_name = None
                 else:
                     ts_ds_name = None
 
                 for param in series:
-                    ds_name = _veusz_safe(f"{tname}_{param}")
-                    idx_name = _veusz_safe(f"idx_{tname}_{param}")
+                    ds_name = _veusz_safe(f"{ip_last}_{tname}_{param}")
+                    idx_name = _veusz_safe(f"{ip_last}_dt_{tname}_{param}")
 
                     if param in ts_columns and ts_columns[param]:
-                        # Use full accumulated series; replace None with NaN
                         raw = ts_columns[param]
-                        vals = [float(v) if v is not None else float("nan")
-                                for v in raw]
-                        idxs = [float(k) for k in range(len(vals))]
+                        vals = [float(v) if v is not None else float("nan") for v in raw]
+                        idxs = list(dt_vals) if dt_vals else [float(k) for k in range(len(vals))]
                     else:
-                        # Fallback: single-point from latest snapshot
                         vals = [float(series[param][0])]
-                        idxs = [0.0]
+                        idxs = list(dt_vals[:1]) if dt_vals else [0.0]
 
-                    doc.SetData(ds_name,  vals)
+                    doc.SetData(ds_name, vals)
                     doc.SetData(idx_name, idxs)
+                    try:
+                        if hasattr(doc, 'TagDatasets'):
+                            doc.TagDatasets([ds_name, idx_name], [_veusz_safe(f"ip_{ip_last}")])
+                    except Exception:
+                        pass
                     n_datasets += 1
 
-                # Store ts_ds_name on the series dict so graph-building can
-                # reference it when wiring x-axis tick labels.
-                # type: ignore[index]
                 all_series[tname]["__ts_ds"] = ts_ds_name
+                all_series[tname]["__dt_ds"] = dt_ds_name
+                all_series[tname]["__ip_last"] = ip_last
 
             logger.debug("Veusz: loaded %d datasets (%d samples each) for %s",
                          n_datasets, n_samples if n_samples else 1, ip)
@@ -1696,9 +1706,10 @@ def write_veusz(
 
             for tname, series in all_series.items():
 
-                # Retrieve the timestamp text-dataset name stored during
-                # dataset loading (None if timestamps unavailable).
+                # Retrieve stored datetime/text dataset names and IP suffix.
                 ts_ds = series.pop("__ts_ds", None)   # type: ignore[arg-type]
+                dt_ds = series.pop("__dt_ds", None)   # type: ignore[arg-type]
+                ip_last = series.pop("__ip_last", ip.split('.')[-1])   # type: ignore[arg-type]
 
                 # --- Page — human-readable name (spaces, no underscores) ---
                 page_wname = _veusz_safe(f"{tname}_page")
@@ -1710,8 +1721,8 @@ def write_veusz(
                 grid.columns.val = 2
 
                 for p_idx, (param, (val, unit)) in enumerate(series.items()):
-                    ds_name = _veusz_safe(f"{tname}_{param}")
-                    idx_name = _veusz_safe(f"idx_{tname}_{param}")
+                    ds_name = _veusz_safe(f"{ip_last}_{tname}_{param}")
+                    idx_name = _veusz_safe(f"{ip_last}_dt_{tname}_{param}")
                     gname = _veusz_safe(f"g_{param}")
                     colour = _colour(p_idx)
                     # Y-axis label: human-readable param + unit, no underscores
@@ -1720,19 +1731,27 @@ def write_veusz(
 
                     # --- Graph ---
                     graph = grid.Add("graph", name=gname, autoadd=False)
+                    try:
+                        if hasattr(graph, "tags"):
+                            graph.tags.val = _veusz_safe(f"ip_{ip_last}")
+                    except Exception:
+                        pass
 
-                    # --- x-axis with optional timestamp tick labels ---
+                    # --- x-axis in datetime mode ---
                     ax = graph.Add("axis", name="x", autoadd=False)
                     ax.label.val = "Local Time"
                     ax.direction.val = "horizontal"
-                    # Wire the timestamp text dataset as axis tick labels so
-                    # actual time strings appear on the x-axis instead of
-                    # integer sample indices.
-                    if ts_ds:
+                    try:
+                        ax.mode.val = "datetime"
+                    except Exception:
+                        pass
+                    for _obj_name in ("TickLabels", "MajorTicks"):
                         try:
-                            ax.tickLabels.val = ts_ds
+                            _obj = getattr(ax, _obj_name)
+                            if hasattr(_obj, 'format'):
+                                _obj.format.val = "%Y-%m-%d %H:%M:%S"
                         except Exception:
-                            pass  # graceful: older Veusz without tickLabels
+                            pass
 
                     # --- y-axis (carries the parameter label) ---
                     ay = graph.Add("axis", name="y", autoadd=False)
