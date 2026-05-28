@@ -157,7 +157,7 @@ HEADLESS_SILENT = 1   # 1 = suppress ALL stdout/stderr console output;
 #                              Primary OOM guard for long/infinite runs.
 #                              Overrideable via GUI spinbox or caller kwarg.
 MEM_FLUSH_THRESHOLD_MB = 256   # flush when store occupies more than N MB
-MEM_FREE_MIN_MB = 512   # flush when system free RAM falls below N MB
+MEM_FREE_MIN_MB = 4096   # flush when system free RAM falls below N MB
 # Percentage of *total* system RAM at which a flush-and-clear is triggered.
 MEM_RAM_PCT_LIMIT = 70   # flush + clear when system RAM >= N % of total
 
@@ -205,7 +205,8 @@ FITS_DIR = os.path.join(OUTPUT_BASE_DIR, "fits")   # NRAO FITS files
 CSV_DIR = os.path.join(OUTPUT_BASE_DIR, "csv")    # per-table CSV files
 XLSX_DIR = os.path.join(OUTPUT_BASE_DIR, "xlsx")   # Excel workbooks
 VEUSZ_DIR = os.path.join(OUTPUT_BASE_DIR, "veusz")  # Veusz HDF5 projects
-PREVIEW_CACHE_DIR = os.path.join(OUTPUT_BASE_DIR, "preview_cache")  # PNG plot image cache
+PREVIEW_CACHE_DIR = os.path.join(
+    OUTPUT_BASE_DIR, "preview_cache")  # PNG plot image cache
 # One .png file per (device × table/overlay) combination is written here on
 # every poll refresh (overwritten in place, ~50–150 KB each).  These are
 # the source images for the GUI tab thumbnails.  Disk use is fixed regardless
@@ -740,7 +741,8 @@ def clear_time_series_store() -> None:
     with _TS_LOCK:
         TIME_SERIES_STORE.clear()
     gc.collect()
-    logger.info("TIME_SERIES_STORE cleared and garbage-collected after RAM flush.")
+    logger.info(
+        "TIME_SERIES_STORE cleared and garbage-collected after RAM flush.")
 
 
 def should_flush(cfg: dict) -> bool:
@@ -752,20 +754,23 @@ def should_flush(cfg: dict) -> bool:
       2. System free RAM < mem_free_min_mb.
       3. System RAM usage % >= mem_ram_pct_limit (new).
     """
-    threshold     = cfg.get("mem_flush_threshold_mb", MEM_FLUSH_THRESHOLD_MB)
-    free_min      = cfg.get("mem_free_min_mb",        MEM_FREE_MIN_MB)
+    threshold = cfg.get("mem_flush_threshold_mb", MEM_FLUSH_THRESHOLD_MB)
+    free_min = cfg.get("mem_free_min_mb",        MEM_FREE_MIN_MB)
     ram_pct_limit = cfg.get("mem_ram_pct_limit",      MEM_RAM_PCT_LIMIT)
-    store_mb  = ts_store_size_mb()
-    free_mb   = system_free_ram_mb()
-    used_pct  = system_ram_used_pct()
+    store_mb = ts_store_size_mb()
+    free_mb = system_free_ram_mb()
+    used_pct = system_ram_used_pct()
     if store_mb > threshold:
-        logger.info("Flush triggered: store %.1f MB > threshold %.1f MB", store_mb, threshold)
+        logger.info(
+            "Flush triggered: store %.1f MB > threshold %.1f MB", store_mb, threshold)
         return True
     if free_mb < free_min:
-        logger.info("Flush triggered: free RAM %.1f MB < minimum %.1f MB", free_mb, free_min)
+        logger.info(
+            "Flush triggered: free RAM %.1f MB < minimum %.1f MB", free_mb, free_min)
         return True
     if used_pct >= ram_pct_limit:
-        logger.info("Flush triggered: system RAM %.1f%% >= limit %.0f%%", used_pct, ram_pct_limit)
+        logger.info(
+            "Flush triggered: system RAM %.1f%% >= limit %.0f%%", used_pct, ram_pct_limit)
         return True
     return False
 
@@ -2153,8 +2158,8 @@ def _build_one_figure(
     """
     from matplotlib.figure import Figure as _MplFigure
     fig = _MplFigure(figsize=(10, 4))
-    ax  = fig.add_subplot(111)
-    n   = len(x)
+    ax = fig.add_subplot(111)
+    n = len(x)
     for c_idx, (label, values) in enumerate(series[:MAX_PREVIEW_SERIES]):
         ax.plot(x, values, label=label,
                 color=prop_colors[c_idx % len(prop_colors)],
@@ -2162,7 +2167,8 @@ def _build_one_figure(
     if timestamps and n > 0:
         step = max(1, n // 8)
         ax.set_xticks(x[::step])
-        ax.set_xticklabels(timestamps[::step], rotation=35, ha="right", fontsize=6)
+        ax.set_xticklabels(timestamps[::step],
+                           rotation=35, ha="right", fontsize=6)
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
     ax.set_title(f"{title}\n{ip}", fontsize=9)
@@ -2256,7 +2262,7 @@ def build_preview_cache(
         # ── Per-table plots ────────────────────────────────────────────
         for tname, tdata in tables.items():
             ts = tdata["timestamps_local"]
-            n  = len(ts)
+            n = len(ts)
             if not tdata["columns"] or n == 0:
                 continue
             x = list(range(n))
@@ -2272,14 +2278,15 @@ def build_preview_cache(
                 _cache_dir, f"preview_{safe_ip}_{tname.translate(_SAFE)}.png")
             try:
                 fig = _build_one_figure(ip=ip, title=tname,
-                    xlabel="Sample index", ylabel="Value",
-                    x=x, series=series, timestamps=ts, prop_colors=prop_colors)
+                                        xlabel="Sample index", ylabel="Value",
+                                        x=x, series=series, timestamps=ts, prop_colors=prop_colors)
                 _render_figure_to_png(fig, png_path)
                 manifest.append({"title": f"{ip} — {tname}"[:30],
-                                  "path": png_path, "ip": ip,
-                                  "tname": tname, "kind": "table"})
+                                 "path": png_path, "ip": ip,
+                                 "tname": tname, "kind": "table"})
             except Exception as exc:
-                logger.warning("Preview render failed %s/%s: %s", ip, tname, exc)
+                logger.warning(
+                    "Preview render failed %s/%s: %s", ip, tname, exc)
 
         # ── Overlay plots ──────────────────────────────────────────────
         for group_label, substrings in VEUSZ_OVERLAY_GROUPS.items():
@@ -2287,13 +2294,13 @@ def build_preview_cache(
             ov_ts: List[str] = []
             for tname, tdata in tables.items():
                 _ts = tdata["timestamps_local"]
-                _n  = len(_ts)
+                _n = len(_ts)
                 for param, vals in tdata["columns"].items():
                     if not any(s in param.lower() for s in substrings):
                         continue
                     if len(vals) != _n or _n == 0:
                         continue
-                    unit  = tdata["units"].get(param, "")
+                    unit = tdata["units"].get(param, "")
                     label = f"{tname[:10]}/{param}"
                     if unit:
                         label += f" ({unit})"
@@ -2303,20 +2310,21 @@ def build_preview_cache(
             if len(ov_series) < 2:
                 continue
             _n_ov = len(ov_series[0][1])
-            safe_gl  = group_label.translate(_SAFE)
+            safe_gl = group_label.translate(_SAFE)
             png_path = os.path.join(
                 _cache_dir, f"preview_{safe_ip}_overlay_{safe_gl}.png")
             try:
                 fig = _build_one_figure(ip=ip, title=f"Overlay: {group_label}",
-                    xlabel="Sample index", ylabel=group_label,
-                    x=list(range(_n_ov)), series=ov_series, timestamps=[],
-                    prop_colors=prop_colors)
+                                        xlabel="Sample index", ylabel=group_label,
+                                        x=list(range(_n_ov)), series=ov_series, timestamps=[],
+                                        prop_colors=prop_colors)
                 _render_figure_to_png(fig, png_path)
                 manifest.append({"title": f"{ip} — Overlay: {group_label}"[:30],
-                                  "path": png_path, "ip": ip,
-                                  "tname": group_label, "kind": "overlay"})
+                                 "path": png_path, "ip": ip,
+                                 "tname": group_label, "kind": "overlay"})
             except Exception as exc:
-                logger.warning("Overlay render failed %s/%s: %s", ip, group_label, exc)
+                logger.warning("Overlay render failed %s/%s: %s",
+                               ip, group_label, exc)
 
     logger.debug("build_preview_cache: %d panel(s) written to %s",
                  len(manifest), _cache_dir)
@@ -2337,8 +2345,6 @@ def build_preview_figures(
     """
     build_preview_cache(all_device_data)
     return []
-
-
 
 
 # ===========================================================================
@@ -2907,16 +2913,17 @@ def launch_gui(
 
             manifest = getattr(self, "_preview_manifest", [])
             if not manifest:
-                placeholder = QLabel("No data yet — click 'Poll Now' to fetch.")
+                placeholder = QLabel(
+                    "No data yet — click 'Poll Now' to fetch.")
                 placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
                 self._tab_widget.addTab(placeholder, "Waiting …")
                 return
 
             for entry in manifest:
-                title    = entry.get("title", "Plot")
+                title = entry.get("title", "Plot")
                 png_path = entry.get("path", "")
-                tab_w    = QWidget()
-                tab_lay  = QVBoxLayout(tab_w)
+                tab_w = QWidget()
+                tab_lay = QVBoxLayout(tab_w)
                 tab_lay.setSpacing(4)
 
                 img_lbl = QLabel()
@@ -2972,9 +2979,9 @@ def launch_gui(
             matplotlib Figure is alive at any time during interactive use.
             """
             self._destroy_live_canvas()
-            ip    = entry.get("ip", "")
+            ip = entry.get("ip", "")
             tname = entry.get("tname", "")
-            kind  = entry.get("kind", "table")
+            kind = entry.get("kind", "table")
 
             with _TS_LOCK:
                 ip_data = {tn: dict(td)
@@ -3002,20 +3009,21 @@ def launch_gui(
                     if len(values) != n:
                         continue
                     unit = tdata.get("units", {}).get(param, "")
-                    series.append((f"{param} ({unit})" if unit else param, values))
+                    series.append(
+                        (f"{param} ({unit})" if unit else param, values))
             else:
                 substrings = VEUSZ_OVERLAY_GROUPS.get(tname, [])
                 ylabel = tname
                 for tn, tdata in ip_data.items():
                     ts_ov = tdata.get("timestamps_local", [])
-                    n_ov  = len(ts_ov)
+                    n_ov = len(ts_ov)
                     for param, values in tdata.get("columns", {}).items():
                         if not any(s in param.lower() for s in substrings):
                             continue
                         if len(values) != n_ov or n_ov == 0:
                             continue
                         unit = tdata.get("units", {}).get(param, "")
-                        lbl  = f"{tn[:10]}/{param}"
+                        lbl = f"{tn[:10]}/{param}"
                         if unit:
                             lbl += f" ({unit})"
                         series.append((lbl, values))
@@ -3029,16 +3037,16 @@ def launch_gui(
 
             try:
                 fig = _build_one_figure(ip=ip, title=tname,
-                    xlabel="Sample index", ylabel=ylabel,
-                    x=x, series=series, timestamps=timestamps,
-                    prop_colors=prop_colors)
+                                        xlabel="Sample index", ylabel=ylabel,
+                                        x=x, series=series, timestamps=timestamps,
+                                        prop_colors=prop_colors)
                 self._live_fig = fig
                 self._live_tab_idx = self._tab_widget.currentIndex()
-                canvas  = FigureCanvas(fig)
+                canvas = FigureCanvas(fig)
                 toolbar = NavToolbar(canvas, self._tab_widget)
-                cur_idx   = self._tab_widget.currentIndex()
+                cur_idx = self._tab_widget.currentIndex()
                 cur_title = self._tab_widget.tabText(cur_idx)
-                new_w   = QWidget()
+                new_w = QWidget()
                 new_lay = QVBoxLayout(new_w)
                 new_lay.addWidget(toolbar)
                 new_lay.addWidget(canvas)
@@ -3214,7 +3222,7 @@ def launch_gui(
             # ── RAM % flush-and-clear check ───────────────────────────────
             if should_flush_and_clear(cfg):
                 _used_pct = system_ram_used_pct()
-                _pct_lim  = cfg.get("mem_ram_pct_limit", MEM_RAM_PCT_LIMIT)
+                _pct_lim = cfg.get("mem_ram_pct_limit", MEM_RAM_PCT_LIMIT)
                 _msg = (f"[RAM Flush] System RAM {_used_pct:.1f}% >= limit "
                         f"{_pct_lim}%.  Writing all outputs and clearing store…")
                 self._append_log(_msg)
@@ -3224,20 +3232,25 @@ def launch_gui(
                     try:
                         self._flush_future.result(timeout=60)
                     except Exception as _fe:
-                        logger.error("In-flight flush error before pct-clear: %s", _fe)
+                        logger.error(
+                            "In-flight flush error before pct-clear: %s", _fe)
                     self._flush_future = None
                 if cfg.get("enable_fits"):
                     write_fits(ALL_DEVICE_DATA, cfg.get("fits_dir", FITS_DIR))
                 if cfg.get("enable_csv"):
-                    write_csv(ALL_DEVICE_DATA, cfg.get("csv_dir", CSV_DIR), append=True)
+                    write_csv(ALL_DEVICE_DATA, cfg.get(
+                        "csv_dir", CSV_DIR), append=True)
                 if cfg.get("enable_xlsx"):
                     write_xlsx(ALL_DEVICE_DATA, cfg.get("xlsx_dir", XLSX_DIR))
                 if cfg.get("enable_log_append"):
-                    write_log_text(ALL_DEVICE_DATA, cfg.get("log_dir", LOG_DIR))
+                    write_log_text(ALL_DEVICE_DATA,
+                                   cfg.get("log_dir", LOG_DIR))
                 if cfg.get("enable_veusz") and ALL_DEVICE_DATA:
-                    self._append_log("  Building Veusz for RAM-flush snapshot…")
+                    self._append_log(
+                        "  Building Veusz for RAM-flush snapshot…")
                     try:
-                        write_veusz(ALL_DEVICE_DATA, cfg.get("veusz_dir", VEUSZ_DIR))
+                        write_veusz(ALL_DEVICE_DATA, cfg.get(
+                            "veusz_dir", VEUSZ_DIR))
                     except Exception as _ve:
                         logger.error("Veusz RAM-flush write failed: %s", _ve)
                 clear_time_series_store()
@@ -3773,14 +3786,15 @@ def run_headless(cfg: Dict[str, Any]) -> None:
             _do_pct_clear = should_flush_and_clear(cfg)
             if _do_pct_clear:
                 _used_pct = system_ram_used_pct()
-                _pct_lim  = cfg.get("mem_ram_pct_limit", MEM_RAM_PCT_LIMIT)
+                _pct_lim = cfg.get("mem_ram_pct_limit", MEM_RAM_PCT_LIMIT)
                 if not dicts_only:
                     logger.info(
                         "RAM %% flush-and-clear at cycle %d "
                         "(system RAM: %.1f%% >= limit %.0f%%). Writing all outputs…",
                         cycle, _used_pct, _pct_lim)
                 if print_cumulative:
-                    _print_cumulative_store(cycle, reason="RAM pct flush-and-clear")
+                    _print_cumulative_store(
+                        cycle, reason="RAM pct flush-and-clear")
                 if flush_future is not None and not flush_future.done():
                     try:
                         flush_future.result(timeout=60)
@@ -3790,15 +3804,19 @@ def run_headless(cfg: Dict[str, Any]) -> None:
                 if cfg.get("enable_fits"):
                     write_fits(ALL_DEVICE_DATA, cfg.get("fits_dir", FITS_DIR))
                 if cfg.get("enable_csv"):
-                    write_csv(ALL_DEVICE_DATA, cfg.get("csv_dir", CSV_DIR), append=True)
+                    write_csv(ALL_DEVICE_DATA, cfg.get(
+                        "csv_dir", CSV_DIR), append=True)
                 if cfg.get("enable_xlsx"):
                     write_xlsx(ALL_DEVICE_DATA, cfg.get("xlsx_dir", XLSX_DIR))
                 if cfg.get("enable_log_append"):
-                    write_log_text(ALL_DEVICE_DATA, cfg.get("log_dir", LOG_DIR))
+                    write_log_text(ALL_DEVICE_DATA,
+                                   cfg.get("log_dir", LOG_DIR))
                 if cfg.get("enable_veusz"):
                     if not dicts_only:
-                        logger.info("Building Veusz for RAM-flush snapshot (cycle %d)…", cycle)
-                    write_veusz(ALL_DEVICE_DATA, cfg.get("veusz_dir", VEUSZ_DIR))
+                        logger.info(
+                            "Building Veusz for RAM-flush snapshot (cycle %d)…", cycle)
+                    write_veusz(ALL_DEVICE_DATA, cfg.get(
+                        "veusz_dir", VEUSZ_DIR))
                 clear_time_series_store()
                 flush_future = None
                 if not dicts_only:
@@ -3808,9 +3826,11 @@ def run_headless(cfg: Dict[str, Any]) -> None:
             elif should_flush(cfg):
                 if flush_future is None or flush_future.done():
                     if not dicts_only:
-                        logger.info("Dispatching background flush (cycle %d)…", cycle)
+                        logger.info(
+                            "Dispatching background flush (cycle %d)…", cycle)
                     if print_cumulative:
-                        _print_cumulative_store(cycle, reason="memory limit flush")
+                        _print_cumulative_store(
+                            cycle, reason="memory limit flush")
                     flush_future = flush_outputs_parallel(cfg)
                 else:
                     if not dicts_only:
