@@ -217,10 +217,9 @@ def run(count: int = 1, interval: float = 30.0, ram_pct: Optional[float] = None)
         Seconds between successive poll_once() calls, accounting for
         poll duration.  Set to 0 for back-to-back polling.
     ram_pct : float or None
-        System RAM usage percentage (10–95) at which a flush-and-clear is
-        triggered mid-loop.  When None (default), uses the value set in
-        ab_power_meter_monitor.py (``MEM_RAM_PCT_LIMIT``, default 70%%).
-        User-supplied value takes precedence over the module default.
+        System RAM usage % (10-95) at which flush-and-clear fires.
+        None uses MEM_RAM_PCT_LIMIT default (70%%) from the monitor module.
+        User-supplied value takes precedence.
 
     Returns
     -------
