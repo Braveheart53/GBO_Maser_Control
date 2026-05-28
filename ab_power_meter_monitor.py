@@ -27,8 +27,8 @@ Phone  : +1 (304) 456-2216
 Email  : wwallace@nrao.edu
 Email2 : naval.antennas@gmail.com 
 Python : 3.8+
-Version: 1.1.0
-Deps   : PySide6, matplotlib, requests, beautifulsoup4, lxml, gc (stdlib),
+Version: 1.1.1
+Deps   : PySide6, matplotlib, requests, beautifulsoup4, lxml,
          astropy, openpyxl, veusz  (pip install each)
 
 # %%% Usage
@@ -151,27 +151,15 @@ HEADLESS_SILENT = 1   # 1 = suppress ALL stdout/stderr console output;
 # %% Memory / flush thresholds (adaptive write scheduling)
 # ---------------------------------------------------------------------------
 # Three independent flush mechanisms protect against OOM crashes:
-#
-#   MEM_FLUSH_THRESHOLD_MB  — flush when the in-memory TIME_SERIES_STORE
-#                              itself exceeds N MB (background, no clear).
-#   MEM_FREE_MIN_MB         — flush when system *free* RAM falls below N MB
-#                              (background, no clear).
-#   MEM_RAM_PCT_LIMIT       — flush + CLEAR when *system* RAM use reaches
-#                              N % of total installed RAM (synchronous,
-#                              full clear).  This is the primary OOM guard
-#                              for long / infinite auto-sampling runs.
-#                              Overrideable at runtime via the GUI spinbox
-#                              or by passing ram_pct= to ab_meter_caller.run().
-#
-# All three are checked after every poll cycle in both headless and GUI mode.
+#   MEM_FLUSH_THRESHOLD_MB  — background flush when store > N MB (no clear).
+#   MEM_FREE_MIN_MB         — background flush when free RAM < N MB (no clear).
+#   MEM_RAM_PCT_LIMIT       — synchronous flush + CLEAR when system RAM >= N %.
+#                              Primary OOM guard for long/infinite runs.
+#                              Overrideable via GUI spinbox or caller kwarg.
 MEM_FLUSH_THRESHOLD_MB = 256   # flush when store occupies more than N MB
 MEM_FREE_MIN_MB = 512   # flush when system free RAM falls below N MB
 # Percentage of *total* system RAM at which a flush-and-clear is triggered.
-# When process RAM use reaches this fraction of total installed RAM, ALL
-# enabled output files are written (appended) and TIME_SERIES_STORE is
-# completely cleared so memory returns to baseline.
-# Range: 1–99 (%).  Default 70 (%); overrideable via GUI or caller kwarg.
-MEM_RAM_PCT_LIMIT = 70   # flush + clear when process RAM >= N % of total RAM
+MEM_RAM_PCT_LIMIT = 70   # flush + clear when system RAM >= N % of total
 
 # ---------------------------------------------------------------------------
 # %% IP address configuration
@@ -217,11 +205,19 @@ FITS_DIR = os.path.join(OUTPUT_BASE_DIR, "fits")   # NRAO FITS files
 CSV_DIR = os.path.join(OUTPUT_BASE_DIR, "csv")    # per-table CSV files
 XLSX_DIR = os.path.join(OUTPUT_BASE_DIR, "xlsx")   # Excel workbooks
 VEUSZ_DIR = os.path.join(OUTPUT_BASE_DIR, "veusz")  # Veusz HDF5 projects
+PREVIEW_CACHE_DIR = os.path.join(OUTPUT_BASE_DIR, "preview_cache")  # PNG plot image cache
+# One .png file per (device × table/overlay) combination is written here on
+# every poll refresh (overwritten in place, ~50–150 KB each).  These are
+# the source images for the GUI tab thumbnails.  Disk use is fixed regardless
+# of run duration because files are always overwritten, never appended.
 
 # Path to the stop-signal file.  Touch this file (or run ab_stop.py) to
 # request a clean shutdown of the headless loop.  Deleted automatically
 # on startup and on clean exit.
 STOP_SIGNAL_FILE = os.path.join(OUTPUT_BASE_DIR, "STOP_COLLECTION")
+
+# Maximum parameter series drawn per preview figure (bounds per-figure RAM).
+MAX_PREVIEW_SERIES = 12
 
 # ---------------------------------------------------------------------------
 # %% Table page-index → canonical name mapping
@@ -329,6 +325,16 @@ def _setup_logging(
 
     return logger
 
+
+# Suppress matplotlib "more than 20 figures" warning globally.
+# Primary fix is using matplotlib.figure.Figure() directly (non-pyplot),
+# but this rcParam also silences indirect pyplot calls in third-party code.
+try:
+    import matplotlib as _mpl_early
+    _mpl_early.rcParams["figure.max_open_warning"] = 0
+    del _mpl_early
+except Exception:
+    pass
 
 # Global logger — always initialised console-only at module/import scope.
 # This avoids creating the logs/ directory on disk just because the module
@@ -698,15 +704,7 @@ def ts_store_size_mb() -> float:
 
 def system_free_ram_mb() -> float:
     """
-    Return the amount of free system RAM in megabytes.
-
-    Falls back to a large sentinel value (9999) if psutil is unavailable
-    so that the flush threshold will not trigger.
-
-    Returns
-    -------
-    float
-        Free RAM in megabytes, or 9999 if psutil is not installed.
+    Return free system RAM in megabytes, or 9999 if psutil unavailable.
     """
     try:
         import psutil as _ps
@@ -717,22 +715,11 @@ def system_free_ram_mb() -> float:
 
 def system_ram_used_pct() -> float:
     """
-    Return the percentage of *total* system RAM currently in use by the
-    entire system (all processes).
+    Return system RAM usage as a percentage (0–100), or 0.0 if psutil unavailable.
 
-    Uses ``psutil.virtual_memory().percent`` which is the same value
-    reported by ``top`` / ``htop`` and equals::
-
-        (total - available) / total * 100
-
-    Falls back to 0.0 if psutil is unavailable so the percentage-based
-    flush threshold never fires accidentally.
-
-    Returns
-    -------
-    float
-        RAM utilisation percentage in the range 0.0–100.0, or 0.0 if
-        psutil is not available.
+    Uses ``psutil.virtual_memory().percent`` — the same value shown by
+    ``top``/``htop``.  Falls back to 0.0 so the percentage threshold
+    never fires accidentally when psutil is not installed.
     """
     try:
         import psutil as _ps
@@ -743,16 +730,11 @@ def system_ram_used_pct() -> float:
 
 def clear_time_series_store() -> None:
     """
-    Completely wipe TIME_SERIES_STORE and reclaim its memory.
+    Completely wipe TIME_SERIES_STORE and reclaim RAM.
 
-    Called after a percentage-based RAM flush so the in-process store
-    returns to baseline while output files (CSV, XLSX, FITS, Veusz, log)
-    already contain the written data.  The function is thread-safe: it
-    acquires _TS_LOCK before clearing.
-
-    A ``gc.collect()`` call is made after the clear to ensure CPython
-    releases the freed list/dict objects to the OS promptly rather than
-    holding them in the interpreter's free-list.
+    Thread-safe (acquires _TS_LOCK).  Calls gc.collect() after clearing
+    so CPython releases freed objects to the OS promptly.  Logs the event
+    so the flush appears in ab_monitor.log and the GUI status console.
     """
     global TIME_SERIES_STORE
     with _TS_LOCK:
@@ -761,75 +743,41 @@ def clear_time_series_store() -> None:
     logger.info("TIME_SERIES_STORE cleared and garbage-collected after RAM flush.")
 
 
-def should_flush(cfg: Dict[str, Any]) -> bool:
+def should_flush(cfg: dict) -> bool:
     """
-    Decide whether an intermediate mid-loop file flush should occur.
+    Return True when any flush condition is met.
 
-    Returns True when any of these conditions are met:
-
-    1. TIME_SERIES_STORE footprint exceeds ``mem_flush_threshold_mb``.
-    2. System free RAM is below ``mem_free_min_mb``.
-    3. System RAM usage percentage is at or above ``mem_ram_pct_limit``
-       (default 70 %).  This is the primary guard against OOM crashes
-       during long / infinite auto-sampling runs.
-
-    Parameters
-    ----------
-    cfg : Dict
-        Runtime config dict (reads flush threshold keys).
-
-    Returns
-    -------
-    bool
-        True when a flush is needed.
+    Conditions (checked in order):
+      1. Store footprint > mem_flush_threshold_mb.
+      2. System free RAM < mem_free_min_mb.
+      3. System RAM usage % >= mem_ram_pct_limit (new).
     """
-    threshold = cfg.get("mem_flush_threshold_mb", MEM_FLUSH_THRESHOLD_MB)
-    free_min = cfg.get("mem_free_min_mb",        MEM_FREE_MIN_MB)
-    ram_pct_limit = cfg.get("mem_ram_pct_limit", MEM_RAM_PCT_LIMIT)
-    store_mb = ts_store_size_mb()
-    free_mb  = system_free_ram_mb()
-    used_pct = system_ram_used_pct()
-
+    threshold     = cfg.get("mem_flush_threshold_mb", MEM_FLUSH_THRESHOLD_MB)
+    free_min      = cfg.get("mem_free_min_mb",        MEM_FREE_MIN_MB)
+    ram_pct_limit = cfg.get("mem_ram_pct_limit",      MEM_RAM_PCT_LIMIT)
+    store_mb  = ts_store_size_mb()
+    free_mb   = system_free_ram_mb()
+    used_pct  = system_ram_used_pct()
     if store_mb > threshold:
-        logger.info(
-            "Flush triggered: store size %.1f MB > threshold %.1f MB",
-            store_mb, threshold)
+        logger.info("Flush triggered: store %.1f MB > threshold %.1f MB", store_mb, threshold)
         return True
     if free_mb < free_min:
-        logger.info(
-            "Flush triggered: free RAM %.1f MB < minimum %.1f MB",
-            free_mb, free_min)
+        logger.info("Flush triggered: free RAM %.1f MB < minimum %.1f MB", free_mb, free_min)
         return True
     if used_pct >= ram_pct_limit:
-        logger.info(
-            "Flush triggered: system RAM usage %.1f %% >= limit %.0f %%",
-            used_pct, ram_pct_limit)
+        logger.info("Flush triggered: system RAM %.1f%% >= limit %.0f%%", used_pct, ram_pct_limit)
         return True
     return False
 
 
-def should_flush_and_clear(cfg: Dict[str, Any]) -> bool:
+def should_flush_and_clear(cfg: dict) -> bool:
     """
-    Return True when the system-RAM-percentage limit has been reached.
+    Return True only when the system-RAM-percentage limit has been reached.
 
-    Unlike ``should_flush`` (which may fire on store-size or free-RAM
-    thresholds without clearing the store), this function is the
-    specific trigger for the *flush-AND-clear* path: write all outputs
-    then wipe TIME_SERIES_STORE completely.
-
-    Parameters
-    ----------
-    cfg : Dict
-        Runtime config dict (reads ``mem_ram_pct_limit``).
-
-    Returns
-    -------
-    bool
-        True only when system RAM usage >= ``mem_ram_pct_limit``.
+    This is the exclusive trigger for the *flush-AND-clear* path which
+    writes ALL outputs (including Veusz) then wipes TIME_SERIES_STORE.
     """
-    ram_pct_limit = cfg.get("mem_ram_pct_limit", MEM_RAM_PCT_LIMIT)
-    used_pct = system_ram_used_pct()
-    return used_pct >= ram_pct_limit
+    return system_ram_used_pct() >= cfg.get("mem_ram_pct_limit", MEM_RAM_PCT_LIMIT)
 
 
 # %% Dict raw data update
@@ -2132,181 +2080,265 @@ def flush_outputs_parallel(cfg: Dict[str, Any]) -> "concurrent.futures.Future":
 # ===========================================================================
 # %% MATPLOTLIB PREVIEW HELPER (used by GUI)
 # ===========================================================================
-def build_preview_figures(
-    all_device_data: Dict[str, Dict[str, Dict[str, Any]]],
-) -> List[Any]:
+def _render_figure_to_png(fig: Any, path: str) -> None:
     """
-    Build a list of matplotlib Figure objects for GUI preview display.
+    Render a non-pyplot ``matplotlib.figure.Figure`` to PNG then destroy it.
 
-    Reads from TIME_SERIES_STORE (the authoritative accumulator) so that
-    each figure shows a growing line plot across ALL samples collected so
-    far, not just the most recent snapshot.  The ``all_device_data``
-    parameter is accepted for API compatibility but is not used — the
-    store is the canonical source.
+    Because the Figure was created via ``matplotlib.figure.Figure()`` (not
+    ``plt.subplots``), it is NEVER in pyplot's global figure manager.
+    No ``plt.close()`` is required.  ``fig.clf(); del fig; gc.collect()``
+    is sufficient to release the axes, renderer, and all array data.
 
-    Creates:
-      • One figure per table per device — one line per numeric parameter,
-        x-axis = sample index, growing with each poll.
-      • One overlay figure per unit-group (VEUSZ_OVERLAY_GROUPS) per
-        device — all matching parameters on a single axes.
+    Parameters
+    ----------
+    fig : matplotlib.figure.Figure
+        A non-pyplot Figure ready to save.
+    path : str
+        Absolute output PNG path.
+    """
+    try:
+        from matplotlib.backends.backend_agg import FigureCanvasAgg
+        FigureCanvasAgg(fig).draw()
+        fig.savefig(path, dpi=96, bbox_inches="tight")
+    finally:
+        fig.clf()
+        del fig
+        gc.collect()
+
+
+def _build_one_figure(
+    ip: str,
+    title: str,
+    xlabel: str,
+    ylabel: str,
+    x: list,
+    series: list,
+    timestamps: list,
+    prop_colors: list,
+) -> Any:
+    """
+    Create a single non-pyplot ``matplotlib.figure.Figure``.
+
+    Using ``matplotlib.figure.Figure()`` directly instead of
+    ``plt.subplots()`` ensures the object is NEVER registered in pyplot's
+    global figure manager.  This permanently eliminates the "more than 20
+    figures have been opened" warning, regardless of how many devices,
+    tables, or overlays are in play.
+
+    At most ``MAX_PREVIEW_SERIES`` series are drawn per figure; extras are
+    silently dropped to bound per-figure RAM for wide tables.
+
+    Parameters
+    ----------
+    ip : str
+        Device IP (appended to title).
+    title : str
+        Primary plot title.
+    xlabel, ylabel : str
+        Axis labels.
+    x : list
+        Sample-index list (x-axis).
+    series : list
+        ``[(label, values_list), …]``.
+    timestamps : list
+        Local-time strings for x-tick labels (may be empty).
+    prop_colors : list
+        Colour cycle from rcParams.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+        Non-pyplot Figure.  Caller must pass it to
+        ``_render_figure_to_png()`` to persist it and free its memory.
+    """
+    from matplotlib.figure import Figure as _MplFigure
+    fig = _MplFigure(figsize=(10, 4))
+    ax  = fig.add_subplot(111)
+    n   = len(x)
+    for c_idx, (label, values) in enumerate(series[:MAX_PREVIEW_SERIES]):
+        ax.plot(x, values, label=label,
+                color=prop_colors[c_idx % len(prop_colors)],
+                linewidth=1.4, marker="o", markersize=3)
+    if timestamps and n > 0:
+        step = max(1, n // 8)
+        ax.set_xticks(x[::step])
+        ax.set_xticklabels(timestamps[::step], rotation=35, ha="right", fontsize=6)
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    ax.set_title(f"{title}\n{ip}", fontsize=9)
+    ax.grid(alpha=0.3)
+    ax.legend(fontsize=6, loc="upper left",
+              bbox_to_anchor=(1.01, 1), borderaxespad=0)
+    fig.tight_layout(rect=(0, 0, 0.82, 1))
+    return fig
+
+
+def build_preview_cache(
+    all_device_data: Dict[str, Dict[str, Dict[str, Any]]],
+    cache_dir: str = "",
+) -> List[Dict[str, str]]:
+    """
+    Render all preview plots to PNG cache files on disk.
+
+    Replaces the old ``build_preview_figures()`` pattern of holding all
+    matplotlib Figure objects in RAM simultaneously.
+
+    How it works
+    ------------
+    * Each Figure is a **non-pyplot** ``matplotlib.figure.Figure`` — NEVER
+      added to pyplot's global figure manager.  The "more than 20 figures
+      have been opened" warning is completely eliminated at the source.
+    * Immediately after rendering, ``_render_figure_to_png()`` calls
+      ``fig.clf(); del fig; gc.collect()``, releasing axes + renderer
+      memory before the next figure is built.  Only one Figure object
+      is alive at any time during the render sweep.
+    * The caller receives ``[{"title":…, "path":…, …}, …]``.  The GUI
+      displays each entry as a ``QLabel / QPixmap`` thumbnail with zero
+      Figure objects in RAM.
+    * A "Live View" button creates ONE on-demand ``FigureCanvas`` for the
+      selected tab; it is destroyed before the next one is shown.
+    * Each PNG is ≈50–150 KB; cache files are overwritten on every
+      refresh so disk use is fixed regardless of run duration.
+
+    RAM profile
+    -----------
+    Peak ≈ 1 FigureCanvasAgg render buffer + N × PNG bytes (≈100 KB each).
+    The pyplot figure manager counter stays at ZERO for the entire
+    process lifetime.
 
     Parameters
     ----------
     all_device_data : Dict
-        Accepted for API compatibility; not used internally.
-        TIME_SERIES_STORE is read directly.
+        Accepted for API compatibility; data read from TIME_SERIES_STORE.
+    cache_dir : str
+        Output directory for PNG files.  Defaults to ``PREVIEW_CACHE_DIR``.
 
     Returns
     -------
-    List[matplotlib.figure.Figure]
-        List of Figure objects ready for embedding in a Qt canvas.
+    List[Dict[str, str]]
+        Manifest: one entry per figure with keys
+        ``title``, ``path``, ``ip``, ``tname``, ``kind``.
     """
+    _cache_dir = cache_dir if cache_dir else PREVIEW_CACHE_DIR
     try:
         import matplotlib
-        matplotlib.use("Agg")   # non-interactive backend for embedding
+        matplotlib.use("Agg")
         import matplotlib.pyplot as plt
     except ImportError as exc:
-        logger.error("matplotlib not available — preview skipped: %s", exc)
+        logger.error("matplotlib unavailable — preview cache skipped: %s", exc)
         return []
 
-    # Close any previously opened figures to prevent the matplotlib warning
-    # "More than 20 figures have been opened" — each call to this function
-    # replaces the prior figure set, so old ones must be explicitly closed.
-    plt.close("all")
+    os.makedirs(_cache_dir, exist_ok=True)
+    prop_colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
+    _SAFE = str.maketrans({
+        ".": "_", "/": "_", "\\": "_", " ": "_",
+        ":": "_", "*": "_", "?": "_", "%": "_",
+    })
 
-    figures: List[Any] = []
-    prop_cycle_colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
-
-    # Snapshot the store under lock so we read a consistent view.
     with _TS_LOCK:
-        store_snapshot = {
+        store_snap = {
             ip: {
-                tname: {
-                    "timestamps_local": list(tdata.get("timestamps_local", [])),
-                    "columns": {
-                        col: list(vals)
-                        for col, vals in tdata.get("columns", {}).items()
-                    },
-                    "units": dict(tdata.get("units", {})),
+                tn: {
+                    "timestamps_local": list(td.get("timestamps_local", [])),
+                    "columns": {c: list(v) for c, v in td.get("columns", {}).items()},
+                    "units":   dict(td.get("units", {})),
                 }
-                for tname, tdata in tables.items()
+                for tn, td in tables.items()
             }
             for ip, tables in TIME_SERIES_STORE.items()
         }
 
-    for ip, tables in store_snapshot.items():
+    manifest: List[Dict[str, str]] = []
 
-        # ── Per-table line plots ───────────────────────────────────────────
+    for ip, tables in store_snap.items():
+        safe_ip = ip.replace(".", "_")
+
+        # ── Per-table plots ────────────────────────────────────────────
         for tname, tdata in tables.items():
-            columns = tdata["columns"]
-            timestamps = tdata["timestamps_local"]
-            n_samples = len(timestamps)
-
-            if not columns or n_samples == 0:
+            ts = tdata["timestamps_local"]
+            n  = len(ts)
+            if not tdata["columns"] or n == 0:
                 continue
-
-            # x-axis: integer sample indices so the axis always starts at 0
-            # regardless of how many samples have been collected.
-            x = list(range(n_samples))
-
-            fig, ax = plt.subplots(figsize=(10, 4))
-            color_idx = 0
-
-            for param, values in columns.items():
-                if len(values) != n_samples:
-                    # Length mismatch — skip rather than crash.
+            x = list(range(n))
+            series = []
+            for param, vals in tdata["columns"].items():
+                if len(vals) != n:
                     continue
                 unit = tdata["units"].get(param, "")
-                label = f"{param} ({unit})" if unit else param
-                color = prop_cycle_colors[color_idx % len(prop_cycle_colors)]
-                ax.plot(
-                    x, values,
-                    label=label,
-                    color=color,
-                    linewidth=1.4,
-                    marker="o",
-                    markersize=3,
-                )
-                color_idx += 1
+                series.append((f"{param} ({unit})" if unit else param, vals))
+            if not series:
+                continue
+            png_path = os.path.join(
+                _cache_dir, f"preview_{safe_ip}_{tname.translate(_SAFE)}.png")
+            try:
+                fig = _build_one_figure(ip=ip, title=tname,
+                    xlabel="Sample index", ylabel="Value",
+                    x=x, series=series, timestamps=ts, prop_colors=prop_colors)
+                _render_figure_to_png(fig, png_path)
+                manifest.append({"title": f"{ip} — {tname}"[:30],
+                                  "path": png_path, "ip": ip,
+                                  "tname": tname, "kind": "table"})
+            except Exception as exc:
+                logger.warning("Preview render failed %s/%s: %s", ip, tname, exc)
 
-            # x-axis tick labels: show timestamps when available, otherwise
-            # show sample numbers.  Rotate and thin to avoid crowding.
-            if timestamps:
-                # Show at most ~8 evenly-spaced labels.
-                step = max(1, n_samples // 8)
-                tick_pos = x[::step]
-                tick_labels = timestamps[::step]
-                ax.set_xticks(tick_pos)
-                ax.set_xticklabels(
-                    tick_labels, rotation=35, ha="right", fontsize=6)
-            ax.set_xlabel("Sample index")
-            ax.set_ylabel("Value")
-            ax.set_title(f"{tname}\n{ip}", fontsize=9)
-            ax.grid(alpha=0.3)
-            ax.legend(
-                fontsize=6,
-                loc="upper left",
-                bbox_to_anchor=(1.01, 1),
-                borderaxespad=0,
-            )
-            fig.tight_layout(rect=(0, 0, 0.82, 1))   # room for legend
-            # type: ignore[attr-defined]
-            fig._ab_title = f"{ip} — {tname}"
-            figures.append(fig)
-
-        # ── Overlay line plots by unit group ──────────────────────────────
+        # ── Overlay plots ──────────────────────────────────────────────
         for group_label, substrings in VEUSZ_OVERLAY_GROUPS.items():
-            # Collect (param_label, values_list) pairs that match this group.
-            group_series: List[tuple] = []
-
+            ov_series: List[tuple] = []
+            ov_ts: List[str] = []
             for tname, tdata in tables.items():
-                columns = tdata["columns"]
-                timestamps = tdata["timestamps_local"]
-                n_samples = len(timestamps)
-
-                for param, values in columns.items():
+                _ts = tdata["timestamps_local"]
+                _n  = len(_ts)
+                for param, vals in tdata["columns"].items():
                     if not any(s in param.lower() for s in substrings):
                         continue
-                    if len(values) != n_samples or n_samples == 0:
+                    if len(vals) != _n or _n == 0:
                         continue
-                    unit = tdata["units"].get(param, "")
+                    unit  = tdata["units"].get(param, "")
                     label = f"{tname[:10]}/{param}"
                     if unit:
                         label += f" ({unit})"
-                    group_series.append(
-                        (label, list(range(n_samples)), values))
-
-            if len(group_series) < 2:
+                    ov_series.append((label, vals))
+                    if not ov_ts:
+                        ov_ts = _ts
+            if len(ov_series) < 2:
                 continue
+            _n_ov = len(ov_series[0][1])
+            safe_gl  = group_label.translate(_SAFE)
+            png_path = os.path.join(
+                _cache_dir, f"preview_{safe_ip}_overlay_{safe_gl}.png")
+            try:
+                fig = _build_one_figure(ip=ip, title=f"Overlay: {group_label}",
+                    xlabel="Sample index", ylabel=group_label,
+                    x=list(range(_n_ov)), series=ov_series, timestamps=[],
+                    prop_colors=prop_colors)
+                _render_figure_to_png(fig, png_path)
+                manifest.append({"title": f"{ip} — Overlay: {group_label}"[:30],
+                                  "path": png_path, "ip": ip,
+                                  "tname": group_label, "kind": "overlay"})
+            except Exception as exc:
+                logger.warning("Overlay render failed %s/%s: %s", ip, group_label, exc)
 
-            fig, ax = plt.subplots(figsize=(10, 4))
-            for c_idx, (label, x, values) in enumerate(group_series):
-                color = prop_cycle_colors[c_idx % len(prop_cycle_colors)]
-                ax.plot(
-                    x, values,
-                    label=label,
-                    color=color,
-                    linewidth=1.4,
-                    marker="o",
-                    markersize=3,
-                )
+    logger.debug("build_preview_cache: %d panel(s) written to %s",
+                 len(manifest), _cache_dir)
+    return manifest
 
-            ax.set_xlabel("Sample index")
-            ax.set_ylabel(group_label)
-            ax.set_title(f"Overlay: {group_label}\n{ip}", fontsize=9)
-            ax.grid(alpha=0.3)
-            ax.legend(
-                fontsize=6,
-                loc="upper left",
-                bbox_to_anchor=(1.01, 1),
-                borderaxespad=0,
-            )
-            fig.tight_layout(rect=(0, 0, 0.82, 1))
-            # type: ignore[attr-defined]
-            fig._ab_title = f"{ip} — Overlay: {group_label}"
-            figures.append(fig)
 
-    return figures
+def build_preview_figures(
+    all_device_data: Dict[str, Dict[str, Dict[str, Any]]],
+) -> List[Any]:
+    """
+    Legacy shim — delegates to ``build_preview_cache()`` and returns ``[]``.
+
+    Retained so external code that calls ``build_preview_figures()`` keeps
+    working.  The GUI uses ``build_preview_cache()`` directly.
+
+    .. deprecated:: 1.1.0
+        Call ``build_preview_cache()`` directly.
+    """
+    build_preview_cache(all_device_data)
+    return []
+
+
 
 
 # ===========================================================================
@@ -2608,6 +2640,11 @@ def launch_gui(
             # Tracks in-flight background file flush so we never start two at once
             self._flush_future: Optional["concurrent.futures.Future"] = None
 
+            # Live-canvas tracking: at most one FigureCanvas alive at a time.
+            self._live_fig: Optional[Any] = None
+            self._live_tab_idx: int = -1
+            self._preview_manifest: List[Dict] = []
+
             self._build_menu()
             self._build_central()      # builds self._log_console
             self._build_status_bar()
@@ -2681,7 +2718,7 @@ def launch_gui(
 
             # ---- Right panel: plot tabs ----
             self._tab_widget = QTabWidget()
-            self._populate_plot_tabs(self._figures)
+            self._populate_plot_tabs([])   # updated after first poll
             splitter.addWidget(self._tab_widget)
             splitter.setStretchFactor(1, 1)
 
@@ -2800,19 +2837,16 @@ def launch_gui(
             ram_pct_lbl.setToolTip(
                 "When system RAM usage reaches this percentage, ALL enabled\n"
                 "output files are written/appended and the in-memory store is\n"
-                "fully cleared to reclaim memory.  Sampling then continues\n"
-                "seamlessly.  Default: 70 %%.  Range: 10–95 %%."
-            )
+                "fully cleared.  Sampling then continues seamlessly.\n"
+                "Default: 70%%.  Range: 10–95%%.")
             self._spin_ram_pct = QSpinBox()
             self._spin_ram_pct.setRange(10, 95)
             self._spin_ram_pct.setSingleStep(5)
             self._spin_ram_pct.setSuffix(" %")
             self._spin_ram_pct.setValue(
-                int(self._switches.get("mem_ram_pct_limit", MEM_RAM_PCT_LIMIT))
-            )
+                int(self._switches.get("mem_ram_pct_limit", MEM_RAM_PCT_LIMIT)))
             self._spin_ram_pct.setToolTip(
-                "Flush-and-clear trigger.  Fires when system RAM usage >= this value."
-            )
+                "Flush-and-clear trigger: fires when system RAM usage >= this value.")
             ram_pct_row.addWidget(ram_pct_lbl)
             ram_pct_row.addWidget(self._spin_ram_pct)
             ram_pct_row.addStretch()
@@ -2856,26 +2890,194 @@ def launch_gui(
         # Plot tab management
         # ----------------------------------------------------------------
         def _populate_plot_tabs(self, figures: List[Any]) -> None:
-            """Clear and repopulate plot tab widget from a list of figures."""
+            """
+            Repopulate plot tabs from the PNG cache manifest.
+
+            ``figures`` is ignored.  This method reads ``self._preview_manifest``
+            (set by ``_refresh_preview_cache()`` after each poll) and displays
+            each entry as a ``QLabel / QPixmap`` thumbnail.  Zero Figure objects
+            are held in RAM during normal display.
+
+            Each tab also contains a "Live View" button that creates a single
+            on-demand ``FigureCanvas`` for that plot; the previous live canvas
+            is destroyed first so at most ONE Figure is alive at any time.
+            """
+            self._destroy_live_canvas()
             self._tab_widget.clear()
 
-            if not figures:
-                placeholder = QLabel(
-                    "No data yet — click 'Poll Now' to fetch.")
+            manifest = getattr(self, "_preview_manifest", [])
+            if not manifest:
+                placeholder = QLabel("No data yet — click 'Poll Now' to fetch.")
                 placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
                 self._tab_widget.addTab(placeholder, "Waiting …")
                 return
 
-            for fig in figures:
-                canvas = FigureCanvas(fig)
-                toolbar = NavToolbar(canvas, self._tab_widget)
-                tab_w = QWidget()
-                tab_lay = QVBoxLayout(tab_w)
-                tab_lay.addWidget(toolbar)
-                tab_lay.addWidget(canvas)
+            for entry in manifest:
+                title    = entry.get("title", "Plot")
+                png_path = entry.get("path", "")
+                tab_w    = QWidget()
+                tab_lay  = QVBoxLayout(tab_w)
+                tab_lay.setSpacing(4)
 
-                title = getattr(fig, "_ab_title", "Plot")
+                img_lbl = QLabel()
+                img_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                img_lbl.setSizePolicy(
+                    QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+                if os.path.isfile(png_path):
+                    from qtpy.QtGui import QPixmap
+                    px = QPixmap(png_path)
+                    if not px.isNull():
+                        img_lbl.setPixmap(px.scaled(
+                            1100, 440,
+                            Qt.AspectRatioMode.KeepAspectRatio,
+                            Qt.TransformationMode.SmoothTransformation))
+                    else:
+                        img_lbl.setText(f"[render error: {png_path}]")
+                else:
+                    img_lbl.setText("(no preview yet — click Live View)")
+
+                btn_live = QPushButton("Live View (interactive)")
+                btn_live.setToolTip(
+                    "Open a full interactive matplotlib canvas for this plot.\n"
+                    "Only one live canvas exists at a time to minimise RAM use.")
+                btn_live.clicked.connect(
+                    lambda _checked=False, e=entry: self._show_live_canvas(e))
+                tab_lay.addWidget(img_lbl)
+                tab_lay.addWidget(btn_live)
                 self._tab_widget.addTab(tab_w, title[:30])
+
+        def _destroy_live_canvas(self) -> None:
+            """
+            Close and delete the currently live ``FigureCanvas`` (if any).
+
+            Calls ``fig.clf()`` on the backing Figure and ``gc.collect()``
+            to release axes and renderer memory promptly.
+            """
+            live_fig = getattr(self, "_live_fig", None)
+            if live_fig is not None:
+                try:
+                    live_fig.clf()
+                except Exception:
+                    pass
+                self._live_fig = None
+                gc.collect()
+            self._live_tab_idx = -1
+
+        def _show_live_canvas(self, entry: Dict) -> None:
+            """
+            Build a single on-demand interactive ``FigureCanvas`` for *entry*
+            in the currently-active tab, replacing the PNG thumbnail.
+
+            Any previously live canvas is destroyed first so at most ONE
+            matplotlib Figure is alive at any time during interactive use.
+            """
+            self._destroy_live_canvas()
+            ip    = entry.get("ip", "")
+            tname = entry.get("tname", "")
+            kind  = entry.get("kind", "table")
+
+            with _TS_LOCK:
+                ip_data = {tn: dict(td)
+                           for tn, td in TIME_SERIES_STORE.get(ip, {}).items()}
+
+            try:
+                import matplotlib
+                matplotlib.use("Agg")
+                import matplotlib.pyplot as plt
+                prop_colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
+            except ImportError:
+                return
+
+            series: List[tuple] = []
+            timestamps: List[str] = []
+            x: List[int] = []
+            ylabel = "Value"
+
+            if kind == "table":
+                tdata = ip_data.get(tname, {})
+                timestamps = tdata.get("timestamps_local", [])
+                n = len(timestamps)
+                x = list(range(n))
+                for param, values in tdata.get("columns", {}).items():
+                    if len(values) != n:
+                        continue
+                    unit = tdata.get("units", {}).get(param, "")
+                    series.append((f"{param} ({unit})" if unit else param, values))
+            else:
+                substrings = VEUSZ_OVERLAY_GROUPS.get(tname, [])
+                ylabel = tname
+                for tn, tdata in ip_data.items():
+                    ts_ov = tdata.get("timestamps_local", [])
+                    n_ov  = len(ts_ov)
+                    for param, values in tdata.get("columns", {}).items():
+                        if not any(s in param.lower() for s in substrings):
+                            continue
+                        if len(values) != n_ov or n_ov == 0:
+                            continue
+                        unit = tdata.get("units", {}).get(param, "")
+                        lbl  = f"{tn[:10]}/{param}"
+                        if unit:
+                            lbl += f" ({unit})"
+                        series.append((lbl, values))
+                        if not timestamps and ts_ov:
+                            timestamps = ts_ov
+                            x = list(range(n_ov))
+
+            if not series or not x:
+                self._append_log("Live View: no data for this plot yet.")
+                return
+
+            try:
+                fig = _build_one_figure(ip=ip, title=tname,
+                    xlabel="Sample index", ylabel=ylabel,
+                    x=x, series=series, timestamps=timestamps,
+                    prop_colors=prop_colors)
+                self._live_fig = fig
+                self._live_tab_idx = self._tab_widget.currentIndex()
+                canvas  = FigureCanvas(fig)
+                toolbar = NavToolbar(canvas, self._tab_widget)
+                cur_idx   = self._tab_widget.currentIndex()
+                cur_title = self._tab_widget.tabText(cur_idx)
+                new_w   = QWidget()
+                new_lay = QVBoxLayout(new_w)
+                new_lay.addWidget(toolbar)
+                new_lay.addWidget(canvas)
+                self._tab_widget.removeTab(cur_idx)
+                self._tab_widget.insertTab(cur_idx, new_w, cur_title)
+                self._tab_widget.setCurrentIndex(cur_idx)
+            except Exception as exc:
+                logger.error("Live View build failed: %s", exc)
+                self._append_log(f"Live View error: {exc}")
+
+        def _refresh_preview_cache(self) -> None:
+            """
+            Rebuild the PNG preview cache in a background daemon thread.
+
+            Called after every successful poll (Poll Now and Auto-polling).
+            Runs ``build_preview_cache()`` off the GUI thread, updates
+            ``self._preview_manifest``, and schedules ``_populate_plot_tabs([])``
+            back on the GUI thread via ``QTimer.singleShot(0, …)``.
+
+            This ensures the Qt event loop is never blocked by matplotlib
+            rendering, and no "UI update from background thread" errors occur.
+            """
+            import threading as _thr
+
+            def _do_render() -> None:
+                try:
+                    manifest = build_preview_cache(
+                        ALL_DEVICE_DATA,
+                        cache_dir=self._get_runtime_config().get(
+                            "preview_cache_dir", PREVIEW_CACHE_DIR),
+                    )
+                    self._preview_manifest = manifest
+                    from qtpy.QtCore import QTimer as _QT
+                    _QT.singleShot(0, lambda: self._populate_plot_tabs([]))
+                except Exception as _exc:
+                    logger.warning("Preview cache render failed: %s", _exc)
+
+            _thr.Thread(target=_do_render, daemon=True,
+                        name="ab_preview_render").start()
 
         # ----------------------------------------------------------------
         # Slots / callbacks
@@ -2932,6 +3134,7 @@ def launch_gui(
                 "veusz_dir":         os.path.join(base, "veusz"),
                 "log_dir":           log,
                 "mem_ram_pct_limit": self._spin_ram_pct.value(),
+                "preview_cache_dir": os.path.join(base, "preview_cache"),
             }
 
         def _do_poll_once(self) -> None:
@@ -2950,8 +3153,7 @@ def launch_gui(
             # populates ALL_DEVICE_DATA
             update_named_dicts(data)
             self._process_outputs(ALL_DEVICE_DATA, cfg)     # nested shape
-            figs = build_preview_figures(ALL_DEVICE_DATA)   # nested shape
-            self._populate_plot_tabs(figs)
+            self._refresh_preview_cache()   # off-thread PNG render, then tab update
             self._append_log(
                 f"Poll complete — {len(ALL_DEVICE_DATA)} device(s), "
                 f"{sum(len(t) for t in ALL_DEVICE_DATA.values())} table dicts."
@@ -2995,75 +3197,58 @@ def launch_gui(
                     logger.error("Veusz final write failed: %s", exc)
 
         def _on_data_ready(self, data: Dict) -> None:
-            """Slot: called when PollThread emits new data.
+            """
+            Slot: called when PollThread emits new data.
 
-            'data' here is the flat poll result; ALL_DEVICE_DATA has already
-            been updated by update_named_dicts() inside PollThread.run().
-            All downstream functions require the nested ALL_DEVICE_DATA shape.
+            Checks the RAM % flush-and-clear limit on every poll cycle.
+            When triggered: waits for any in-flight flush, synchronously
+            writes all enabled outputs (including Veusz), clears
+            TIME_SERIES_STORE, and logs the event.  Otherwise dispatches
+            the normal background flush via _process_outputs().
 
-            RAM percentage check
-            --------------------
-            After each poll, this slot checks whether system RAM usage has
-            reached ``mem_ram_pct_limit``.  When that threshold is hit, ALL
-            enabled outputs (including Veusz) are written synchronously and
-            TIME_SERIES_STORE is fully cleared before the next sample is
-            accumulated.  This prevents OOM crashes during long auto-sampling
-            runs without any visible gap in the output files.
+            Preview figures are always updated via _refresh_preview_cache()
+            which renders PNGs off-thread so the GUI never blocks.
             """
             cfg = self._get_runtime_config()
 
-            # ── RAM % flush-and-clear check ────────────────────────────────
+            # ── RAM % flush-and-clear check ───────────────────────────────
             if should_flush_and_clear(cfg):
                 _used_pct = system_ram_used_pct()
                 _pct_lim  = cfg.get("mem_ram_pct_limit", MEM_RAM_PCT_LIMIT)
-                _msg = (
-                    f"[RAM Flush] System RAM {_used_pct:.1f}% >= limit "
-                    f"{_pct_lim}%.  Writing all outputs and clearing store…"
-                )
+                _msg = (f"[RAM Flush] System RAM {_used_pct:.1f}% >= limit "
+                        f"{_pct_lim}%.  Writing all outputs and clearing store…")
                 self._append_log(_msg)
                 logger.info(_msg)
-                # Wait for any in-flight flush first
                 if self._flush_future is not None and not self._flush_future.done():
-                    self._append_log("  Waiting for in-flight flush to complete…")
+                    self._append_log("  Waiting for in-flight flush…")
                     try:
                         self._flush_future.result(timeout=60)
                     except Exception as _fe:
                         logger.error("In-flight flush error before pct-clear: %s", _fe)
                     self._flush_future = None
-                # Synchronous full write — all enabled outputs including Veusz
-                _fits_dir  = cfg.get("fits_dir",  FITS_DIR)
-                _csv_dir   = cfg.get("csv_dir",   CSV_DIR)
-                _xlsx_dir  = cfg.get("xlsx_dir",  XLSX_DIR)
-                _log_dir   = cfg.get("log_dir",   LOG_DIR)
-                _veusz_dir = cfg.get("veusz_dir", VEUSZ_DIR)
                 if cfg.get("enable_fits"):
-                    write_fits(ALL_DEVICE_DATA, _fits_dir)
+                    write_fits(ALL_DEVICE_DATA, cfg.get("fits_dir", FITS_DIR))
                 if cfg.get("enable_csv"):
-                    write_csv(ALL_DEVICE_DATA, _csv_dir, append=True)
+                    write_csv(ALL_DEVICE_DATA, cfg.get("csv_dir", CSV_DIR), append=True)
                 if cfg.get("enable_xlsx"):
-                    write_xlsx(ALL_DEVICE_DATA, _xlsx_dir)
+                    write_xlsx(ALL_DEVICE_DATA, cfg.get("xlsx_dir", XLSX_DIR))
                 if cfg.get("enable_log_append"):
-                    write_log_text(ALL_DEVICE_DATA, _log_dir)
+                    write_log_text(ALL_DEVICE_DATA, cfg.get("log_dir", LOG_DIR))
                 if cfg.get("enable_veusz") and ALL_DEVICE_DATA:
-                    self._append_log("  Building Veusz project for RAM-flush snapshot…")
+                    self._append_log("  Building Veusz for RAM-flush snapshot…")
                     try:
-                        write_veusz(ALL_DEVICE_DATA, _veusz_dir)
+                        write_veusz(ALL_DEVICE_DATA, cfg.get("veusz_dir", VEUSZ_DIR))
                     except Exception as _ve:
                         logger.error("Veusz RAM-flush write failed: %s", _ve)
-                # Clear the store
                 clear_time_series_store()
-                _done_msg = (
-                    f"[RAM Flush] Complete.  Store cleared.  "
-                    f"RAM now: {system_ram_used_pct():.1f}%.  "
-                    f"Sampling continues."
-                )
-                self._append_log(_done_msg)
-                logger.info(_done_msg)
+                _done = (f"[RAM Flush] Complete.  Store cleared.  "
+                         f"RAM now: {system_ram_used_pct():.1f}%.  Sampling continues.")
+                self._append_log(_done)
+                logger.info(_done)
             else:
-                self._process_outputs(ALL_DEVICE_DATA, cfg)   # nested shape
+                self._process_outputs(ALL_DEVICE_DATA, cfg)
 
-            figs = build_preview_figures(ALL_DEVICE_DATA)  # nested shape
-            self._populate_plot_tabs(figs)
+            self._refresh_preview_cache()   # off-thread PNG render then tab update
             self._status_bar.showMessage(
                 f"Updated: {datetime.datetime.now().strftime('%H:%M:%S')} | "
                 f"RAM: {system_ram_used_pct():.0f}% / "
@@ -3179,7 +3364,8 @@ def launch_gui(
             )
 
         def closeEvent(self, event) -> None:
-            """Ensure background thread and any in-flight flush stop cleanly."""
+            """Ensure live canvas, background thread, and in-flight flushes stop cleanly."""
+            self._destroy_live_canvas()   # free any live matplotlib Figure first
             self._do_stop()   # stops PollThread and writes final Veusz
             # Wait up to 30 s for any background file flush to complete so we
             # do not close the process while CSV / XLSX / log is still writing.
@@ -3571,7 +3757,7 @@ def run_headless(cfg: Dict[str, Any]) -> None:
             if not dicts_only:
                 logger.info(
                     "Cycle %d poll complete in %.2f s — store %.1f MB, "
-                    "free RAM %.0f MB, system RAM %.1f %% (limit %.0f %%)",
+                    "free RAM %.0f MB, system RAM %.1f%% (limit %.0f%%)",
                     cycle, poll_elapsed, ts_store_size_mb(), system_free_ram_mb(),
                     system_ram_used_pct(), cfg.get("mem_ram_pct_limit", MEM_RAM_PCT_LIMIT))
 
@@ -3581,39 +3767,26 @@ def run_headless(cfg: Dict[str, Any]) -> None:
             if print_each:
                 _print_named_dicts(cycle, label="current snapshot")
 
-            # ── Adaptive mid-loop flush ───────────────────────────────────────────────
-            # Three conditions can trigger a flush (see should_flush()):
-            #   1. Store size > MEM_FLUSH_THRESHOLD_MB  → background flush, no clear
-            #   2. Free RAM   < MEM_FREE_MIN_MB         → background flush, no clear
-            #   3. System RAM % >= MEM_RAM_PCT_LIMIT     → synchronous flush + CLEAR
-            #
-            # The percentage-based path (3) is the primary OOM guard for long
-            # runs.  It writes ALL enabled outputs (including Veusz), waits for
-            # completion, clears TIME_SERIES_STORE, then continues sampling.
+            # ── Adaptive mid-loop flush ─────────────────────────────────────────────
+            # Path A — RAM % limit: synchronous flush + clear store + continue.
+            # Path B — MB / free-RAM threshold: background flush, no clear.
             _do_pct_clear = should_flush_and_clear(cfg)
             if _do_pct_clear:
-                # --- Flush-and-clear path ---
                 _used_pct = system_ram_used_pct()
                 _pct_lim  = cfg.get("mem_ram_pct_limit", MEM_RAM_PCT_LIMIT)
                 if not dicts_only:
                     logger.info(
-                        "RAM %% flush-and-clear triggered at cycle %d "
-                        "(system RAM: %.1f %% >= limit %.0f %%).  "
-                        "Writing all outputs then clearing store…",
+                        "RAM %% flush-and-clear at cycle %d "
+                        "(system RAM: %.1f%% >= limit %.0f%%). Writing all outputs…",
                         cycle, _used_pct, _pct_lim)
                 if print_cumulative:
                     _print_cumulative_store(cycle, reason="RAM pct flush-and-clear")
-                # Wait for any in-flight background flush before starting ours
                 if flush_future is not None and not flush_future.done():
-                    if not dicts_only:
-                        logger.info("Waiting for in-flight flush before pct-clear…")
                     try:
                         flush_future.result(timeout=60)
                     except Exception as _fe:
                         if not dicts_only:
                             logger.error("In-flight flush error: %s", _fe)
-                # Synchronous full write — all enabled outputs including Veusz
-                _veusz_dir = cfg.get("veusz_dir", VEUSZ_DIR)
                 if cfg.get("enable_fits"):
                     write_fits(ALL_DEVICE_DATA, cfg.get("fits_dir", FITS_DIR))
                 if cfg.get("enable_csv"):
@@ -3624,26 +3797,20 @@ def run_headless(cfg: Dict[str, Any]) -> None:
                     write_log_text(ALL_DEVICE_DATA, cfg.get("log_dir", LOG_DIR))
                 if cfg.get("enable_veusz"):
                     if not dicts_only:
-                        logger.info(
-                            "Building Veusz project for RAM-flush snapshot (cycle %d)…",
-                            cycle)
-                    write_veusz(ALL_DEVICE_DATA, _veusz_dir)
-                # Clear the in-memory store and reclaim RAM
+                        logger.info("Building Veusz for RAM-flush snapshot (cycle %d)…", cycle)
+                    write_veusz(ALL_DEVICE_DATA, cfg.get("veusz_dir", VEUSZ_DIR))
                 clear_time_series_store()
                 flush_future = None
                 if not dicts_only:
                     logger.info(
-                        "RAM flush-and-clear complete at cycle %d.  "
-                        "Sampling continues.", cycle)
+                        "RAM flush-and-clear complete at cycle %d. "
+                        "RAM now %.1f%%. Sampling continues.", cycle, system_ram_used_pct())
             elif should_flush(cfg):
-                # --- Background flush (no clear) path ---
                 if flush_future is None or flush_future.done():
                     if not dicts_only:
-                        logger.info(
-                            "Dispatching background flush (cycle %d)…", cycle)
+                        logger.info("Dispatching background flush (cycle %d)…", cycle)
                     if print_cumulative:
-                        _print_cumulative_store(
-                            cycle, reason="memory limit flush")
+                        _print_cumulative_store(cycle, reason="memory limit flush")
                     flush_future = flush_outputs_parallel(cfg)
                 else:
                     if not dicts_only:
@@ -3808,6 +3975,7 @@ def main() -> Dict[str, Dict[str, Dict]]:
         "xlsx_dir":          XLSX_DIR,
         "veusz_dir":         VEUSZ_DIR,
         "log_dir":           LOG_DIR,
+        "preview_cache_dir": PREVIEW_CACHE_DIR,
     }
 
     # Create only the output directories that are actually needed.

@@ -61,7 +61,7 @@ Phone  : +1 (304) 456-2216
 Email  : wwallace@nrao.edu
 Email2 : naval.antennas@gmail.com 
 Python : 3.8+
-Version: 1.2.5
+Version: 1.2.6
 """
 # %% Imorts
 import argparse
@@ -93,7 +93,7 @@ abm.HEADLESS_CONSOLE_DICTS_ONLY = 0
 #   abm.IP_LIST = ["10.16.130.50", "10.16.130.53"]
 abm.IP_LIST = [
     "10.16.130.50",
-    "10.16.130.54"
+    "10.16.130.51"
 ]
 # abm.SAMPLE_PERIOD_SEC is set dynamically from the interval arg in run()
 # — do not set it here as it would override the caller's value.
@@ -200,11 +200,7 @@ def summarise(iteration: int, total: int = 0) -> None:
 # %% Main loop
 # ---------------------------------------------------------------------------
 
-def run(
-    count: int = 1,
-    interval: float = 30.0,
-    ram_pct: Optional[float] = None,
-) -> Dict[str, Any]:
+def run(count: int = 1, interval: float = 30.0, ram_pct: Optional[float] = None) -> Dict[str, Any]:
     """
     Outer polling loop.
 
@@ -221,14 +217,10 @@ def run(
         Seconds between successive poll_once() calls, accounting for
         poll duration.  Set to 0 for back-to-back polling.
     ram_pct : float or None
-        System RAM usage percentage at which a flush-and-clear is
-        triggered mid-loop.  When the system RAM usage reaches this
-        percentage ALL enabled output files are written (appended),
-        TIME_SERIES_STORE is cleared, and sampling continues.
-        If None (default), the value set in ab_power_meter_monitor.py
-        (``MEM_RAM_PCT_LIMIT``, default 70 %%) is used.
-        Valid range: 10–95.  User-supplied value takes precedence over
-        the module default.
+        System RAM usage percentage (10–95) at which a flush-and-clear is
+        triggered mid-loop.  When None (default), uses the value set in
+        ab_power_meter_monitor.py (``MEM_RAM_PCT_LIMIT``, default 70%%).
+        User-supplied value takes precedence over the module default.
 
     Returns
     -------
@@ -264,10 +256,9 @@ def run(
     # any internal cfg logging or reporting reflects the actual wait time.
     abm.SAMPLE_PERIOD_SEC = interval
 
-    # Apply caller-supplied RAM-percentage limit (user value dominates).
+    # Apply caller-supplied RAM % limit — user value is dominant.
     if ram_pct is not None:
-        _clamped = max(10.0, min(95.0, float(ram_pct)))
-        abm.MEM_RAM_PCT_LIMIT = _clamped
+        abm.MEM_RAM_PCT_LIMIT = max(10.0, min(95.0, float(ram_pct)))
 
     print(f"ab_meter_caller starting — "
           f"{'infinite loop' if infinite else f'{count} iteration(s)'}, "
@@ -333,11 +324,8 @@ def _parse_args() -> argparse.Namespace:
         type=float,
         default=None,
         metavar="PCT",
-        help=(
-            "System RAM usage percentage (10-95) at which a flush-and-clear "
-            "is triggered.  Overrides the MEM_RAM_PCT_LIMIT default (70%%) "
-            "set in ab_power_meter_monitor.py."
-        ),
+        help="System RAM %% (10-95) at which flush-and-clear fires. "
+             "Overrides MEM_RAM_PCT_LIMIT default (70%%) in monitor.",
     )
     return parser.parse_args()
 
@@ -345,8 +333,7 @@ def _parse_args() -> argparse.Namespace:
 # %% Main
 if __name__ == "__main__":
     args = _parse_args()
-    result = run(count=args.count, interval=args.interval,
-                 ram_pct=args.ram_pct)
+    result = run(count=args.count, interval=args.interval, ram_pct=args.ram_pct)
 
     # result is abm.TIME_SERIES_STORE — same source as every output file.
     #
