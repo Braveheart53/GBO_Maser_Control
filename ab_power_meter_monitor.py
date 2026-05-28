@@ -100,14 +100,14 @@ except ImportError:
 # ---------------------------------------------------------------------------
 # %% Feature / output enable switches  (0 = off, 1 = on)
 # ---------------------------------------------------------------------------
-ENABLE_GUI = 0   # Show PyQt/PySide6 main window
-ENABLE_FITS = 0   # Write NRAO-compliant FITS files
-ENABLE_CSV = 0   # Write per-table CSV files
-ENABLE_XLSX = 0   # Write Excel workbook with charts
-ENABLE_LOG_APPEND = 0   # Write per-device Markdown (.md) data log tables
-ENABLE_LOG_FILE = 0   # Write ab_monitor.log (Python logging file handler)
+ENABLE_GUI = 1   # Show PyQt/PySide6 main window
+ENABLE_FITS = 1   # Write NRAO-compliant FITS files
+ENABLE_CSV = 1   # Write per-table CSV files
+ENABLE_XLSX = 1   # Write Excel workbook with charts
+ENABLE_LOG_APPEND = 1   # Write per-device Markdown (.md) data log tables
+ENABLE_LOG_FILE = 1   # Write ab_monitor.log (Python logging file handler)
 # Set to 0 to keep logging console-only (no file created)
-ENABLE_VEUSZ = 0   # Write Veusz HDF5 project file(s) (.vszh5)
+ENABLE_VEUSZ = 1   # Write Veusz HDF5 project file(s) (.vszh5)
 
 # ---------------------------------------------------------------------------
 # %% Headless loop control
@@ -164,7 +164,7 @@ MEM_FREE_MIN_MB = 512   # flush when system free RAM falls below N MB
 # Example: monitor only .50 and .53 → ["10.16.130.50", "10.16.130.53"]
 IP_LIST: List[str] = [
     "10.16.130.50",
-    "10.16.130.51"
+    "10.16.130.54"
 ]
 
 # ---------------------------------------------------------------------------
