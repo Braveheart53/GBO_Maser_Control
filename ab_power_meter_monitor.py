@@ -27,7 +27,7 @@ Phone  : +1 (304) 456-2216
 Email  : wwallace@nrao.edu
 Email2 : naval.antennas@gmail.com 
 Python : 3.8+
-Version: 1.1.2
+Version: 1.1.3
 Deps   : PySide6, matplotlib, requests, beautifulsoup4, lxml,
          astropy, openpyxl, veusz  (pip install each)
 
@@ -155,7 +155,7 @@ HEADLESS_SILENT = 1   # 1 = suppress ALL stdout/stderr console output;
 #   MEM_FREE_MIN_MB        — background flush when free RAM < N MB (no clear).
 #   MEM_RAM_PCT_LIMIT      — synchronous flush+CLEAR when system RAM >= N%.
 MEM_FLUSH_THRESHOLD_MB = 256   # flush when store occupies more than N MB
-MEM_FREE_MIN_MB = 4096   # flush when system free RAM falls below N MB
+MEM_FREE_MIN_MB = 512   # flush when system free RAM falls below N MB
 # Percentage of *total* system RAM at which a flush-and-clear is triggered.
 MEM_RAM_PCT_LIMIT = 70   # flush+clear when system RAM >= N% of total
 
@@ -727,14 +727,13 @@ def clear_time_series_store() -> None:
     with _TS_LOCK:
         TIME_SERIES_STORE.clear()
     gc.collect()
-    logger.info(
-        "TIME_SERIES_STORE cleared and garbage-collected after RAM flush.")
+    logger.info("TIME_SERIES_STORE cleared and garbage-collected after RAM flush.")
 
 
 def should_flush(cfg: dict) -> bool:
     """Return True when any flush condition is met (store MB, free MB, or RAM%)."""
-    threshold = cfg.get("mem_flush_threshold_mb", MEM_FLUSH_THRESHOLD_MB)
-    free_min = cfg.get("mem_free_min_mb",        MEM_FREE_MIN_MB)
+    threshold     = cfg.get("mem_flush_threshold_mb", MEM_FLUSH_THRESHOLD_MB)
+    free_min      = cfg.get("mem_free_min_mb",        MEM_FREE_MIN_MB)
     ram_pct_limit = cfg.get("mem_ram_pct_limit",      MEM_RAM_PCT_LIMIT)
     if ts_store_size_mb() > threshold:
         logger.info("Flush triggered: store %.1f MB > threshold %.1f MB",
@@ -2091,8 +2090,8 @@ def _build_one_figure(
     """
     from matplotlib.figure import Figure as _MplFigure
     fig = _MplFigure(figsize=(10, 4))
-    ax = fig.add_subplot(111)
-    n = len(x)
+    ax  = fig.add_subplot(111)
+    n   = len(x)
     for c_idx, (label, values) in enumerate(series[:MAX_PREVIEW_SERIES]):
         ax.plot(x, values, label=label,
                 color=prop_colors[c_idx % len(prop_colors)],
@@ -2100,8 +2099,7 @@ def _build_one_figure(
     if timestamps and n > 0:
         step = max(1, n // 8)
         ax.set_xticks(x[::step])
-        ax.set_xticklabels(timestamps[::step],
-                           rotation=35, ha="right", fontsize=6)
+        ax.set_xticklabels(timestamps[::step], rotation=35, ha="right", fontsize=6)
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
     ax.set_title(f"{title}\n{ip}", fontsize=9)
@@ -2168,7 +2166,7 @@ def build_preview_cache(
 
         for tname, tdata in tables.items():
             ts = tdata["timestamps_local"]
-            n = len(ts)
+            n  = len(ts)
             if not tdata["columns"] or n == 0:
                 continue
             x = list(range(n))
@@ -2184,28 +2182,27 @@ def build_preview_cache(
                 _cache_dir, f"preview_{safe_ip}_{tname.translate(_SAFE)}.png")
             try:
                 fig = _build_one_figure(ip=ip, title=tname,
-                                        xlabel="Sample index", ylabel="Value",
-                                        x=x, series=series, timestamps=ts, prop_colors=prop_colors)
+                    xlabel="Sample index", ylabel="Value",
+                    x=x, series=series, timestamps=ts, prop_colors=prop_colors)
                 _render_figure_to_png(fig, png_path)
                 manifest.append({"title": f"{ip} — {tname}"[:30], "path": png_path,
-                                 "ip": ip, "tname": tname, "kind": "table"})
+                                  "ip": ip, "tname": tname, "kind": "table"})
             except Exception as exc:
-                logger.warning(
-                    "Preview render failed %s/%s: %s", ip, tname, exc)
+                logger.warning("Preview render failed %s/%s: %s", ip, tname, exc)
 
         for group_label, substrings in VEUSZ_OVERLAY_GROUPS.items():
             ov_series: List[tuple] = []
             ov_ts: List[str] = []
             for tname, tdata in tables.items():
                 _ts = tdata["timestamps_local"]
-                _n = len(_ts)
+                _n  = len(_ts)
                 for param, vals in tdata["columns"].items():
                     if not any(s in param.lower() for s in substrings):
                         continue
                     if len(vals) != _n or _n == 0:
                         continue
                     unit = tdata["units"].get(param, "")
-                    lbl = f"{tname[:10]}/{param}"
+                    lbl  = f"{tname[:10]}/{param}"
                     if unit:
                         lbl += f" ({unit})"
                     ov_series.append((lbl, vals))
@@ -2219,16 +2216,15 @@ def build_preview_cache(
                 f"preview_{safe_ip}_overlay_{group_label.translate(_SAFE)}.png")
             try:
                 fig = _build_one_figure(ip=ip, title=f"Overlay: {group_label}",
-                                        xlabel="Sample index", ylabel=group_label,
-                                        x=list(range(_n_ov)), series=ov_series, timestamps=[],
-                                        prop_colors=prop_colors)
+                    xlabel="Sample index", ylabel=group_label,
+                    x=list(range(_n_ov)), series=ov_series, timestamps=[],
+                    prop_colors=prop_colors)
                 _render_figure_to_png(fig, png_path)
                 manifest.append({"title": f"{ip} — Overlay: {group_label}"[:30],
-                                 "path": png_path, "ip": ip,
-                                 "tname": group_label, "kind": "overlay"})
+                                  "path": png_path, "ip": ip,
+                                  "tname": group_label, "kind": "overlay"})
             except Exception as exc:
-                logger.warning("Overlay render failed %s/%s: %s",
-                               ip, group_label, exc)
+                logger.warning("Overlay render failed %s/%s: %s", ip, group_label, exc)
 
     logger.debug("build_preview_cache: %d panel(s) written to %s",
                  len(manifest), _cache_dir)
@@ -2244,6 +2240,8 @@ def build_preview_figures(
     """
     build_preview_cache(all_device_data)
     return []
+
+
 
 
 # ===========================================================================
@@ -2401,7 +2399,8 @@ def launch_gui(
             QGridLayout, QGroupBox, QCheckBox, QSpinBox, QDoubleSpinBox,
             QLabel, QPushButton, QFileDialog, QLineEdit, QTabWidget,
             QScrollArea, QSizePolicy, QMenuBar, QMenu, QAction, QStatusBar,
-            QTextEdit, QSplitter,
+            QTextEdit, QSplitter, QTableWidget, QTableWidgetItem,
+            QDockWidget,
         )
         from qtpy.QtCore import Qt, QTimer, Signal, QThread
         from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
@@ -2410,6 +2409,391 @@ def launch_gui(
         logger.critical(
             "GUI dependencies missing: %s\nInstall: pip install qtpy pyside6 matplotlib", exc)
         return
+
+    # -----------------------------------------------------------------------
+    # %%% Extended Live-View Toolbar
+    # -----------------------------------------------------------------------
+    class ABLiveToolbar(NavToolbar):
+        """
+        Extended matplotlib navigation toolbar for the AB Power Meter Live View.
+
+        Adds to the standard toolbar (Home / Back / Forward / Pan / Zoom /
+        Subplots / Save):
+
+        Crosshair cursor
+            A vertical + horizontal hairline follows the mouse over the axes.
+            The current x/y co-ordinates are shown in the toolbar coordinate
+            label in real time.
+
+        "Marker" toggle button (⊕)
+            Click anywhere on the plot to drop a vertical snap-to-nearest
+            marker.  The marker snaps to the closest sample index and shows:
+            * A dashed vertical line at the sample position.
+            * A dot on every visible line at that x position.
+            * A floating annotation box with the sample index and timestamp
+              (if available).
+
+        "Values at Marker" dock panel
+            A QTableWidget that lists every trace name, its value at the
+            current marker position, and its unit.  Updates instantly when
+            the marker is moved.  Rows are colour-matched to the trace.
+
+        "Clear Markers" button (✕)
+            Removes all markers and dots from the canvas.
+
+        "Export Marker Table" button (↓CSV)
+            Saves the current marker-values table to a timestamped CSV file
+            in the configured output directory.
+
+        Parameters
+        ----------
+        canvas : FigureCanvasQTAgg
+            The canvas this toolbar controls.
+        parent : QWidget
+            Parent widget (the tab container).
+        axes_data : list of dict
+            ``[{"label": str, "x": list, "y": list,
+                "timestamps": list, "color": str}, …]``
+            Pre-extracted series data for value lookups.  Passed in at
+            construction time so the toolbar does not need to access Qt
+            widgets from any background thread.
+        out_dir : str
+            Output directory for CSV export.
+        """
+
+        def __init__(self, canvas, parent, axes_data=None, out_dir=""):
+            super().__init__(canvas, parent)
+            self._axes_data   = axes_data or []
+            self._out_dir     = out_dir
+            self._marker_line = None     # current vertical marker Line2D
+            self._marker_dots = []       # scatter dots on each trace
+            self._marker_annot = None    # annotation box
+            self._crosshair_v = None     # vertical crosshair Line2D
+            self._crosshair_h = None     # horizontal crosshair Line2D
+            self._marker_mode = False    # True when ⊕ toggle is active
+            self._cid_move    = None     # motion_notify_event connection id
+            self._cid_click   = None     # button_press_event connection id
+            self._value_dock  = None     # QDockWidget for value table
+            self._value_table = None     # QTableWidget inside dock
+            self._build_extra_tools()
+
+        def _build_extra_tools(self) -> None:
+            """Append custom buttons to the toolbar after the standard ones."""
+            self.addSeparator()
+
+            # ── Crosshair toggle ──────────────────────────────────────────
+            self._btn_cross = QPushButton("⊞ Crosshair")
+            self._btn_cross.setCheckable(True)
+            self._btn_cross.setToolTip(
+                "Toggle crosshair cursor.\n"
+                "Shows x/y co-ordinates as the mouse moves over the plot.")
+            self._btn_cross.setFixedHeight(24)
+            self._btn_cross.toggled.connect(self._toggle_crosshair)
+            self.addWidget(self._btn_cross)
+
+            # ── Marker / snap toggle ──────────────────────────────────────
+            self._btn_marker = QPushButton("⊕ Marker")
+            self._btn_marker.setCheckable(True)
+            self._btn_marker.setToolTip(
+                "Toggle marker mode.\n"
+                "Click on the plot to snap a vertical marker to the nearest "
+                "sample.  A value table shows all trace values at that sample.")
+            self._btn_marker.setFixedHeight(24)
+            self._btn_marker.toggled.connect(self._toggle_marker_mode)
+            self.addWidget(self._btn_marker)
+
+            # ── Clear markers ─────────────────────────────────────────────
+            btn_clear = QPushButton("✕ Clear")
+            btn_clear.setToolTip("Remove all markers from the plot.")
+            btn_clear.setFixedHeight(24)
+            btn_clear.clicked.connect(self._clear_markers)
+            self.addWidget(btn_clear)
+
+            # ── Export marker table ───────────────────────────────────────
+            btn_export = QPushButton("↓ CSV")
+            btn_export.setToolTip(
+                "Export the current marker-values table to a CSV file.")
+            btn_export.setFixedHeight(24)
+            btn_export.clicked.connect(self._export_marker_csv)
+            self.addWidget(btn_export)
+
+            # ── Values dock (created lazily on first marker) ──────────────
+            self._setup_value_dock()
+
+        # ── Crosshair ──────────────────────────────────────────────────────
+        def _toggle_crosshair(self, checked: bool) -> None:
+            """Enable or disable the crosshair cursor."""
+            ax = self._get_ax()
+            if not checked:
+                for line in (self._crosshair_v, self._crosshair_h):
+                    if line is not None:
+                        try:
+                            line.remove()
+                        except Exception:
+                            pass
+                self._crosshair_v = self._crosshair_h = None
+                if self._cid_move and not self._marker_mode:
+                    self.canvas.mpl_disconnect(self._cid_move)
+                    self._cid_move = None
+                self.canvas.draw_idle()
+                return
+            if ax is None:
+                return
+            self._crosshair_v = ax.axvline(
+                x=0, color="#89b4fa", linewidth=0.8,
+                linestyle="--", alpha=0.7, animated=False)
+            self._crosshair_h = ax.axhline(
+                y=0, color="#89b4fa", linewidth=0.8,
+                linestyle="--", alpha=0.7, animated=False)
+            if self._cid_move is None:
+                self._cid_move = self.canvas.mpl_connect(
+                    "motion_notify_event", self._on_mouse_move)
+
+        def _on_mouse_move(self, event) -> None:
+            """Update crosshair position and coordinate label on mouse move."""
+            ax = self._get_ax()
+            if ax is None or event.inaxes != ax:
+                return
+            x, y = event.xdata, event.ydata
+            if x is None or y is None:
+                return
+            if self._crosshair_v is not None:
+                self._crosshair_v.set_xdata([x, x])
+            if self._crosshair_h is not None:
+                self._crosshair_h.set_ydata([y, y])
+            # Show timestamp label if available, else sample index
+            x_int = int(round(x))
+            ts_label = ""
+            if self._axes_data:
+                ts = self._axes_data[0].get("timestamps", [])
+                if 0 <= x_int < len(ts):
+                    ts_label = f"  [{ts[x_int]}]"
+            self.set_message(f"x={x_int}{ts_label}   y={y:.4g}")
+            self.canvas.draw_idle()
+
+        # ── Marker / snap ──────────────────────────────────────────────────
+        def _toggle_marker_mode(self, checked: bool) -> None:
+            """Enter or leave marker-placement mode."""
+            if checked:
+                if self._cid_click is None:
+                    self._cid_click = self.canvas.mpl_connect(
+                        "button_press_event", self._on_click_marker)
+                if self._cid_move is None:
+                    self._cid_move = self.canvas.mpl_connect(
+                        "motion_notify_event", self._on_mouse_move)
+                self._marker_mode = True
+            else:
+                if self._cid_click is not None:
+                    self.canvas.mpl_disconnect(self._cid_click)
+                    self._cid_click = None
+                if not self._btn_cross.isChecked() and self._cid_move is not None:
+                    self.canvas.mpl_disconnect(self._cid_move)
+                    self._cid_move = None
+                self._marker_mode = False
+
+        def _on_click_marker(self, event) -> None:
+            """Place or move the snap-to-nearest marker on click."""
+            ax = self._get_ax()
+            if ax is None or event.inaxes != ax or event.button != 1:
+                return
+            x_click = event.xdata
+            if x_click is None or not self._axes_data:
+                return
+            # Snap to nearest integer sample index
+            n_max = max(len(d.get("x", [])) for d in self._axes_data)
+            x_snap = int(round(max(0, min(n_max - 1, x_click))))
+            self._place_marker(ax, x_snap)
+
+        def _place_marker(self, ax, x_snap: int) -> None:
+            """Draw the vertical marker line, dots, annotation and fill value table."""
+            # Remove old marker artefacts
+            self._clear_marker_artefacts(ax)
+
+            # Vertical dashed line
+            self._marker_line = ax.axvline(
+                x=x_snap, color="#f38ba8", linewidth=1.4,
+                linestyle="--", alpha=0.9, zorder=5)
+
+            # Dots on each trace + collect values for table
+            rows = []
+            for d in self._axes_data:
+                xs  = d.get("x", [])
+                ys  = d.get("y", [])
+                col = d.get("color", "#cdd6f4")
+                lbl = d.get("label", "")
+                unit = d.get("unit", "")
+                if 0 <= x_snap < len(ys):
+                    y_val = ys[x_snap]
+                    dot = ax.plot(
+                        x_snap, y_val,
+                        marker="o", markersize=8,
+                        color=col, zorder=6,
+                        markeredgecolor="white", markeredgewidth=1.2,
+                    )
+                    self._marker_dots.extend(dot)
+                    rows.append((lbl, y_val, unit, col))
+
+            # Annotation box with sample index and timestamp
+            ts_str = ""
+            if self._axes_data:
+                ts = self._axes_data[0].get("timestamps", [])
+                if 0 <= x_snap < len(ts):
+                    ts_str = f"\n{ts[x_snap]}"
+            annot_text = f"Sample {x_snap}{ts_str}"
+            ylim = ax.get_ylim()
+            y_annot = ylim[1] - (ylim[1] - ylim[0]) * 0.05
+            self._marker_annot = ax.annotate(
+                annot_text,
+                xy=(x_snap, y_annot),
+                xytext=(8, -8),
+                textcoords="offset points",
+                fontsize=7,
+                color="#cdd6f4",
+                bbox=dict(boxstyle="round,pad=0.3", fc="#313244",
+                          ec="#89b4fa", alpha=0.85),
+                zorder=7,
+            )
+
+            self.canvas.draw_idle()
+            self._update_value_table(x_snap, rows)
+
+        def _clear_marker_artefacts(self, ax) -> None:
+            """Remove existing marker line, dots, and annotation from axes."""
+            if self._marker_line is not None:
+                try:
+                    self._marker_line.remove()
+                except Exception:
+                    pass
+                self._marker_line = None
+            for dot in self._marker_dots:
+                try:
+                    dot.remove()
+                except Exception:
+                    pass
+            self._marker_dots = []
+            if self._marker_annot is not None:
+                try:
+                    self._marker_annot.remove()
+                except Exception:
+                    pass
+                self._marker_annot = None
+
+        def _clear_markers(self) -> None:
+            """Public slot: clear all markers and reset the value table."""
+            ax = self._get_ax()
+            if ax:
+                self._clear_marker_artefacts(ax)
+                self.canvas.draw_idle()
+            if self._value_table is not None:
+                self._value_table.setRowCount(0)
+
+        # ── Value table dock ───────────────────────────────────────────────
+        def _setup_value_dock(self) -> None:
+            """Build the QDockWidget containing the marker-values QTableWidget."""
+            # Find the top-level QMainWindow ancestor to attach the dock to.
+            parent = self.parent()
+            main_win = None
+            while parent is not None:
+                if isinstance(parent, QMainWindow):
+                    main_win = parent
+                    break
+                parent = parent.parent() if hasattr(parent, "parent") else None
+
+            self._value_table = QTableWidget(0, 3)
+            self._value_table.setHorizontalHeaderLabels(["Trace", "Value", "Unit"])
+            self._value_table.horizontalHeader().setStretchLastSection(False)
+            self._value_table.setEditTriggers(
+                QTableWidget.EditTrigger.NoEditTriggers)
+            self._value_table.setAlternatingRowColors(True)
+            self._value_table.setMaximumHeight(200)
+            self._value_table.setToolTip(
+                "Values of all traces at the current marker position.\n"
+                "Click ⊕ Marker then click on the plot to set the marker.")
+            self._value_table.setColumnWidth(0, 220)
+            self._value_table.setColumnWidth(1, 100)
+            self._value_table.setColumnWidth(2, 70)
+
+            if main_win is not None:
+                from qtpy.QtCore import Qt as _Qt
+                self._value_dock = QDockWidget("Marker Values", main_win)
+                self._value_dock.setWidget(self._value_table)
+                self._value_dock.setAllowedAreas(
+                    _Qt.DockWidgetArea.BottomDockWidgetArea |
+                    _Qt.DockWidgetArea.RightDockWidgetArea)
+                main_win.addDockWidget(
+                    _Qt.DockWidgetArea.BottomDockWidgetArea,
+                    self._value_dock)
+                self._value_dock.hide()   # shown on first marker placement
+            else:
+                # Fallback: embed table directly below toolbar in parent widget
+                p = self.parent()
+                if p is not None and hasattr(p, "layout") and p.layout():
+                    p.layout().addWidget(self._value_table)
+
+        def _update_value_table(self, x_snap: int, rows: list) -> None:
+            """Populate the value table with trace values at x_snap."""
+            if self._value_table is None:
+                return
+            self._value_table.setRowCount(len(rows))
+            for r_idx, (lbl, val, unit, col) in enumerate(rows):
+                lbl_item = QTableWidgetItem(lbl)
+                val_item = QTableWidgetItem(f"{val:.6g}")
+                unt_item = QTableWidgetItem(unit)
+                # Colour the label cell to match the trace
+                from qtpy.QtGui import QColor, QBrush
+                bg = QColor(col)
+                bg.setAlpha(60)
+                for item in (lbl_item, val_item, unt_item):
+                    item.setBackground(QBrush(bg))
+                self._value_table.setItem(r_idx, 0, lbl_item)
+                self._value_table.setItem(r_idx, 1, val_item)
+                self._value_table.setItem(r_idx, 2, unt_item)
+            self._value_table.resizeColumnsToContents()
+            if self._value_dock is not None and not self._value_dock.isVisible():
+                self._value_dock.show()
+
+        # ── CSV export ─────────────────────────────────────────────────────
+        def _export_marker_csv(self) -> None:
+            """Write the current marker-values table to a timestamped CSV file."""
+            if self._value_table is None or self._value_table.rowCount() == 0:
+                return
+            import csv as _csv
+            ts_now = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            fname  = os.path.join(
+                self._out_dir or ".", f"marker_values_{ts_now}.csv")
+            try:
+                with open(fname, "w", newline="", encoding="utf-8") as fh:
+                    writer = _csv.writer(fh)
+                    writer.writerow(["Trace", "Value", "Unit"])
+                    for row in range(self._value_table.rowCount()):
+                        writer.writerow([
+                            self._value_table.item(row, c).text()
+                            for c in range(3)
+                        ])
+                logger.info("Marker CSV exported: %s", fname)
+            except Exception as exc:
+                logger.error("Marker CSV export failed: %s", exc)
+
+        # ── Helpers ────────────────────────────────────────────────────────
+        def _get_ax(self):
+            """Return the first axes of the canvas figure, or None."""
+            try:
+                axes = self.canvas.figure.get_axes()
+                return axes[0] if axes else None
+            except Exception:
+                return None
+
+        def cleanup(self) -> None:
+            """Disconnect all mpl event handlers and hide the dock widget."""
+            for cid in (self._cid_move, self._cid_click):
+                if cid is not None:
+                    try:
+                        self.canvas.mpl_disconnect(cid)
+                    except Exception:
+                        pass
+            self._cid_move = self._cid_click = None
+            if self._value_dock is not None:
+                self._value_dock.hide()
 
     # -----------------------------------------------------------------------
     # %%% Background polling thread
@@ -2552,6 +2936,7 @@ def launch_gui(
 
             # Live-canvas tracking: at most one FigureCanvas alive at a time.
             self._live_fig: Optional[Any] = None
+            self._live_toolbar: Optional[Any] = None   # ABLiveToolbar ref
             self._live_tab_idx: int = -1
             self._preview_manifest: List[Dict] = []
             # Render generation counter — prevents a slow render from
@@ -2636,8 +3021,7 @@ def launch_gui(
 
             # ---- Right panel: plot tabs ----
             self._tab_widget = QTabWidget()
-            # manifest populated after first poll
-            self._populate_plot_tabs([])
+            self._populate_plot_tabs([])   # manifest populated after first poll
             splitter.addWidget(self._tab_widget)
             splitter.setStretchFactor(1, 1)
 
@@ -2818,18 +3202,17 @@ def launch_gui(
 
             manifest = getattr(self, "_preview_manifest", [])
             if not manifest:
-                placeholder = QLabel(
-                    "No data yet — click 'Poll Now' to fetch.")
+                placeholder = QLabel("No data yet — click 'Poll Now' to fetch.")
                 placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
                 self._tab_widget.addTab(placeholder, "Waiting …")
                 return
 
             from qtpy.QtGui import QPixmap
             for entry in manifest:
-                title = entry.get("title", "Plot")
+                title    = entry.get("title", "Plot")
                 png_path = entry.get("path", "")
-                tab_w = QWidget()
-                tab_lay = QVBoxLayout(tab_w)
+                tab_w    = QWidget()
+                tab_lay  = QVBoxLayout(tab_w)
                 tab_lay.setSpacing(4)
 
                 img_lbl = QLabel()
@@ -2859,7 +3242,20 @@ def launch_gui(
                 self._tab_widget.addTab(tab_w, title[:30])
 
         def _destroy_live_canvas(self) -> None:
-            """Close and delete the live FigureCanvas, if any, freeing Figure RAM."""
+            """
+            Close the live FigureCanvas and free its Figure RAM.
+
+            Calls ``ABLiveToolbar.cleanup()`` first to disconnect matplotlib
+            event handlers and hide the Marker Values dock, then clears the
+            Figure so the renderer and axes memory is released promptly.
+            """
+            live_toolbar = getattr(self, "_live_toolbar", None)
+            if live_toolbar is not None:
+                try:
+                    live_toolbar.cleanup()
+                except Exception:
+                    pass
+                self._live_toolbar = None
             live_fig = getattr(self, "_live_fig", None)
             if live_fig is not None:
                 try:
@@ -2878,9 +3274,9 @@ def launch_gui(
             Figure is alive at any time.
             """
             self._destroy_live_canvas()
-            ip = entry.get("ip", "")
+            ip    = entry.get("ip", "")
             tname = entry.get("tname", "")
-            kind = entry.get("kind", "table")
+            kind  = entry.get("kind", "table")
 
             with _TS_LOCK:
                 ip_data = {tn: dict(td)
@@ -2908,21 +3304,20 @@ def launch_gui(
                     if len(values) != n:
                         continue
                     unit = tdata.get("units", {}).get(param, "")
-                    series.append(
-                        (f"{param} ({unit})" if unit else param, values))
+                    series.append((f"{param} ({unit})" if unit else param, values))
             else:
                 substrings = VEUSZ_OVERLAY_GROUPS.get(tname, [])
                 ylabel = tname
                 for tn, tdata in ip_data.items():
                     ts_ov = tdata.get("timestamps_local", [])
-                    n_ov = len(ts_ov)
+                    n_ov  = len(ts_ov)
                     for param, values in tdata.get("columns", {}).items():
                         if not any(s in param.lower() for s in substrings):
                             continue
                         if len(values) != n_ov or n_ov == 0:
                             continue
                         unit = tdata.get("units", {}).get(param, "")
-                        lbl = f"{tn[:10]}/{param}"
+                        lbl  = f"{tn[:10]}/{param}"
                         if unit:
                             lbl += f" ({unit})"
                         series.append((lbl, values))
@@ -2936,16 +3331,46 @@ def launch_gui(
 
             try:
                 fig = _build_one_figure(ip=ip, title=tname,
-                                        xlabel="Sample index", ylabel=ylabel,
-                                        x=x, series=series, timestamps=timestamps,
-                                        prop_colors=prop_colors)
+                    xlabel="Sample index", ylabel=ylabel,
+                    x=x, series=series, timestamps=timestamps,
+                    prop_colors=prop_colors)
                 self._live_fig = fig
                 self._live_tab_idx = self._tab_widget.currentIndex()
                 canvas = FigureCanvas(fig)
-                toolbar = NavToolbar(canvas, self._tab_widget)
-                cur_idx = self._tab_widget.currentIndex()
+
+                # Build axes_data for the toolbar marker/value readout.
+                # Each entry maps a trace label to its x/y arrays, timestamps,
+                # colour, and unit so ABLiveToolbar can look up values without
+                # touching any Qt widget.
+                axes_data = []
+                for c_idx, (lbl, vals) in enumerate(series[:MAX_PREVIEW_SERIES]):
+                    # Extract unit from label "(unit)" suffix if present
+                    unit = ""
+                    if lbl.endswith(")") and " (" in lbl:
+                        unit = lbl.rsplit(" (", 1)[1].rstrip(")")
+                    axes_data.append({
+                        "label":      lbl,
+                        "x":          list(x),
+                        "y":          list(vals),
+                        "timestamps": list(timestamps),
+                        "color":      prop_colors[c_idx % len(prop_colors)],
+                        "unit":       unit,
+                    })
+
+                cfg = self._get_runtime_config()
+                toolbar = ABLiveToolbar(
+                    canvas,
+                    self._tab_widget,
+                    axes_data=axes_data,
+                    out_dir=cfg.get("csv_dir", CSV_DIR),
+                )
+                # Keep toolbar ref so cleanup() can be called when canvas is
+                # destroyed (e.g. on next Live View or window close).
+                self._live_toolbar = toolbar
+
+                cur_idx   = self._tab_widget.currentIndex()
                 cur_title = self._tab_widget.tabText(cur_idx)
-                new_w = QWidget()
+                new_w   = QWidget()
                 new_lay = QVBoxLayout(new_w)
                 new_lay.addWidget(toolbar)
                 new_lay.addWidget(canvas)
@@ -3140,7 +3565,7 @@ def launch_gui(
 
             if should_flush_and_clear(cfg):
                 _used_pct = system_ram_used_pct()
-                _pct_lim = cfg.get("mem_ram_pct_limit", MEM_RAM_PCT_LIMIT)
+                _pct_lim  = cfg.get("mem_ram_pct_limit", MEM_RAM_PCT_LIMIT)
                 _msg = (f"[RAM Flush] System RAM {_used_pct:.1f}% >= limit "
                         f"{_pct_lim}%.  Writing all outputs and clearing store…")
                 self._append_log(_msg)
@@ -3150,25 +3575,20 @@ def launch_gui(
                     try:
                         self._flush_future.result(timeout=60)
                     except Exception as _fe:
-                        logger.error(
-                            "In-flight flush error before pct-clear: %s", _fe)
+                        logger.error("In-flight flush error before pct-clear: %s", _fe)
                     self._flush_future = None
                 if cfg.get("enable_fits"):
                     write_fits(ALL_DEVICE_DATA, cfg.get("fits_dir", FITS_DIR))
                 if cfg.get("enable_csv"):
-                    write_csv(ALL_DEVICE_DATA, cfg.get(
-                        "csv_dir", CSV_DIR), append=True)
+                    write_csv(ALL_DEVICE_DATA, cfg.get("csv_dir", CSV_DIR), append=True)
                 if cfg.get("enable_xlsx"):
                     write_xlsx(ALL_DEVICE_DATA, cfg.get("xlsx_dir", XLSX_DIR))
                 if cfg.get("enable_log_append"):
-                    write_log_text(ALL_DEVICE_DATA,
-                                   cfg.get("log_dir", LOG_DIR))
+                    write_log_text(ALL_DEVICE_DATA, cfg.get("log_dir", LOG_DIR))
                 if cfg.get("enable_veusz") and ALL_DEVICE_DATA:
-                    self._append_log(
-                        "  Building Veusz for RAM-flush snapshot…")
+                    self._append_log("  Building Veusz for RAM-flush snapshot…")
                     try:
-                        write_veusz(ALL_DEVICE_DATA, cfg.get(
-                            "veusz_dir", VEUSZ_DIR))
+                        write_veusz(ALL_DEVICE_DATA, cfg.get("veusz_dir", VEUSZ_DIR))
                     except Exception as _ve:
                         logger.error("Veusz RAM-flush write failed: %s", _ve)
                 clear_time_series_store()
@@ -3704,15 +4124,14 @@ def run_headless(cfg: Dict[str, Any]) -> None:
             _do_pct_clear = should_flush_and_clear(cfg)
             if _do_pct_clear:
                 _used_pct = system_ram_used_pct()
-                _pct_lim = cfg.get("mem_ram_pct_limit", MEM_RAM_PCT_LIMIT)
+                _pct_lim  = cfg.get("mem_ram_pct_limit", MEM_RAM_PCT_LIMIT)
                 if not dicts_only:
                     logger.info(
                         "RAM %% flush-and-clear at cycle %d "
                         "(system RAM: %.1f%% >= limit %.0f%%). Writing all outputs…",
                         cycle, _used_pct, _pct_lim)
                 if print_cumulative:
-                    _print_cumulative_store(
-                        cycle, reason="RAM pct flush-and-clear")
+                    _print_cumulative_store(cycle, reason="RAM pct flush-and-clear")
                 if flush_future is not None and not flush_future.done():
                     try:
                         flush_future.result(timeout=60)
@@ -3722,16 +4141,13 @@ def run_headless(cfg: Dict[str, Any]) -> None:
                 if cfg.get("enable_fits"):
                     write_fits(ALL_DEVICE_DATA, cfg.get("fits_dir", FITS_DIR))
                 if cfg.get("enable_csv"):
-                    write_csv(ALL_DEVICE_DATA, cfg.get(
-                        "csv_dir", CSV_DIR), append=True)
+                    write_csv(ALL_DEVICE_DATA, cfg.get("csv_dir", CSV_DIR), append=True)
                 if cfg.get("enable_xlsx"):
                     write_xlsx(ALL_DEVICE_DATA, cfg.get("xlsx_dir", XLSX_DIR))
                 if cfg.get("enable_log_append"):
-                    write_log_text(ALL_DEVICE_DATA,
-                                   cfg.get("log_dir", LOG_DIR))
+                    write_log_text(ALL_DEVICE_DATA, cfg.get("log_dir", LOG_DIR))
                 if cfg.get("enable_veusz"):
-                    write_veusz(ALL_DEVICE_DATA, cfg.get(
-                        "veusz_dir", VEUSZ_DIR))
+                    write_veusz(ALL_DEVICE_DATA, cfg.get("veusz_dir", VEUSZ_DIR))
                 clear_time_series_store()
                 flush_future = None
                 if not dicts_only:
@@ -3741,11 +4157,9 @@ def run_headless(cfg: Dict[str, Any]) -> None:
             elif should_flush(cfg):
                 if flush_future is None or flush_future.done():
                     if not dicts_only:
-                        logger.info(
-                            "Dispatching background flush (cycle %d)…", cycle)
+                        logger.info("Dispatching background flush (cycle %d)…", cycle)
                     if print_cumulative:
-                        _print_cumulative_store(
-                            cycle, reason="memory limit flush")
+                        _print_cumulative_store(cycle, reason="memory limit flush")
                     flush_future = flush_outputs_parallel(cfg)
                 else:
                     if not dicts_only:
