@@ -27,7 +27,7 @@ Phone  : +1 (304) 456-2216
 Email  : wwallace@nrao.edu
 Email2 : naval.antennas@gmail.com 
 Python : 3.8+
-Version: 1.2.0
+Version: 1.2.1
 Deps   : PySide6, matplotlib, requests, beautifulsoup4, lxml,
          astropy, openpyxl, veusz  (pip install each)
 
@@ -678,6 +678,12 @@ def accumulate_poll(all_device_data: Dict[str, Dict[str, Dict[str, Any]]]) -> No
                             TIME_SERIES_STORE[ip][tname]["units"][param] = series[param][1]
 
                 tstore = TIME_SERIES_STORE[ip][tname]
+                # Guard: skip if the very last timestamp already equals
+                # local_ts — prevents duplicate rows when the poll cycle
+                # fires accumulate_poll more than once in a single second.
+                _existing_ts = tstore["timestamps_local"]
+                if _existing_ts and _existing_ts[-1] == local_ts:
+                    continue
                 tstore["timestamps_local"].append(local_ts)
                 for param, (val, _) in series.items():
                     tstore["columns"][param].append(val)
@@ -1439,6 +1445,41 @@ def write_log_text(
             logger.error("Markdown write failed for %s: %s", ip, exc)
 
 
+
+def _veusz_datetime_values(timestamps: List[str]) -> List[float]:
+    """
+    Convert a list of ``YYYY-MM-DD HH:MM:SS`` local-time strings to Veusz
+    internal datetime float values (seconds since 1970-01-01 00:00:00 UTC).
+
+    Veusz stores dates as float seconds-since-epoch and renders them as
+    human-readable strings when an axis is in ``mode='datetime'``.  This
+    helper performs the conversion so that each ``xy`` plotter x-axis
+    dataset is in the correct format for Veusz datetime mode.
+
+    Parameters
+    ----------
+    timestamps : List[str]
+        List of ``YYYY-MM-DD HH:MM:SS`` strings as stored in
+        ``TIME_SERIES_STORE[ip][tname]["timestamps_local"]``.
+
+    Returns
+    -------
+    List[float]
+        Parallel list of epoch-seconds floats.  Entries that cannot be
+        parsed are replaced with ``float('nan')``.
+    """
+    import calendar
+    result: List[float] = []
+    fmt = "%Y-%m-%d %H:%M:%S"
+    for ts in timestamps:
+        try:
+            dt = datetime.datetime.strptime(str(ts).strip(), fmt)
+            result.append(float(calendar.timegm(dt.timetuple())))
+        except Exception:
+            result.append(float("nan"))
+    return result
+
+
 def write_veusz(
     all_device_data: Dict[str, Dict[str, Dict[str, Any]]],
     veusz_dir: str,
@@ -1513,8 +1554,9 @@ def write_veusz(
         if (not append) and os.path.exists(filename):
             try:
                 os.remove(filename)
-            except Exception:
-                pass
+                logger.debug("Veusz: removed existing file for fresh write: %s", filename)
+            except Exception as exc:
+                logger.warning("Veusz: could not remove %s: %s", filename, exc)
 
         # -------------------------------------------------------------------
         # Open the embedded document window.
@@ -1681,6 +1723,9 @@ def write_veusz(
                 grid.columns.val = 2
 
                 for p_idx, (param, (val, unit)) in enumerate(series.items()):
+                    # Skip internal sentinel keys injected into series dict.
+                    if param.startswith("__"):
+                        continue
                     ds_name = _veusz_safe(f"{ip_last}_{tname}_{param}")
                     idx_name = _veusz_safe(f"{ip_last}_dt_{tname}_{param}")
                     gname = _veusz_safe(f"g_{param}")
@@ -1748,13 +1793,21 @@ def write_veusz(
             # ---------------------------------------------------------------
             for group_label, substrings in VEUSZ_OVERLAY_GROUPS.items():
 
-                # Collect (ds_name, idx_name, param, unit) tuples
+                # Collect (ds_name, idx_name, param, unit) tuples.
+                # ds_name and idx_name must exactly match what was passed
+                # to doc.SetData() in the dataset-loading loop above.
                 overlay: List[Tuple[str, str, str, str]] = []
                 for tname, series in all_series.items():
+                    _ip_last = all_series[tname].get(
+                        "__ip_last", ip.split(".")[-1])
                     for param, (val, unit) in series.items():
+                        if param.startswith("__"):
+                            continue
                         if any(sub in param.lower() for sub in substrings):
-                            ds_name = _veusz_safe(f"{tname}_{param}")
-                            idx_name = _veusz_safe(f"idx_{tname}_{param}")
+                            ds_name  = _veusz_safe(
+                                f"{_ip_last}_{tname}_{param}")
+                            idx_name = _veusz_safe(
+                                f"{_ip_last}_dt_{tname}_{param}")
                             overlay.append((ds_name, idx_name, param, unit))
 
                 if not overlay:
@@ -1774,35 +1827,36 @@ def write_veusz(
                     "graph", name="overlay graph", autoadd=False)
 
                 # --- Axes ---
-                # For the overlay, use the timestamp dataset from the first
-                # contributing table (all tables share the same poll cadence).
-                ov_ts_ds = None
+                # Use the dt_ (epoch-float) datetime dataset from the first
+                # contributing table for the x-axis.  All tables share the
+                # same poll cadence so any table's dt_ dataset works.
+                ov_dt_ds = None
                 if overlay:
-                    first_tname = None
-                    for _ds, _idx, _param, _unit in overlay:
-                        # Recover the tname from ds_name: ds_name = tname_param_safe
-                        # Use the first tname we can find in all_series keys.
-                        for tn in all_series:
-                            candidate = _veusz_safe(f"ts_{tn}")
-                            ov_ts_ds_candidate = all_series[tn].get(
-                                "__ts_ds", candidate)
-                            if ov_ts_ds_candidate:
-                                ov_ts_ds = ov_ts_ds_candidate
-                                break
-                        if ov_ts_ds:
+                    for tn in all_series:
+                        candidate = _veusz_safe(f"{ip_last}_dt_{tn}")
+                        ov_dt_ds_candidate = all_series[tn].get(
+                            "__dt_ds", candidate)
+                        if ov_dt_ds_candidate:
+                            ov_dt_ds = ov_dt_ds_candidate
                             break
-                    # Simpler: just use the ts_ dataset for the first table in all_series
-                    if not ov_ts_ds:
+                    if not ov_dt_ds:
                         first_tn = next(iter(all_series), None)
                         if first_tn:
-                            ov_ts_ds = _veusz_safe(f"ts_{first_tn}")
+                            ov_dt_ds = _veusz_safe(
+                                f"{ip_last}_dt_{first_tn}")
 
                 ox = ov_graph.Add("axis", name="x", autoadd=False)
                 ox.label.val = "Local Time"
                 ox.direction.val = "horizontal"
-                if ov_ts_ds:
+                try:
+                    ox.mode.val = "datetime"
+                except Exception:
+                    pass
+                for _obj_name in ("TickLabels", "MajorTicks"):
                     try:
-                        ox.tickLabels.val = ov_ts_ds
+                        _obj = getattr(ox, _obj_name)
+                        if hasattr(_obj, "format"):
+                            _obj.format.val = "%Y-%m-%d %H:%M:%S"
                     except Exception:
                         pass
 
@@ -1949,6 +2003,16 @@ def flush_outputs_parallel(cfg: Dict[str, Any]) -> "concurrent.futures.Future":
         if cfg.get("enable_log_append"):
             tasks.append(
                 ("LOG", lambda: write_log_text(ALL_DEVICE_DATA, log_dir, append=bool(cfg.get("append_files", APPEND_OUTPUT_FILES)))))
+        # Veusz is included here so RAM-flush and per-cycle outputs all write
+        # Veusz files.  write_veusz() rebuilds from the full TIME_SERIES_STORE
+        # snapshot each call, so the file is always complete and self-consistent.
+        if cfg.get("enable_veusz") and ALL_DEVICE_DATA:
+            _vsz_dir = cfg.get("veusz_dir", VEUSZ_DIR)
+            _vsz_app = bool(cfg.get("append_files", APPEND_OUTPUT_FILES))
+            tasks.append(
+                ("VEUSZ", lambda: write_veusz(
+                    ALL_DEVICE_DATA, _vsz_dir,
+                    show_window=False, append=_vsz_app)))
 
         with concurrent.futures.ThreadPoolExecutor(
             max_workers=min(4, len(tasks)) if tasks else 1,
