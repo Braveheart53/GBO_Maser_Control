@@ -27,7 +27,7 @@ Phone  : +1 (304) 456-2216
 Email  : wwallace@nrao.edu
 Email2 : naval.antennas@gmail.com 
 Python : 3.8+
-Version: 1.1.3
+Version: 1.1.5
 Deps   : PySide6, matplotlib, requests, beautifulsoup4, lxml,
          astropy, openpyxl, veusz  (pip install each)
 
@@ -109,6 +109,7 @@ ENABLE_LOG_APPEND = 1   # Write per-device Markdown (.md) data log tables
 ENABLE_LOG_FILE = 1   # Write ab_monitor.log (Python logging file handler)
 # Set to 0 to keep logging console-only (no file created)
 ENABLE_VEUSZ = 1   # Write Veusz HDF5 project file(s) (.vszh5)
+APPEND_OUTPUT_FILES = 1   # 1 = append/update existing outputs, 0 = start fresh
 
 # ---------------------------------------------------------------------------
 # %% Headless loop control
@@ -155,7 +156,7 @@ HEADLESS_SILENT = 1   # 1 = suppress ALL stdout/stderr console output;
 #   MEM_FREE_MIN_MB        — background flush when free RAM < N MB (no clear).
 #   MEM_RAM_PCT_LIMIT      — synchronous flush+CLEAR when system RAM >= N%.
 MEM_FLUSH_THRESHOLD_MB = 256   # flush when store occupies more than N MB
-MEM_FREE_MIN_MB = 4096   # flush when system free RAM falls below N MB
+MEM_FREE_MIN_MB = 512   # flush when system free RAM falls below N MB
 # Percentage of *total* system RAM at which a flush-and-clear is triggered.
 MEM_RAM_PCT_LIMIT = 70   # flush+clear when system RAM >= N% of total
 
@@ -854,44 +855,9 @@ def extract_numeric_series(table_dict: Dict[str, Any]) -> Dict[str, Tuple[float,
 def write_fits(
     all_device_data: Dict[str, Dict[str, Dict[str, Any]]],
     fits_dir: str,
+    append: bool = True,
 ) -> None:
-    """
-    Write NRAO-compliant FITS files — one persistent file per device,
-    overwritten on every call so it always contains the FULL accumulated
-    time-series from TIME_SERIES_STORE.
-
-    Filename is fixed per device (no timestamp in the name) so successive
-    flushes in both GUI and headless modes append to the same file on disk
-    rather than creating a new file per sample.
-
-    Layout (each BinTableHDU)
-    -------------------------
-    Column 0 : TIMESTAMP_LOCAL  — ISO string, format 'A19' (fixed 19-char)
-    Column 1+: one 64-bit float column per numeric parameter, all N rows.
-
-    Follows FITS standard (NOST 100-2.0) and NRAO conventions:
-      - Primary HDU contains global metadata in header keywords
-      - Each table page becomes a FITS BinTableHDU extension
-      - Column names truncated to FITS TTYPE limit (68 chars)
-      - TELESCOP, INSTRUME, ORIGIN, OBSERVER keywords populated
-      - DATE-OBS in ISO-8601 format (first sample timestamp)
-      - DATE-END in ISO-8601 format (last sample timestamp)
-      - NSAMP keyword: number of accumulated poll cycles
-      - DATE-WRT: UTC timestamp of this particular write
-      - BUNIT keyword on each column where units are known
-      - All string header values are 7-bit ASCII (NOST 100-2.0 sect. 4.4.2)
-
-    Data is drawn from TIME_SERIES_STORE (full accumulated history), NOT
-    from the single-snapshot all_device_data dict.
-
-    Parameters
-    ----------
-    all_device_data : Dict
-        Nested dict: {ip: {table_name: parsed_dict}} — used only for
-        iterating device IPs; data comes from TIME_SERIES_STORE.
-    fits_dir : str
-        Output directory path.
-    """
+    """Write one FITS file per device with true incremental append support."""
     try:
         from astropy.io import fits as astrofits
         import numpy as np
@@ -902,157 +868,124 @@ def write_fits(
     os.makedirs(fits_dir, exist_ok=True)
     now_utc = datetime.datetime.utcnow()
 
-    # Take a thread-safe snapshot of the full accumulated store.
     with _TS_LOCK:
         ts_snapshot = {
             ip: {
                 tname: {
-                    "timestamps_local": list(tdata["timestamps_local"]),
-                    "columns": {p: list(v) for p, v in tdata["columns"].items()},
-                    "units":   dict(tdata["units"]),
+                    "timestamps_local": list(tdata.get("timestamps_local", [])),
+                    "columns": {p: list(v) for p, v in tdata.get("columns", {}).items()},
+                    "units": dict(tdata.get("units", {})),
                 }
                 for tname, tdata in tables.items()
             }
             for ip, tables in TIME_SERIES_STORE.items()
         }
 
+    def _read_existing_fits(filename: str) -> Dict[str, Dict[str, Any]]:
+        out: Dict[str, Dict[str, Any]] = {}
+        if not (append and os.path.exists(filename)):
+            return out
+        try:
+            with astrofits.open(filename, memmap=False) as hdul:
+                for hdu in hdul[1:]:
+                    data = getattr(hdu, 'data', None)
+                    if data is None:
+                        continue
+                    tname = str(hdu.header.get('TBLNAME', hdu.name)).strip()
+                    names = list(data.names or [])
+                    if 'TIMESTAMP_LOCAL' not in names:
+                        continue
+                    ts_col = data['TIMESTAMP_LOCAL']
+                    timestamps = [x.decode('ascii', 'ignore') if isinstance(x, (bytes, bytearray)) else str(x) for x in ts_col]
+                    cols = {}
+                    units = {}
+                    for name in names:
+                        if name == 'TIMESTAMP_LOCAL':
+                            continue
+                        vals = []
+                        for v in data[name].tolist():
+                            try:
+                                vals.append(float(v) if v is not None else None)
+                            except Exception:
+                                vals.append(None)
+                        cols[str(name)] = vals
+                        units[str(name)] = str(getattr(hdu.columns[name], 'unit', '') or '')
+                    out[tname] = {'timestamps_local': timestamps, 'columns': cols, 'units': units}
+        except Exception as exc:
+            logger.warning('FITS incremental read failed for %s: %s', filename, exc)
+        return out
+
+    def _merge_table(existing: Dict[str, Any], current: Dict[str, Any]) -> Dict[str, Any]:
+        ets = list(existing.get('timestamps_local', []))
+        cts = list(current.get('timestamps_local', []))
+        merged_ts = list(ets)
+        seen = set(ets)
+        for ts in cts:
+            if ts not in seen:
+                merged_ts.append(ts)
+                seen.add(ts)
+        all_params = list(dict.fromkeys(list(existing.get('columns', {}).keys()) + list(current.get('columns', {}).keys())))
+        merged_cols = {p: [None] * len(merged_ts) for p in all_params}
+        merged_units = dict(existing.get('units', {}))
+        merged_units.update(current.get('units', {}))
+        idx_map = {ts: i for i, ts in enumerate(merged_ts)}
+        for source in (existing, current):
+            sts = source.get('timestamps_local', [])
+            scols = source.get('columns', {})
+            for p in all_params:
+                vals = scols.get(p, [])
+                for i, ts in enumerate(sts):
+                    if i < len(vals):
+                        merged_cols[p][idx_map[ts]] = vals[i]
+        return {'timestamps_local': merged_ts, 'columns': merged_cols, 'units': merged_units}
+
     for ip in all_device_data:
-        safe_ip = ip.replace(".", "_")
-        # Fixed filename per device — no timestamp so every write overwrites
-        # the same file, keeping a single up-to-date file with all samples.
-        filename = os.path.join(
-            fits_dir,
-            f"ABMeter_{safe_ip}.fits",
-        )
+        safe_ip = ip.replace('.', '_')
+        filename = os.path.join(fits_dir, f'ABMeter_{safe_ip}.fits')
+        existing_tables = _read_existing_fits(filename)
+        ip_tables = ts_snapshot.get(ip, {})
+        merged_tables = {}
+        for tname in sorted(set(existing_tables) | set(ip_tables)):
+            merged_tables[tname] = _merge_table(existing_tables.get(tname, {}), ip_tables.get(tname, {}))
 
         hdu_list = [astrofits.PrimaryHDU()]
-        primary_hdr = hdu_list[0].header
+        hdr = hdu_list[0].header
+        hdr['TELESCOP'] = (_fits_ascii('GBT'), 'Green Bank Telescope facility')
+        hdr['INSTRUME'] = (_fits_ascii('ABPowerMeter'), 'Allen-Bradley 1403 Site Power Meter')
+        hdr['ORIGIN'] = (_fits_ascii('NRAO-GBO'), 'National Radio Astronomy Observatory')
+        hdr['OBSERVER'] = (_fits_ascii('WWallace'), 'W. Wallace')
+        hdr['DATE-WRT'] = (_fits_ascii(now_utc.isoformat(timespec='seconds') + 'Z'), 'UTC timestamp of this write')
+        hdr['FILENAME'] = (_fits_ascii(os.path.basename(filename)), 'FITS file name')
+        hdr['DEVIP'] = (_fits_ascii(ip), 'Source device IP address')
+        all_ts = [ts for td in merged_tables.values() for ts in td.get('timestamps_local', [])]
+        if all_ts:
+            hdr['DATE-OBS'] = (_fits_ascii(min(all_ts).replace(' ', 'T')), 'Local time of first accumulated sample')
+            hdr['DATE-END'] = (_fits_ascii(max(all_ts).replace(' ', 'T')), 'Local time of last accumulated sample')
+            hdr['NSAMP'] = (max(len(td.get('timestamps_local', [])) for td in merged_tables.values()), 'Maximum accumulated poll cycles across all tables')
 
-        # --- NRAO / standard FITS primary header keywords ---
-        primary_hdr["TELESCOP"] = (_fits_ascii(
-            "GBT"),          "Green Bank Telescope facility")
-        primary_hdr["INSTRUME"] = (_fits_ascii(
-            "ABPowerMeter"), "Allen-Bradley 1403 Site Power Meter")
-        primary_hdr["ORIGIN"] = (_fits_ascii(
-            "NRAO-GBO"),     "National Radio Astronomy Observatory")
-        primary_hdr["OBSERVER"] = (_fits_ascii("WWallace"),     "W. Wallace")
-        primary_hdr["DATE-OBS"] = (
-            _fits_ascii(now_utc.isoformat(timespec="seconds") + "Z"),
-            "UTC of first sample in file",
-        )
-        primary_hdr["DATE-WRT"] = (
-            _fits_ascii(now_utc.isoformat(timespec="seconds") + "Z"),
-            "UTC timestamp of this write",
-        )
-        primary_hdr["FILENAME"] = (_fits_ascii(
-            os.path.basename(filename)), "FITS file name")
-        primary_hdr["DEVIP"] = (_fits_ascii(ip), "Source device IP address")
-        primary_hdr["COMMENT"] = _fits_ascii(
-            "Allen-Bradley power meter telemetry - NRAO GBO site infrastructure"
-        )
-        primary_hdr["HISTORY"] = _fits_ascii(
-            f"Generated by ab_power_meter_monitor.py on {now_utc.date()}"
-        )
-
-        ip_tables = ts_snapshot.get(ip, {})
-
-        # Determine the true first and last sample timestamps across all
-        # tables for this device so DATE-OBS reflects the data, not the
-        # write time.
-        all_timestamps = [
-            ts
-            for tdata in ip_tables.values()
-            for ts in tdata.get("timestamps_local", [])
-        ]
-        if all_timestamps:
-            first_ts = min(all_timestamps).replace(" ", "T")
-            last_ts = max(all_timestamps).replace(" ", "T")
-            primary_hdr["DATE-OBS"] = (_fits_ascii(first_ts),
-                                       "Local time of first accumulated sample")
-            primary_hdr["DATE-END"] = (_fits_ascii(last_ts),
-                                       "Local time of last accumulated sample")
-            primary_hdr["NSAMP"] = (
-                max(len(td.get("timestamps_local", []))
-                    for td in ip_tables.values()),
-                "Maximum accumulated poll cycles across all tables",
-            )
-
-        for tname, tdata in ip_tables.items():
-            timestamps = tdata["timestamps_local"]
-            columns = tdata["columns"]
-            units_map = tdata["units"]
-            params = list(columns.keys())
-            n_samples = len(timestamps)
-
+        for tname, tdata in merged_tables.items():
+            timestamps = tdata.get('timestamps_local', [])
             if not timestamps:
-                logger.debug(
-                    "FITS: no accumulated samples for '%s' — skipping HDU", tname)
                 continue
-
-            # ----------------------------------------------------------------
-            # Column 0: TIMESTAMP_LOCAL — 19-char ASCII strings
-            # FITS format 'A19' = fixed-width 19-char ASCII
-            # ----------------------------------------------------------------
-            fits_cols = [
-                astrofits.Column(
-                    name=_fits_ascii("TIMESTAMP_LOCAL"),
-                    format="A19",
-                    unit=_fits_ascii("local time"),
-                    array=np.array(timestamps, dtype="U19"),
-                )
-            ]
-
-            # ----------------------------------------------------------------
-            # Columns 1+: one 'D' (float64) column per numeric parameter.
-            # None values in the accumulated list are replaced with NaN so
-            # the array is densely packed and FITS-compatible.
-            # ----------------------------------------------------------------
-            for param in params:
-                raw_vals = columns[param]
-                arr = np.array(
-                    [float(v) if v is not None else float("nan")
-                     for v in raw_vals],
-                    dtype=np.float64,
-                )
-                col_name = _fits_ascii(param[:68])
-                unit_str = _fits_ascii(units_map.get(
-                    param, "dimensionless") or "dimensionless")
-                fits_cols.append(
-                    astrofits.Column(
-                        name=col_name,
-                        format="D",
-                        unit=unit_str,
-                        array=arr,
-                    )
-                )
-
+            columns = tdata.get('columns', {})
+            units_map = tdata.get('units', {})
+            fits_cols = [astrofits.Column(name=_fits_ascii('TIMESTAMP_LOCAL'), format='A19', unit=_fits_ascii('local time'), array=np.array(timestamps, dtype='U19'))]
+            for param, raw_vals in columns.items():
+                arr = np.array([float(v) if v is not None else float('nan') for v in raw_vals], dtype=np.float64)
+                fits_cols.append(astrofits.Column(name=_fits_ascii(str(param)[:68]), format='D', unit=_fits_ascii(units_map.get(param, 'dimensionless') or 'dimensionless'), array=arr))
             hdu = astrofits.BinTableHDU.from_columns(fits_cols)
-            ext_name = tname[:8]   # EXTNAME strict 8-char limit
-            hdu.header["EXTNAME"] = _fits_ascii(ext_name)
-            hdu.header["TBLNAME"] = _fits_ascii(tname)
-            hdu.header["SRCIP"] = _fits_ascii(ip)
-            hdu.header["NSAMP"] = (
-                n_samples, "Number of accumulated poll cycles")
-            hdu.header["DATE-OBS"] = _fits_ascii(
-                timestamps[0].replace(" ", "T") if timestamps else ""
-            )
-            hdu.header["DATE-END"] = _fits_ascii(
-                timestamps[-1].replace(" ", "T") if timestamps else ""
-            )
-            hdu.header["COMMENT"] = _fits_ascii(f"AB meter table: {tname}")
-            hdu.header["COMMENT"] = _fits_ascii(
-                f"{n_samples} sample(s), columnar time-series, TIMESTAMP_LOCAL col 1"
-            )
+            hdu.header['EXTNAME'] = _fits_ascii(tname[:8])
+            hdu.header['TBLNAME'] = _fits_ascii(tname)
+            hdu.header['SRCIP'] = _fits_ascii(ip)
+            hdu.header['NSAMP'] = (len(timestamps), 'Number of accumulated poll cycles')
+            hdu.header['DATE-OBS'] = _fits_ascii(timestamps[0].replace(' ', 'T'))
+            hdu.header['DATE-END'] = _fits_ascii(timestamps[-1].replace(' ', 'T'))
             hdu_list.append(hdu)
-
         try:
-            hdul = astrofits.HDUList(hdu_list)
-            hdul.writeto(filename, overwrite=True)
-            logger.info("FITS written (%d table HDUs, %s): %s",
-                        len(hdu_list) - 1, ip, filename)
+            astrofits.HDUList(hdu_list).writeto(filename, overwrite=True)
+            logger.info('FITS %s: %s', 'incremental append/update' if append else 'rewritten fresh', filename)
         except Exception as exc:
-            logger.error("FITS write failed for %s: %s", ip, exc)
-
+            logger.error('FITS write failed for %s: %s', ip, exc)
 
 # ===========================================================================
 # %%% OUTPUT MODULE 2 — CSV
@@ -1106,7 +1039,7 @@ def write_csv(
         safe_ip = ip.replace(".", "_")
         for tname, tdata in tables.items():
             filename = os.path.join(csv_dir, f"ABMeter_{safe_ip}_{tname}.csv")
-            is_new = not os.path.exists(filename) or not append
+            is_new = (not append) or (not os.path.exists(filename)) or not append
 
             timestamps = tdata["timestamps_local"]
             columns = tdata["columns"]
@@ -1356,6 +1289,7 @@ def write_xlsx(
 def write_log_text(
     all_device_data: Dict[str, Dict[str, Dict[str, Any]]],
     log_dir: str,
+    append: bool = True,
 ) -> None:
     """
     Append new poll rows to per-device, per-table Markdown log files (.md).
@@ -1425,7 +1359,7 @@ def write_log_text(
             # ----------------------------------------------------------------
             HEADER_LINES = 4   # heading + blank + table header + separator
             existing_rows = 0
-            is_new = not os.path.exists(filename)
+            is_new = (not append) or (not os.path.exists(filename))
             if not is_new:
                 try:
                     with open(filename, "r", encoding="utf-8") as fh:
@@ -1464,7 +1398,7 @@ def write_log_text(
                 return "|" + "|".join("-" * (w + 2) for w in col_widths) + "|"
 
             try:
-                with open(filename, "a", encoding="utf-8") as fh:
+                with open(filename, "a" if append else "w", encoding="utf-8") as fh:
                     if is_new:
                         # Heading + blank line + GFM table header + separator
                         fh.write(f"## {ip} — {tname}\n\n")
@@ -1560,6 +1494,7 @@ def write_veusz(
     all_device_data: Dict[str, Dict[str, Dict[str, Any]]],
     veusz_dir: str,
     show_window: bool = False,
+    append: bool = True,
 ) -> None:
     """
     Build and save Veusz HDF5 project files (.vszh5) — one per device.
@@ -1614,6 +1549,11 @@ def write_veusz(
     for ip, tables in all_device_data.items():
         safe_ip = ip.replace(".", "_")
         filename = os.path.join(veusz_dir, f"ABMeter_{safe_ip}.vszh5")
+        if (not append) and os.path.exists(filename):
+            try:
+                os.remove(filename)
+            except Exception:
+                pass
 
         # -------------------------------------------------------------------
         # Open the embedded document window.
@@ -2020,16 +1960,16 @@ def flush_outputs_parallel(cfg: Dict[str, Any]) -> "concurrent.futures.Future":
         tasks = []
         if cfg.get("enable_fits"):
             tasks.append(
-                ("FITS", lambda: write_fits(ALL_DEVICE_DATA, fits_dir)))
+                ("FITS", lambda: write_fits(ALL_DEVICE_DATA, fits_dir, append=bool(cfg.get("append_files", APPEND_OUTPUT_FILES)))))
         if cfg.get("enable_csv"):
             tasks.append(("CSV", lambda: write_csv(
                 ALL_DEVICE_DATA, csv_dir, append=True)))
         if cfg.get("enable_xlsx"):
             tasks.append(
-                ("XLSX", lambda: write_xlsx(ALL_DEVICE_DATA, xlsx_dir)))
+                ("XLSX", lambda: write_xlsx(ALL_DEVICE_DATA, xlsx_dir, append=bool(cfg.get("append_files", APPEND_OUTPUT_FILES)))))
         if cfg.get("enable_log_append"):
             tasks.append(
-                ("LOG", lambda: write_log_text(ALL_DEVICE_DATA, log_dir)))
+                ("LOG", lambda: write_log_text(ALL_DEVICE_DATA, log_dir, append=bool(cfg.get("append_files", APPEND_OUTPUT_FILES)))))
 
         with concurrent.futures.ThreadPoolExecutor(
             max_workers=min(4, len(tasks)) if tasks else 1,
@@ -3081,6 +3021,7 @@ def launch_gui(
             self._cb_log = QCheckBox("Append to Markdown log tables (.md)")
             self._cb_log_file = QCheckBox("Write ab_monitor.log file")
             self._cb_veusz = QCheckBox("Enable Veusz HDF5 output (.vszh5)")
+            self._cb_append_files = QCheckBox("Append output files (otherwise start fresh)")
 
             self._cb_fits.setChecked(
                 bool(self._switches.get("enable_fits",       ENABLE_FITS)))
@@ -3094,9 +3035,12 @@ def launch_gui(
                 bool(self._switches.get("enable_log_file",   ENABLE_LOG_FILE)))
             self._cb_veusz.setChecked(
                 bool(self._switches.get("enable_veusz",      ENABLE_VEUSZ)))
+            self._cb_append_files.setChecked(
+                bool(self._switches.get("append_files",      APPEND_OUTPUT_FILES)))
 
             for cb in [self._cb_fits, self._cb_csv, self._cb_xlsx,
-                       self._cb_log, self._cb_log_file, self._cb_veusz]:
+                       self._cb_log, self._cb_log_file, self._cb_veusz,
+                       self._cb_append_files]:
                 layout.addWidget(cb)
 
             # --- Output root directory (drives FITS, CSV, XLSX, Veusz sub-dirs) ---
@@ -3473,6 +3417,7 @@ def launch_gui(
                 "enable_log_append": int(self._cb_log.isChecked()),
                 "enable_log_file":   int(self._cb_log_file.isChecked()),
                 "enable_veusz":      int(self._cb_veusz.isChecked()),
+                "append_files":      int(self._cb_append_files.isChecked()),
                 # Runtime output directories — derived from the GUI fields.
                 # All sub-dirs are built under output_base_dir unless the
                 # user has overridden log_dir independently.
@@ -3547,7 +3492,7 @@ def launch_gui(
                 self._append_log(
                     "Writing final Veusz file with all accumulated samples…")
                 try:
-                    write_veusz(ALL_DEVICE_DATA, veusz_dir, show_window=False)
+                    write_veusz(ALL_DEVICE_DATA, veusz_dir, show_window=False, append=bool(cfg.get("append_files", APPEND_OUTPUT_FILES)))
                     self._append_log(f"Veusz saved: {veusz_dir}")
                 except Exception as exc:
                     self._append_log(f"Veusz final write error: {exc}")
@@ -3578,17 +3523,17 @@ def launch_gui(
                         logger.error("In-flight flush error before pct-clear: %s", _fe)
                     self._flush_future = None
                 if cfg.get("enable_fits"):
-                    write_fits(ALL_DEVICE_DATA, cfg.get("fits_dir", FITS_DIR))
+                    write_fits(ALL_DEVICE_DATA, cfg.get("fits_dir", FITS_DIR), append=bool(cfg.get("append_files", APPEND_OUTPUT_FILES)))
                 if cfg.get("enable_csv"):
-                    write_csv(ALL_DEVICE_DATA, cfg.get("csv_dir", CSV_DIR), append=True)
+                    write_csv(ALL_DEVICE_DATA, cfg.get("csv_dir", CSV_DIR), append=bool(cfg.get("append_files", APPEND_OUTPUT_FILES)))
                 if cfg.get("enable_xlsx"):
-                    write_xlsx(ALL_DEVICE_DATA, cfg.get("xlsx_dir", XLSX_DIR))
+                    write_xlsx(ALL_DEVICE_DATA, cfg.get("xlsx_dir", XLSX_DIR), append=bool(cfg.get("append_files", APPEND_OUTPUT_FILES)))
                 if cfg.get("enable_log_append"):
-                    write_log_text(ALL_DEVICE_DATA, cfg.get("log_dir", LOG_DIR))
+                    write_log_text(ALL_DEVICE_DATA, cfg.get("log_dir", LOG_DIR), append=bool(cfg.get("append_files", APPEND_OUTPUT_FILES)))
                 if cfg.get("enable_veusz") and ALL_DEVICE_DATA:
                     self._append_log("  Building Veusz for RAM-flush snapshot…")
                     try:
-                        write_veusz(ALL_DEVICE_DATA, cfg.get("veusz_dir", VEUSZ_DIR))
+                        write_veusz(ALL_DEVICE_DATA, cfg.get("veusz_dir", VEUSZ_DIR), append=bool(cfg.get("append_files", APPEND_OUTPUT_FILES)))
                     except Exception as _ve:
                         logger.error("Veusz RAM-flush write failed: %s", _ve)
                 clear_time_series_store()
@@ -4139,15 +4084,15 @@ def run_headless(cfg: Dict[str, Any]) -> None:
                         if not dicts_only:
                             logger.error("In-flight flush error: %s", _fe)
                 if cfg.get("enable_fits"):
-                    write_fits(ALL_DEVICE_DATA, cfg.get("fits_dir", FITS_DIR))
+                    write_fits(ALL_DEVICE_DATA, cfg.get("fits_dir", FITS_DIR), append=bool(cfg.get("append_files", APPEND_OUTPUT_FILES)))
                 if cfg.get("enable_csv"):
-                    write_csv(ALL_DEVICE_DATA, cfg.get("csv_dir", CSV_DIR), append=True)
+                    write_csv(ALL_DEVICE_DATA, cfg.get("csv_dir", CSV_DIR), append=bool(cfg.get("append_files", APPEND_OUTPUT_FILES)))
                 if cfg.get("enable_xlsx"):
-                    write_xlsx(ALL_DEVICE_DATA, cfg.get("xlsx_dir", XLSX_DIR))
+                    write_xlsx(ALL_DEVICE_DATA, cfg.get("xlsx_dir", XLSX_DIR), append=bool(cfg.get("append_files", APPEND_OUTPUT_FILES)))
                 if cfg.get("enable_log_append"):
-                    write_log_text(ALL_DEVICE_DATA, cfg.get("log_dir", LOG_DIR))
+                    write_log_text(ALL_DEVICE_DATA, cfg.get("log_dir", LOG_DIR), append=bool(cfg.get("append_files", APPEND_OUTPUT_FILES)))
                 if cfg.get("enable_veusz"):
-                    write_veusz(ALL_DEVICE_DATA, cfg.get("veusz_dir", VEUSZ_DIR))
+                    write_veusz(ALL_DEVICE_DATA, cfg.get("veusz_dir", VEUSZ_DIR), append=bool(cfg.get("append_files", APPEND_OUTPUT_FILES)))
                 clear_time_series_store()
                 flush_future = None
                 if not dicts_only:
@@ -4207,17 +4152,17 @@ def run_headless(cfg: Dict[str, Any]) -> None:
     log_dir = cfg.get("log_dir",   LOG_DIR)
 
     if cfg.get("enable_fits"):
-        write_fits(ALL_DEVICE_DATA, fits_dir)
+        write_fits(ALL_DEVICE_DATA, fits_dir, append=bool(cfg.get("append_files", APPEND_OUTPUT_FILES)))
     if cfg.get("enable_csv"):
-        write_csv(ALL_DEVICE_DATA, csv_dir, append=True)
+        write_csv(ALL_DEVICE_DATA, csv_dir, append=bool(cfg.get("append_files", APPEND_OUTPUT_FILES)))
     if cfg.get("enable_xlsx"):
-        write_xlsx(ALL_DEVICE_DATA, xlsx_dir)
+        write_xlsx(ALL_DEVICE_DATA, xlsx_dir, append=bool(cfg.get("append_files", APPEND_OUTPUT_FILES)))
     if cfg.get("enable_log_append"):
-        write_log_text(ALL_DEVICE_DATA, log_dir)
+        write_log_text(ALL_DEVICE_DATA, log_dir, append=bool(cfg.get("append_files", APPEND_OUTPUT_FILES)))
     if cfg.get("enable_veusz"):
         logger.info(
             "Building Veusz project with all %d accumulated sample(s)…", cycle)
-        write_veusz(ALL_DEVICE_DATA, veusz_dir)
+        write_veusz(ALL_DEVICE_DATA, veusz_dir, append=bool(cfg.get("append_files", APPEND_OUTPUT_FILES)))
 
     if not dicts_only:
         if _any_output_enabled(cfg):
@@ -4316,6 +4261,7 @@ def main() -> Dict[str, Dict[str, Dict]]:
         "enable_log_append": ENABLE_LOG_APPEND,
         "enable_log_file":   ENABLE_LOG_FILE,
         "enable_veusz":      ENABLE_VEUSZ,   # write Veusz HDF5 project file(s)
+        "append_files":      APPEND_OUTPUT_FILES,
         # Output directories — all derived from OUTPUT_BASE_DIR.
         # Change OUTPUT_BASE_DIR at the top of the file to relocate everything.
         "output_base_dir":   OUTPUT_BASE_DIR,
