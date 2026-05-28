@@ -27,7 +27,7 @@ Phone  : +1 (304) 456-2216
 Email  : wwallace@nrao.edu
 Email2 : naval.antennas@gmail.com 
 Python : 3.8+
-Version: 1.1.8
+Version: 1.2.0
 Deps   : PySide6, matplotlib, requests, beautifulsoup4, lxml,
          astropy, openpyxl, veusz  (pip install each)
 
@@ -967,7 +967,7 @@ def write_fits(
                         merged_cols[p][idx_map[ts]] = vals[i]
         return {'timestamps_local': merged_ts, 'columns': merged_cols, 'units': merged_units}
 
-    for ip in all_device_data:
+    for ip in ts_snapshot:
         safe_ip = ip.replace('.', '_')
         filename = os.path.join(fits_dir, f'ABMeter_{safe_ip}.fits')
         if not append and os.path.exists(filename):
@@ -1031,29 +1031,11 @@ def write_csv(
     append: bool = True,
 ) -> None:
     """
-    Write one CSV file per device per table in COLUMNAR time-series format.
+    Write one CSV file per device per table in columnar time-series format.
 
-    Layout
-    ------
-    Row 1 (header) : Timestamp_Local | <param1> | <param2> | ...
-                     Units row       : (units)   | <unit1>  | <unit2>  | ...
-    Rows 2+        : One row per poll cycle — local timestamp + all values.
-
-    On append (append=True), new rows are added to the existing file.
-    The header and units row are written only when the file is created
-    for the first time.  Column order is determined on first write and
-    preserved; new parameters discovered mid-run are appended as new
-    columns on the right with back-filled blanks.
-
-    Parameters
-    ----------
-    all_device_data : Dict
-        Nested dict: {ip: {table_name: parsed_dict}} (used only for
-        directory creation; data comes from TIME_SERIES_STORE).
-    csv_dir : str
-        Output directory path.
-    append : bool
-        If False, overwrite existing files (start fresh).
+    Appending is timestamp-based: only rows with new ``Timestamp_Local`` values
+    are added. This keeps CSV output correct after RAM flushes in GUI and
+    headless operation.
     """
     os.makedirs(csv_dir, exist_ok=True)
 
@@ -1061,9 +1043,9 @@ def write_csv(
         snapshot = {
             ip: {
                 tname: {
-                    "timestamps_local": list(tdata["timestamps_local"]),
-                    "columns": {p: list(v) for p, v in tdata["columns"].items()},
-                    "units":   dict(tdata["units"]),
+                    "timestamps_local": list(tdata.get("timestamps_local", [])),
+                    "columns": {p: list(v) for p, v in tdata.get("columns", {}).items()},
+                    "units": dict(tdata.get("units", {})),
                 }
                 for tname, tdata in tables.items()
             }
@@ -1074,92 +1056,78 @@ def write_csv(
         safe_ip = ip.replace(".", "_")
         for tname, tdata in tables.items():
             filename = os.path.join(csv_dir, f"ABMeter_{safe_ip}_{tname}.csv")
+            timestamps = tdata.get("timestamps_local", [])
+            columns = tdata.get("columns", {})
+            units = tdata.get("units", {})
+            params = list(columns.keys())
+            if not timestamps:
+                continue
+
             if not append and os.path.exists(filename):
                 try:
                     os.remove(filename)
                 except Exception:
                     pass
-            is_new = (not append) or (not os.path.exists(filename))
 
-            timestamps = tdata["timestamps_local"]
-            columns = tdata["columns"]
-            units = tdata["units"]
-            params = list(columns.keys())
-
-            if not timestamps:
-                continue
-
-            try:
-                if is_new:
-                    # Fresh file: write header, units row, then all accumulated rows
+            if (not append) or (not os.path.exists(filename)):
+                try:
                     with open(filename, "w", newline="", encoding="utf-8") as fh:
                         writer = csv.writer(fh)
                         writer.writerow(["Timestamp_Local"] + params)
-                        writer.writerow(
-                            ["(units)"] + [units.get(p, "") for p in params])
+                        writer.writerow(["(units)"] + [units.get(p, "") for p in params])
                         for i, ts in enumerate(timestamps):
-                            row = [ts] + [columns[p][i] if i <
-                                          len(columns[p]) else "" for p in params]
-                            writer.writerow(row)
-                else:
-                    # Append mode: read existing header to preserve column order,
-                    # detect new columns, then append only the new rows.
-                    existing_params: List[str] = []
-                    existing_row_count = 0
-                    with open(filename, "r", newline="", encoding="utf-8") as fh:
-                        reader = csv.reader(fh)
-                        for row_idx, row in enumerate(reader):
-                            if row_idx == 0:
-                                # skip Timestamp_Local
-                                existing_params = row[1:]
-                            elif row_idx == 1:
-                                pass  # units row
-                            else:
-                                existing_row_count += 1
+                            writer.writerow([ts] + [columns.get(p, [])[i] if i < len(columns.get(p, [])) else "" for p in params])
+                    logger.info("CSV %s (%d rows): %s", "written" if not append else "created", len(timestamps), filename)
+                except Exception as exc:
+                    logger.error("CSV write failed for %s/%s: %s", ip, tname, exc)
+                continue
 
-                    new_params = [
-                        p for p in params if p not in existing_params]
-                    all_params = existing_params + new_params
+            try:
+                existing_params: List[str] = []
+                existing_rows: List[List[Any]] = []
+                existing_timestamps = set()
+                with open(filename, "r", newline="", encoding="utf-8") as fh:
+                    reader = csv.reader(fh)
+                    for row_idx, row in enumerate(reader):
+                        if row_idx == 0:
+                            existing_params = row[1:]
+                        elif row_idx == 1:
+                            continue
+                        elif row:
+                            existing_rows.append(row)
+                            if row[0] not in (None, ""):
+                                existing_timestamps.add(str(row[0]))
 
-                    if new_params:
-                        # Rewrite file with extended header if new columns appeared
-                        with open(filename, "r", newline="", encoding="utf-8") as fh:
-                            old_rows = list(csv.reader(fh))
-                        with open(filename, "w", newline="", encoding="utf-8") as fh:
-                            writer = csv.writer(fh)
-                            # Updated header
-                            writer.writerow(["Timestamp_Local"] + all_params)
-                            # Updated units row
-                            all_units = [units.get(p, "") for p in all_params]
-                            writer.writerow(["(units)"] + all_units)
-                            # Re-emit data rows with blanks for new cols
-                            for old_row in old_rows[2:]:
-                                writer.writerow(
-                                    old_row + [""] * len(new_params))
+                new_params = [p for p in params if p not in existing_params]
+                all_params = existing_params + new_params
 
-                    # Append only rows not yet written
-                    rows_to_write = timestamps[existing_row_count:]
-                    start_idx = existing_row_count
-                    with open(filename, "a", newline="", encoding="utf-8") as fh:
+                if new_params:
+                    with open(filename, "w", newline="", encoding="utf-8") as fh:
                         writer = csv.writer(fh)
-                        for i, ts in enumerate(rows_to_write):
-                            abs_i = start_idx + i
-                            row = [ts] + [
-                                columns[p][abs_i] if (
-                                    p in columns and abs_i < len(columns[p])) else ""
-                                for p in all_params
-                            ]
-                            writer.writerow(row)
+                        writer.writerow(["Timestamp_Local"] + all_params)
+                        writer.writerow(["(units)"] + [units.get(p, "") for p in all_params])
+                        old_idx = {p: i + 1 for i, p in enumerate(existing_params)}
+                        for row in existing_rows:
+                            out = [row[0]]
+                            for p in all_params:
+                                idx = old_idx.get(p)
+                                out.append(row[idx] if idx is not None and idx < len(row) else "")
+                            writer.writerow(out)
 
-                logger.debug("CSV written (columnar): %s", filename)
+                rows_written = 0
+                with open(filename, "a", newline="", encoding="utf-8") as fh:
+                    writer = csv.writer(fh)
+                    for i, ts in enumerate(timestamps):
+                        ts_str = str(ts)
+                        if ts_str in existing_timestamps:
+                            continue
+                        writer.writerow([ts_str] + [columns.get(p, [])[i] if i < len(columns.get(p, [])) else "" for p in all_params])
+                        rows_written += 1
+                logger.info("CSV appended by timestamp (%d new rows): %s", rows_written, filename)
             except Exception as exc:
-                logger.error("CSV write failed for %s / %s: %s",
-                             ip, tname, exc)
+                logger.error("CSV write failed for %s/%s: %s", ip, tname, exc)
 
 
-# ===========================================================================
-# %%% OUTPUT MODULE 3 — EXCEL (XLSX)
-# ===========================================================================
 def write_xlsx(
     all_device_data: Dict[str, Dict[str, Dict[str, Any]]],
     xlsx_dir: str,
@@ -1287,9 +1255,9 @@ def write_xlsx(
                          .replace("\\", "_")
                          .replace("*", "_"))
 
+            existing_ts = set()
             if safe_name in wb.sheetnames:
                 ws = wb[safe_name]
-                existing_data_rows = max(0, ws.max_row - 2)
                 existing_params = [
                     ws.cell(row=1, column=c).value
                     for c in range(2, ws.max_column + 1)
@@ -1298,6 +1266,12 @@ def write_xlsx(
                     del wb[safe_name]
                     ws = wb.create_sheet(title=safe_name)
                     existing_data_rows = 0
+                else:
+                    existing_data_rows = max(0, ws.max_row - 2)
+                    for r in range(3, ws.max_row + 1):
+                        v = ws.cell(row=r, column=1).value
+                        if v not in (None, ""):
+                            existing_ts.add(str(v))
             else:
                 ws = wb.create_sheet(title=safe_name)
                 existing_data_rows = 0
@@ -1318,11 +1292,16 @@ def write_xlsx(
                     c.alignment = center_align
                 ws.freeze_panes = "A3"
 
-            new_ts = timestamps[existing_data_rows:]
-            for offset, ts in enumerate(new_ts):
-                abs_i   = existing_data_rows + offset
-                row_idx = abs_i + 3
-                ws.cell(row=row_idx, column=1, value=ts)
+            next_row_idx = ws.max_row + 1 if ws.max_row >= 2 else 3
+            rows_written = 0
+            for abs_i, ts in enumerate(timestamps):
+                ts_str = str(ts)
+                if ts_str in existing_ts:
+                    continue
+                row_idx = next_row_idx
+                next_row_idx += 1
+                rows_written += 1
+                ws.cell(row=row_idx, column=1, value=ts_str)
                 for ci, param in enumerate(params, start=2):
                     vals = columns.get(param, [])
                     val  = vals[abs_i] if abs_i < len(vals) else None
@@ -1336,7 +1315,7 @@ def write_xlsx(
                 ws.column_dimensions[
                     col[0].column_letter].width = min(maxlen + 4, 40)
 
-            _rebuild_chart(ws, ip, tname, params, columns, len(timestamps))
+            _rebuild_chart(ws, ip, tname, params, columns, max(0, ws.max_row - 2))
 
         try:
             wb.save(filename)
@@ -1344,7 +1323,7 @@ def write_xlsx(
                 max(0, len(t.get("timestamps_local", [])))
                 for t in tables.values()
             )
-            logger.info("XLSX %s (%d total rows in store → file): %s",
+            logger.info("XLSX %s (%d total rows in file): %s",
                         "appended to" if append else "(re)written",
                         total_rows, filename)
         except Exception as exc:
@@ -1359,19 +1338,9 @@ def write_log_text(
     """
     Write one Markdown (.md) log file per device in columnar time-series format.
 
-    append=True  — scan the existing file to count already-written data rows
-                   per table, then append ONLY the new rows.
-    append=False — delete any existing file, then write the full snapshot.
-
-    Parameters
-    ----------
-    all_device_data : Dict
-        {ip: {table_name: parsed_dict}} — iteration; data from TIME_SERIES_STORE.
-    log_dir : str
-        Output directory path.
-    append : bool
-        True  — incremental append (default).
-        False — delete existing, write fresh.
+    Appending is timestamp-based per table section: only rows with new
+    ``Timestamp_Local`` values are added. This keeps Markdown output correct
+    after RAM flushes in GUI and headless operation.
     """
     os.makedirs(log_dir, exist_ok=True)
 
@@ -1380,8 +1349,7 @@ def write_log_text(
             ip: {
                 tname: {
                     "timestamps_local": list(tdata.get("timestamps_local", [])),
-                    "columns": {p: list(v)
-                                for p, v in tdata.get("columns", {}).items()},
+                    "columns": {p: list(v) for p, v in tdata.get("columns", {}).items()},
                     "units": dict(tdata.get("units", {})),
                 }
                 for tname, tdata in tables.items()
@@ -1389,106 +1357,86 @@ def write_log_text(
             for ip, tables in TIME_SERIES_STORE.items()
         }
 
+    def _parse_existing_md(path: str) -> Dict[str, Dict[str, Any]]:
+        parsed: Dict[str, Dict[str, Any]] = {}
+        if not os.path.exists(path):
+            return parsed
+        current = None
+        with open(path, 'r', encoding='utf-8') as fh:
+            for raw in fh:
+                line = raw.rstrip('\n')
+                if line.startswith('### '):
+                    current = line[4:].strip()
+                    parsed[current] = {"timestamps": set(), "data_lines": []}
+                    continue
+                if current is None:
+                    continue
+                if (line.startswith('|') and '---' not in line
+                        and not line.startswith('| Timestamp')
+                        and not line.startswith('| (units)')):
+                    parts = [p.strip() for p in line.strip('|').split('|')]
+                    if parts and parts[0]:
+                        parsed[current]["timestamps"].add(parts[0])
+                    parsed[current]["data_lines"].append(line)
+        return parsed
+
     for ip, tables in snapshot.items():
-        safe_ip  = ip.replace(".", "_")
+        safe_ip = ip.replace('.', '_')
         filename = os.path.join(log_dir, f"ABMeter_{safe_ip}.md")
 
         if not append and os.path.exists(filename):
             try:
                 os.remove(filename)
-                logger.debug("Markdown: removed existing file for fresh write: %s",
-                             filename)
+                logger.debug("Markdown: removed existing file for fresh write: %s", filename)
             except Exception as exc:
                 logger.warning("Markdown: could not remove %s: %s", filename, exc)
 
+        parsed = _parse_existing_md(filename) if (append and os.path.exists(filename)) else {}
+        lines = [
+            f"# AB Power Meter Log — {ip}",
+            "",
+            "Generated: " + datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "",
+        ]
+        total_new_rows = 0
+
         for tname, tdata in tables.items():
             timestamps = tdata.get("timestamps_local", [])
-            columns    = tdata.get("columns", {})
-            units_map  = tdata.get("units", {})
-            params     = list(columns.keys())
+            columns = tdata.get("columns", {})
+            units_map = tdata.get("units", {})
+            params = list(columns.keys())
             if not timestamps:
                 continue
 
-            existing_data_rows = 0
-            file_exists = os.path.exists(filename)
+            existing_ts = set(parsed.get(tname, {}).get("timestamps", set()))
+            existing_data_lines = list(parsed.get(tname, {}).get("data_lines", []))
 
-            if append and file_exists:
-                try:
-                    in_table = False
-                    with open(filename, "r", encoding="utf-8") as fh:
-                        for line in fh:
-                            line = line.rstrip()
-                            if f"### {tname}" in line:
-                                in_table = True
-                                existing_data_rows = 0
-                                continue
-                            if in_table:
-                                if line.startswith("###") and tname not in line:
-                                    in_table = False
-                                    continue
-                                if (line.startswith("|")
-                                        and "---" not in line
-                                        and not line.startswith("| Timestamp")
-                                        and not line.startswith("| (units)")):
-                                    existing_data_rows += 1
-                except Exception:
-                    existing_data_rows = 0
+            lines.extend([
+                f"### {tname}",
+                "",
+                "| Timestamp_Local | " + " | ".join(params) + " |",
+                "| --- | " + " | ".join(["---"] * len(params)) + " |",
+                "| (units) | " + " | ".join(units_map.get(p, "") for p in params) + " |",
+            ])
+            lines.extend(existing_data_lines)
 
-            new_timestamps = timestamps[existing_data_rows:]
-            if not new_timestamps and file_exists and append:
-                continue
+            rows_written = 0
+            for i, ts in enumerate(timestamps):
+                ts_str = str(ts)
+                if append and ts_str in existing_ts:
+                    continue
+                row = [ts_str] + [str(columns.get(p, [])[i]) if i < len(columns.get(p, [])) else "" for p in params]
+                lines.append("| " + " | ".join(row) + " |")
+                rows_written += 1
+            total_new_rows += rows_written
+            lines.append("")
 
-            mode = "a" if (append and file_exists) else "w"
-            try:
-                with open(filename, mode, encoding="utf-8") as fh:
-                    if mode == "w":
-                        fh.write(f"# AB Power Meter Log — {ip}\n\n")
-                        fh.write(
-                            "Generated: "
-                            + datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                            + "\n\n"
-                        )
-
-                    if mode == "w" or existing_data_rows == 0:
-                        fh.write(f"\n### {tname}\n\n")
-                        fh.write(
-                            "| Timestamp_Local | "
-                            + " | ".join(params)
-                            + " |\n"
-                        )
-                        fh.write(
-                            "| --- | "
-                            + " | ".join(["---"] * len(params))
-                            + " |\n"
-                        )
-                        fh.write(
-                            "| (units) | "
-                            + " | ".join(
-                                units_map.get(p, "") for p in params)
-                            + " |\n"
-                        )
-
-                    for offset, ts in enumerate(new_timestamps):
-                        abs_i = existing_data_rows + offset
-                        vals  = []
-                        for param in params:
-                            col = columns.get(param, [])
-                            v   = col[abs_i] if abs_i < len(col) else ""
-                            vals.append(str(v) if v is not None else "")
-                        fh.write(
-                            f"| {ts} | "
-                            + " | ".join(vals)
-                            + " |\n"
-                        )
-
-                logger.debug(
-                    "Markdown %s (table %s, %d new rows): %s",
-                    "appended" if append else "written",
-                    tname, len(new_timestamps), filename,
-                )
-            except Exception as exc:
-                logger.error("Markdown write failed for %s/%s: %s",
-                             ip, tname, exc)
+        try:
+            with open(filename, 'w', encoding='utf-8') as fh:
+                fh.write("\n".join(lines).rstrip() + "\n")
+            logger.info("Markdown appended by timestamp (%d new rows): %s", total_new_rows, filename)
+        except Exception as exc:
+            logger.error("Markdown write failed for %s: %s", ip, exc)
 
 
 def write_veusz(
@@ -1547,7 +1495,19 @@ def write_veusz(
     os.makedirs(veusz_dir, exist_ok=True)
     now_utc = datetime.datetime.utcnow().isoformat(timespec="seconds") + "Z"
 
-    for ip, tables in all_device_data.items():
+    with _TS_LOCK:
+        _vsz_store_snap = {
+            ip: {
+                tname: {
+                    "timestamps_local": list(td.get("timestamps_local", [])),
+                    "columns": {p: list(v) for p, v in td.get("columns", {}).items()},
+                    "units": dict(td.get("units", {})),
+                }
+                for tname, td in tbls.items()
+            }
+            for ip, tbls in TIME_SERIES_STORE.items()
+        }
+    for ip, tables in _vsz_store_snap.items():
         safe_ip = ip.replace(".", "_")
         filename = os.path.join(veusz_dir, f"ABMeter_{safe_ip}.vszh5")
         if (not append) and os.path.exists(filename):
