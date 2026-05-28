@@ -27,8 +27,8 @@ Phone  : +1 (304) 456-2216
 Email  : wwallace@nrao.edu
 Email2 : naval.antennas@gmail.com 
 Python : 3.8+
-Version: 1.0.9
-Deps   : PySide6, matplotlib, requests, beautifulsoup4, lxml,
+Version: 1.1.0
+Deps   : PySide6, matplotlib, requests, beautifulsoup4, lxml, gc (stdlib),
          astropy, openpyxl, veusz  (pip install each)
 
 # %%% Usage
@@ -76,6 +76,7 @@ import traceback
 from typing import Any, Dict, List, Optional, Tuple
 import threading
 import signal
+import gc
 import concurrent.futures
 try:
     import psutil          # pip install psutil — for memory monitoring
@@ -149,12 +150,28 @@ HEADLESS_SILENT = 1   # 1 = suppress ALL stdout/stderr console output;
 # ---------------------------------------------------------------------------
 # %% Memory / flush thresholds (adaptive write scheduling)
 # ---------------------------------------------------------------------------
-# When the in-memory time-series store grows beyond MEM_FLUSH_THRESHOLD_MB
-# OR free system RAM drops below MEM_FREE_MIN_MB, an intermediate flush of
-# CSV / XLSX / log files is triggered mid-loop (parallel, non-blocking) so
-# memory is reclaimed without dropping sample points.
+# Three independent flush mechanisms protect against OOM crashes:
+#
+#   MEM_FLUSH_THRESHOLD_MB  — flush when the in-memory TIME_SERIES_STORE
+#                              itself exceeds N MB (background, no clear).
+#   MEM_FREE_MIN_MB         — flush when system *free* RAM falls below N MB
+#                              (background, no clear).
+#   MEM_RAM_PCT_LIMIT       — flush + CLEAR when *system* RAM use reaches
+#                              N % of total installed RAM (synchronous,
+#                              full clear).  This is the primary OOM guard
+#                              for long / infinite auto-sampling runs.
+#                              Overrideable at runtime via the GUI spinbox
+#                              or by passing ram_pct= to ab_meter_caller.run().
+#
+# All three are checked after every poll cycle in both headless and GUI mode.
 MEM_FLUSH_THRESHOLD_MB = 256   # flush when store occupies more than N MB
 MEM_FREE_MIN_MB = 512   # flush when system free RAM falls below N MB
+# Percentage of *total* system RAM at which a flush-and-clear is triggered.
+# When process RAM use reaches this fraction of total installed RAM, ALL
+# enabled output files are written (appended) and TIME_SERIES_STORE is
+# completely cleared so memory returns to baseline.
+# Range: 1–99 (%).  Default 70 (%); overrideable via GUI or caller kwarg.
+MEM_RAM_PCT_LIMIT = 70   # flush + clear when process RAM >= N % of total RAM
 
 # ---------------------------------------------------------------------------
 # %% IP address configuration
@@ -684,7 +701,7 @@ def system_free_ram_mb() -> float:
     Return the amount of free system RAM in megabytes.
 
     Falls back to a large sentinel value (9999) if psutil is unavailable
-    so that the flush threshold is never falsely triggered.
+    so that the flush threshold will not trigger.
 
     Returns
     -------
@@ -694,17 +711,67 @@ def system_free_ram_mb() -> float:
     try:
         import psutil as _ps
         return _ps.virtual_memory().available / (1024 * 1024)
-    except ImportError:
+    except Exception:
         return 9999.0
+
+
+def system_ram_used_pct() -> float:
+    """
+    Return the percentage of *total* system RAM currently in use by the
+    entire system (all processes).
+
+    Uses ``psutil.virtual_memory().percent`` which is the same value
+    reported by ``top`` / ``htop`` and equals::
+
+        (total - available) / total * 100
+
+    Falls back to 0.0 if psutil is unavailable so the percentage-based
+    flush threshold never fires accidentally.
+
+    Returns
+    -------
+    float
+        RAM utilisation percentage in the range 0.0–100.0, or 0.0 if
+        psutil is not available.
+    """
+    try:
+        import psutil as _ps
+        return _ps.virtual_memory().percent
+    except Exception:
+        return 0.0
+
+
+def clear_time_series_store() -> None:
+    """
+    Completely wipe TIME_SERIES_STORE and reclaim its memory.
+
+    Called after a percentage-based RAM flush so the in-process store
+    returns to baseline while output files (CSV, XLSX, FITS, Veusz, log)
+    already contain the written data.  The function is thread-safe: it
+    acquires _TS_LOCK before clearing.
+
+    A ``gc.collect()`` call is made after the clear to ensure CPython
+    releases the freed list/dict objects to the OS promptly rather than
+    holding them in the interpreter's free-list.
+    """
+    global TIME_SERIES_STORE
+    with _TS_LOCK:
+        TIME_SERIES_STORE.clear()
+    gc.collect()
+    logger.info("TIME_SERIES_STORE cleared and garbage-collected after RAM flush.")
 
 
 def should_flush(cfg: Dict[str, Any]) -> bool:
     """
     Decide whether an intermediate mid-loop file flush should occur.
 
-    Returns True when either:
-      • TIME_SERIES_STORE footprint exceeds MEM_FLUSH_THRESHOLD_MB, or
-      • System free RAM is below MEM_FREE_MIN_MB.
+    Returns True when any of these conditions are met:
+
+    1. TIME_SERIES_STORE footprint exceeds ``mem_flush_threshold_mb``.
+    2. System free RAM is below ``mem_free_min_mb``.
+    3. System RAM usage percentage is at or above ``mem_ram_pct_limit``
+       (default 70 %).  This is the primary guard against OOM crashes
+       during long / infinite auto-sampling runs.
 
     Parameters
     ----------
@@ -714,20 +781,56 @@ def should_flush(cfg: Dict[str, Any]) -> bool:
     Returns
     -------
     bool
+        True when a flush is needed.
     """
     threshold = cfg.get("mem_flush_threshold_mb", MEM_FLUSH_THRESHOLD_MB)
     free_min = cfg.get("mem_free_min_mb",        MEM_FREE_MIN_MB)
+    ram_pct_limit = cfg.get("mem_ram_pct_limit", MEM_RAM_PCT_LIMIT)
     store_mb = ts_store_size_mb()
-    free_mb = system_free_ram_mb()
+    free_mb  = system_free_ram_mb()
+    used_pct = system_ram_used_pct()
+
     if store_mb > threshold:
         logger.info(
-            "Flush triggered: store size %.1f MB > threshold %.1f MB", store_mb, threshold)
+            "Flush triggered: store size %.1f MB > threshold %.1f MB",
+            store_mb, threshold)
         return True
     if free_mb < free_min:
         logger.info(
-            "Flush triggered: free RAM %.1f MB < minimum %.1f MB", free_mb, free_min)
+            "Flush triggered: free RAM %.1f MB < minimum %.1f MB",
+            free_mb, free_min)
+        return True
+    if used_pct >= ram_pct_limit:
+        logger.info(
+            "Flush triggered: system RAM usage %.1f %% >= limit %.0f %%",
+            used_pct, ram_pct_limit)
         return True
     return False
+
+
+def should_flush_and_clear(cfg: Dict[str, Any]) -> bool:
+    """
+    Return True when the system-RAM-percentage limit has been reached.
+
+    Unlike ``should_flush`` (which may fire on store-size or free-RAM
+    thresholds without clearing the store), this function is the
+    specific trigger for the *flush-AND-clear* path: write all outputs
+    then wipe TIME_SERIES_STORE completely.
+
+    Parameters
+    ----------
+    cfg : Dict
+        Runtime config dict (reads ``mem_ram_pct_limit``).
+
+    Returns
+    -------
+    bool
+        True only when system RAM usage >= ``mem_ram_pct_limit``.
+    """
+    ram_pct_limit = cfg.get("mem_ram_pct_limit", MEM_RAM_PCT_LIMIT)
+    used_pct = system_ram_used_pct()
+    return used_pct >= ram_pct_limit
+
 
 # %% Dict raw data update
 
@@ -2691,6 +2794,30 @@ def launch_gui(
             log_dir_layout.addWidget(btn_browse_log)
             layout.addLayout(log_dir_layout)
 
+            # --- RAM % flush-and-clear limit --------------------------------
+            ram_pct_row = QHBoxLayout()
+            ram_pct_lbl = QLabel("RAM Flush Limit (%):")
+            ram_pct_lbl.setToolTip(
+                "When system RAM usage reaches this percentage, ALL enabled\n"
+                "output files are written/appended and the in-memory store is\n"
+                "fully cleared to reclaim memory.  Sampling then continues\n"
+                "seamlessly.  Default: 70 %%.  Range: 10–95 %%."
+            )
+            self._spin_ram_pct = QSpinBox()
+            self._spin_ram_pct.setRange(10, 95)
+            self._spin_ram_pct.setSingleStep(5)
+            self._spin_ram_pct.setSuffix(" %")
+            self._spin_ram_pct.setValue(
+                int(self._switches.get("mem_ram_pct_limit", MEM_RAM_PCT_LIMIT))
+            )
+            self._spin_ram_pct.setToolTip(
+                "Flush-and-clear trigger.  Fires when system RAM usage >= this value."
+            )
+            ram_pct_row.addWidget(ram_pct_lbl)
+            ram_pct_row.addWidget(self._spin_ram_pct)
+            ram_pct_row.addStretch()
+            layout.addLayout(ram_pct_row)
+
             grp.setLayout(layout)
             return grp
 
@@ -2804,6 +2931,7 @@ def launch_gui(
                 "xlsx_dir":          os.path.join(base, "xlsx"),
                 "veusz_dir":         os.path.join(base, "veusz"),
                 "log_dir":           log,
+                "mem_ram_pct_limit": self._spin_ram_pct.value(),
             }
 
         def _do_poll_once(self) -> None:
@@ -2872,13 +3000,74 @@ def launch_gui(
             'data' here is the flat poll result; ALL_DEVICE_DATA has already
             been updated by update_named_dicts() inside PollThread.run().
             All downstream functions require the nested ALL_DEVICE_DATA shape.
+
+            RAM percentage check
+            --------------------
+            After each poll, this slot checks whether system RAM usage has
+            reached ``mem_ram_pct_limit``.  When that threshold is hit, ALL
+            enabled outputs (including Veusz) are written synchronously and
+            TIME_SERIES_STORE is fully cleared before the next sample is
+            accumulated.  This prevents OOM crashes during long auto-sampling
+            runs without any visible gap in the output files.
             """
             cfg = self._get_runtime_config()
-            self._process_outputs(ALL_DEVICE_DATA, cfg)   # nested shape
+
+            # ── RAM % flush-and-clear check ────────────────────────────────
+            if should_flush_and_clear(cfg):
+                _used_pct = system_ram_used_pct()
+                _pct_lim  = cfg.get("mem_ram_pct_limit", MEM_RAM_PCT_LIMIT)
+                _msg = (
+                    f"[RAM Flush] System RAM {_used_pct:.1f}% >= limit "
+                    f"{_pct_lim}%.  Writing all outputs and clearing store…"
+                )
+                self._append_log(_msg)
+                logger.info(_msg)
+                # Wait for any in-flight flush first
+                if self._flush_future is not None and not self._flush_future.done():
+                    self._append_log("  Waiting for in-flight flush to complete…")
+                    try:
+                        self._flush_future.result(timeout=60)
+                    except Exception as _fe:
+                        logger.error("In-flight flush error before pct-clear: %s", _fe)
+                    self._flush_future = None
+                # Synchronous full write — all enabled outputs including Veusz
+                _fits_dir  = cfg.get("fits_dir",  FITS_DIR)
+                _csv_dir   = cfg.get("csv_dir",   CSV_DIR)
+                _xlsx_dir  = cfg.get("xlsx_dir",  XLSX_DIR)
+                _log_dir   = cfg.get("log_dir",   LOG_DIR)
+                _veusz_dir = cfg.get("veusz_dir", VEUSZ_DIR)
+                if cfg.get("enable_fits"):
+                    write_fits(ALL_DEVICE_DATA, _fits_dir)
+                if cfg.get("enable_csv"):
+                    write_csv(ALL_DEVICE_DATA, _csv_dir, append=True)
+                if cfg.get("enable_xlsx"):
+                    write_xlsx(ALL_DEVICE_DATA, _xlsx_dir)
+                if cfg.get("enable_log_append"):
+                    write_log_text(ALL_DEVICE_DATA, _log_dir)
+                if cfg.get("enable_veusz") and ALL_DEVICE_DATA:
+                    self._append_log("  Building Veusz project for RAM-flush snapshot…")
+                    try:
+                        write_veusz(ALL_DEVICE_DATA, _veusz_dir)
+                    except Exception as _ve:
+                        logger.error("Veusz RAM-flush write failed: %s", _ve)
+                # Clear the store
+                clear_time_series_store()
+                _done_msg = (
+                    f"[RAM Flush] Complete.  Store cleared.  "
+                    f"RAM now: {system_ram_used_pct():.1f}%.  "
+                    f"Sampling continues."
+                )
+                self._append_log(_done_msg)
+                logger.info(_done_msg)
+            else:
+                self._process_outputs(ALL_DEVICE_DATA, cfg)   # nested shape
+
             figs = build_preview_figures(ALL_DEVICE_DATA)  # nested shape
             self._populate_plot_tabs(figs)
             self._status_bar.showMessage(
-                f"Updated: {datetime.datetime.now().strftime('%H:%M:%S')}")
+                f"Updated: {datetime.datetime.now().strftime('%H:%M:%S')} | "
+                f"RAM: {system_ram_used_pct():.0f}% / "
+                f"limit {cfg.get('mem_ram_pct_limit', MEM_RAM_PCT_LIMIT)}%")
 
         def _on_thread_error(self, msg: str) -> None:
             self._append_log(f"ERROR: {msg}")
@@ -3380,8 +3569,11 @@ def run_headless(cfg: Dict[str, Any]) -> None:
 
             poll_elapsed = time.monotonic() - t_poll_start
             if not dicts_only:
-                logger.info("Cycle %d poll complete in %.2f s — store %.1f MB, free RAM %.0f MB",
-                            cycle, poll_elapsed, ts_store_size_mb(), system_free_ram_mb())
+                logger.info(
+                    "Cycle %d poll complete in %.2f s — store %.1f MB, "
+                    "free RAM %.0f MB, system RAM %.1f %% (limit %.0f %%)",
+                    cycle, poll_elapsed, ts_store_size_mb(), system_free_ram_mb(),
+                    system_ram_used_pct(), cfg.get("mem_ram_pct_limit", MEM_RAM_PCT_LIMIT))
 
             # ── Per-cycle dict print (HEADLESS_PRINT_EACH_SAMPLE) ────────────────────
             # Prints the 11 named dicts (latest snapshot, first device) after
@@ -3390,11 +3582,61 @@ def run_headless(cfg: Dict[str, Any]) -> None:
                 _print_named_dicts(cycle, label="current snapshot")
 
             # ── Adaptive mid-loop flush ───────────────────────────────────────────────
-            # If store is getting large or RAM is tight, trigger a background
-            # flush of CSV / XLSX / log (NOT Veusz — that waits for loop end).
-            # Only launch a new flush if the previous one has completed.
-            # Also print cumulative store (HEADLESS_PRINT_CUMULATIVE) on flush.
-            if should_flush(cfg):
+            # Three conditions can trigger a flush (see should_flush()):
+            #   1. Store size > MEM_FLUSH_THRESHOLD_MB  → background flush, no clear
+            #   2. Free RAM   < MEM_FREE_MIN_MB         → background flush, no clear
+            #   3. System RAM % >= MEM_RAM_PCT_LIMIT     → synchronous flush + CLEAR
+            #
+            # The percentage-based path (3) is the primary OOM guard for long
+            # runs.  It writes ALL enabled outputs (including Veusz), waits for
+            # completion, clears TIME_SERIES_STORE, then continues sampling.
+            _do_pct_clear = should_flush_and_clear(cfg)
+            if _do_pct_clear:
+                # --- Flush-and-clear path ---
+                _used_pct = system_ram_used_pct()
+                _pct_lim  = cfg.get("mem_ram_pct_limit", MEM_RAM_PCT_LIMIT)
+                if not dicts_only:
+                    logger.info(
+                        "RAM %% flush-and-clear triggered at cycle %d "
+                        "(system RAM: %.1f %% >= limit %.0f %%).  "
+                        "Writing all outputs then clearing store…",
+                        cycle, _used_pct, _pct_lim)
+                if print_cumulative:
+                    _print_cumulative_store(cycle, reason="RAM pct flush-and-clear")
+                # Wait for any in-flight background flush before starting ours
+                if flush_future is not None and not flush_future.done():
+                    if not dicts_only:
+                        logger.info("Waiting for in-flight flush before pct-clear…")
+                    try:
+                        flush_future.result(timeout=60)
+                    except Exception as _fe:
+                        if not dicts_only:
+                            logger.error("In-flight flush error: %s", _fe)
+                # Synchronous full write — all enabled outputs including Veusz
+                _veusz_dir = cfg.get("veusz_dir", VEUSZ_DIR)
+                if cfg.get("enable_fits"):
+                    write_fits(ALL_DEVICE_DATA, cfg.get("fits_dir", FITS_DIR))
+                if cfg.get("enable_csv"):
+                    write_csv(ALL_DEVICE_DATA, cfg.get("csv_dir", CSV_DIR), append=True)
+                if cfg.get("enable_xlsx"):
+                    write_xlsx(ALL_DEVICE_DATA, cfg.get("xlsx_dir", XLSX_DIR))
+                if cfg.get("enable_log_append"):
+                    write_log_text(ALL_DEVICE_DATA, cfg.get("log_dir", LOG_DIR))
+                if cfg.get("enable_veusz"):
+                    if not dicts_only:
+                        logger.info(
+                            "Building Veusz project for RAM-flush snapshot (cycle %d)…",
+                            cycle)
+                    write_veusz(ALL_DEVICE_DATA, _veusz_dir)
+                # Clear the in-memory store and reclaim RAM
+                clear_time_series_store()
+                flush_future = None
+                if not dicts_only:
+                    logger.info(
+                        "RAM flush-and-clear complete at cycle %d.  "
+                        "Sampling continues.", cycle)
+            elif should_flush(cfg):
+                # --- Background flush (no clear) path ---
                 if flush_future is None or flush_future.done():
                     if not dicts_only:
                         logger.info(
@@ -3545,6 +3787,7 @@ def main() -> Dict[str, Dict[str, Dict]]:
         "headless_loop_count":          HEADLESS_LOOP_COUNT,
         "mem_flush_threshold_mb":        MEM_FLUSH_THRESHOLD_MB,
         "mem_free_min_mb":               MEM_FREE_MIN_MB,
+        "mem_ram_pct_limit":             MEM_RAM_PCT_LIMIT,
         "headless_console_dicts_only":   HEADLESS_CONSOLE_DICTS_ONLY,
         "headless_print_each_sample":    HEADLESS_PRINT_EACH_SAMPLE,
         "headless_print_cumulative":     HEADLESS_PRINT_CUMULATIVE,

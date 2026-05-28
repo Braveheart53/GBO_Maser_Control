@@ -10,9 +10,6 @@ Nuitka*/
 Nuitka*/*
 deployment/
 deployment/*
-ATR_AutoPlot.dist/
-ATR_AutoPlot.dist/*
-ATR_AutoPlot.dist*
 __pycache__/*
 *__pycache__/*
 *__pycache__/
@@ -22,3 +19,6 @@ __pycache__/*
 .spyproject/
 .spyproject/*
 .spyproject
+ab_meter_output/
+ab_meter_output/*
+*ab_meter_output/*
