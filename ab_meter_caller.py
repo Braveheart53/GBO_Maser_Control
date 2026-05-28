@@ -61,7 +61,7 @@ Phone  : +1 (304) 456-2216
 Email  : wwallace@nrao.edu
 Email2 : naval.antennas@gmail.com 
 Python : 3.8+
-Version: 1.2.6
+Version: 1.2.5
 """
 # %% Imorts
 import argparse
@@ -93,7 +93,7 @@ abm.HEADLESS_CONSOLE_DICTS_ONLY = 0
 #   abm.IP_LIST = ["10.16.130.50", "10.16.130.53"]
 abm.IP_LIST = [
     "10.16.130.50",
-    "10.16.130.54"
+    "10.16.130.51"
 ]
 # abm.SAMPLE_PERIOD_SEC is set dynamically from the interval arg in run()
 # — do not set it here as it would override the caller's value.
@@ -216,11 +216,11 @@ def run(count: int = 1, interval: float = 30.0, ram_pct: Optional[float] = None)
     interval : float
         Seconds between successive poll_once() calls, accounting for
         poll duration.  Set to 0 for back-to-back polling.
-    ram_pct : float or None
-        System RAM usage % (10-95) at which flush-and-clear fires.
-        None uses MEM_RAM_PCT_LIMIT default (70%%) from the monitor module.
-        User-supplied value takes precedence.
 
+    ram_pct : float, optional
+        Override the RAM flush threshold (10-95 %).  Dominates over
+        the GUI spinbox and the module default (MEM_RAM_PCT_LIMIT=70).
+        Pass None (default) to leave the current setting unchanged.
     Returns
     -------
     dict
@@ -254,8 +254,7 @@ def run(count: int = 1, interval: float = 30.0, ram_pct: Optional[float] = None)
     # Sync the monitor's SAMPLE_PERIOD_SEC with the caller's interval so
     # any internal cfg logging or reporting reflects the actual wait time.
     abm.SAMPLE_PERIOD_SEC = interval
-
-    # Apply caller-supplied RAM % limit — user value is dominant.
+    # Apply caller-supplied RAM flush threshold (user value is dominant).
     if ram_pct is not None:
         abm.MEM_RAM_PCT_LIMIT = max(10.0, min(95.0, float(ram_pct)))
 
@@ -322,9 +321,8 @@ def _parse_args() -> argparse.Namespace:
         "--ram-pct", "-r",
         type=float,
         default=None,
-        metavar="PCT",
-        help="System RAM %% (10-95) at which flush-and-clear fires. "
-             "Overrides MEM_RAM_PCT_LIMIT default (70%%) in monitor.",
+        dest="ram_pct",
+        help="RAM flush threshold %% (10-95). Overrides default of 70%%.",
     )
     return parser.parse_args()
 
@@ -332,8 +330,7 @@ def _parse_args() -> argparse.Namespace:
 # %% Main
 if __name__ == "__main__":
     args = _parse_args()
-    result = run(count=args.count, interval=args.interval,
-                 ram_pct=args.ram_pct)
+    result = run(count=args.count, interval=args.interval, ram_pct=args.ram_pct)
 
     # result is abm.TIME_SERIES_STORE — same source as every output file.
     #
