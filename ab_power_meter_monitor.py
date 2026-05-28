@@ -155,7 +155,7 @@ HEADLESS_SILENT = 1   # 1 = suppress ALL stdout/stderr console output;
 #   MEM_FREE_MIN_MB        — background flush when free RAM < N MB (no clear).
 #   MEM_RAM_PCT_LIMIT      — synchronous flush+CLEAR when system RAM >= N%.
 MEM_FLUSH_THRESHOLD_MB = 256   # flush when store occupies more than N MB
-MEM_FREE_MIN_MB = 512   # flush when system free RAM falls below N MB
+MEM_FREE_MIN_MB = 4096   # flush when system free RAM falls below N MB
 # Percentage of *total* system RAM at which a flush-and-clear is triggered.
 MEM_RAM_PCT_LIMIT = 70   # flush+clear when system RAM >= N% of total
 
