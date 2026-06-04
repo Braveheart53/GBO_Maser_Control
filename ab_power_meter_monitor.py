@@ -76,6 +76,7 @@ import traceback
 from typing import Any, Dict, List, Optional, Tuple
 import threading
 import signal
+import gc
 import concurrent.futures
 try:
     import psutil          # pip install psutil — for memory monitoring
@@ -141,7 +142,7 @@ HEADLESS_LOOP_COUNT = 1   # 0 = infinite loop; N = run N cycles then stop
 HEADLESS_CONSOLE_DICTS_ONLY = 0   # 1 = dicts-only stdout; suppress all other text
 HEADLESS_PRINT_EACH_SAMPLE = 0   # 1 = print 11 named dicts after every poll cycle
 HEADLESS_PRINT_CUMULATIVE = 0   # 1 = print full TIME_SERIES_STORE at stop/flush
-HEADLESS_SILENT = 0   # 1 = suppress ALL stdout/stderr console output;
+HEADLESS_SILENT = 1   # 1 = suppress ALL stdout/stderr console output;
 #     file outputs (log, CSV, XLSX, FITS, Veusz)
 #     are unaffected.  Overrides all other console
 #     switches above when set to 1.
@@ -155,10 +156,6 @@ HEADLESS_SILENT = 0   # 1 = suppress ALL stdout/stderr console output;
 # memory is reclaimed without dropping sample points.
 MEM_FLUSH_THRESHOLD_MB = 256   # flush when store occupies more than N MB
 MEM_FREE_MIN_MB = 512   # flush when system free RAM falls below N MB
-MEM_RAM_PCT_LIMIT   = 70    # flush+clear when system RAM usage >= N % (0-100)
-APPEND_OUTPUT_FILES = 1    # 1=append existing files; 0=overwrite on each flush
-PREVIEW_CACHE_DIR   = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), "ab_meter_output", "preview_cache")
 
 # ---------------------------------------------------------------------------
 # %% IP address configuration
@@ -175,11 +172,13 @@ IP_LIST: List[str] = [
 # %% Polling / timing
 # ---------------------------------------------------------------------------
 SAMPLE_PERIOD_SEC = 30    # Seconds between successive polls of all devices
-HTTP_TIMEOUT_SEC     = 5    # Per-request HTTP timeout (seconds)
-HTTP_RETRY_COUNT     = 2    # Retries per (ip, page) fetch before marking that IP failed
-HTTP_RETRY_DELAY_SEC = 5.0  # Seconds to wait between successive retries
-HEADLESS_MAX_CONSEC_FAILS = 5  # Consecutive all-device poll failures before clean exit
-                               #   0 = never exit on failures (original behaviour)
+HTTP_TIMEOUT_SEC          = 5    # Per-request response timeout (sec) — NOT a port
+HTTP_RETRY_COUNT          = 3    # Total fetch attempts per (ip,page); 1 = no retry
+HTTP_RETRY_DELAY_SEC      = 2.0  # Seconds between retry attempts
+HEADLESS_MAX_CONSEC_FAILS = 5    # Consecutive all-device failures before clean exit
+                                 #   0 = never exit on failures
+MEM_RAM_PCT_LIMIT         = 70   # Flush+clear store when system RAM reaches this %
+APPEND_OUTPUT_FILES       = 1    # 1=append all output files, 0=overwrite each run
 
 # ---------------------------------------------------------------------------
 # %% Output paths
@@ -409,38 +408,12 @@ def fetch_table_html(
     retries: int = HTTP_RETRY_COUNT,
     retry_delay: float = HTTP_RETRY_DELAY_SEC,
 ) -> Optional[str]:
-    """Fetch raw HTML for a single meter table page via HTTP GET.
-
-    Retries up to ``retries`` times on any network or HTTP error, waiting
-    ``retry_delay`` seconds between attempts.  Returns ``None`` only after
-    all attempts are exhausted so callers can distinguish a transient glitch
-    (retried away) from a persistent failure.
-
-    Parameters
-    ----------
-    ip : str
-        Full IP address string, e.g. '10.16.130.50'.
-    page : int
-        Table page index (0-10).
-    timeout : int
-        Per-attempt HTTP request timeout in seconds.
-    retries : int
-        Maximum number of attempts (first try + retries-1 retries).
-        0 means one attempt with no retries.
-    retry_delay : float
-        Seconds to sleep between successive attempts.
-
-    Returns
-    -------
-    Optional[str]
-        HTML text body on success, or None if every attempt failed.
-    """
-    import requests  # local import to keep headless-mode dependency optional
-
+    """Fetch raw HTML for one meter page.  URL: http://<ip>/<page> — no port.
+    timeout is response-wait seconds, not a port number.
+    Retries up to retries total attempts.  Returns None if all fail."""
+    import requests
     url = f"http://{ip}/{page}"
-    max_attempts = max(1, retries)
-    last_exc: Optional[Exception] = None
-
+    max_attempts = max(1, int(retries))
     for attempt in range(1, max_attempts + 1):
         try:
             resp = requests.get(url, timeout=timeout)
@@ -451,19 +424,14 @@ def fetch_table_html(
                 logger.debug("Fetched %s — %d bytes", url, len(resp.text))
             return resp.text
         except Exception as exc:
-            last_exc = exc
             if attempt < max_attempts:
-                logger.warning(
-                    "Fetch failed %s (attempt %d/%d): %s — retrying in %.1f s…",
-                    url, attempt, max_attempts, exc, retry_delay)
+                logger.warning("Fetch failed %s (%d/%d): %s — retry in %.1f s...",
+                               url, attempt, max_attempts, exc, retry_delay)
                 time.sleep(retry_delay)
             else:
-                logger.warning(
-                    "Fetch failed %s — all %d attempt(s) exhausted: %s",
-                    url, max_attempts, exc)
-
+                logger.warning("Fetch failed %s — all %d attempt(s) exhausted: %s",
+                               url, max_attempts, exc)
     return None
-
 
 def parse_html_table(html: str, table_name: str, ip: str, page: int) -> Dict[str, Any]:
     """
@@ -552,114 +520,102 @@ def poll_all_devices(
     retries: int = HTTP_RETRY_COUNT,
     retry_delay: float = HTTP_RETRY_DELAY_SEC,
 ) -> Dict[str, Dict[str, Any]]:
-    """Poll all tables from every device in ``ip_list`` in parallel.
-
-    Uses a ThreadPoolExecutor (capped at min(64, n_tasks) workers) so all
-    HTTP fetches run concurrently.  Each (ip, page) fetch is retried up to
-    ``retries`` times before being marked as failed.
-
-    A ``__poll_meta__`` key is always added to the returned dict:
-
-    .. code-block:: python
-
-        {
-            "__poll_meta__": {
-                "total_ips":   int,   # number of IPs attempted
-                "failed_ips":  list,  # IPs where ALL pages returned None
-                "ok_ips":      list,  # IPs where at least one page succeeded
-                "all_failed":  bool,  # True if every IP failed completely
-            },
-            "10.16.130.50_RealTimePowerTable": { ... },
-            ...
-        }
-
-    Parameters
-    ----------
-    ip_list : List[str]
-        Full IP address strings.
-    table_names : Dict[int, str]
-        Mapping of page index -> canonical table name.
-    retries : int
-        Per-fetch retry count passed to fetch_table_html().
-    retry_delay : float
-        Seconds between fetch retries.
-
-    Returns
-    -------
-    Dict[str, Dict[str, Any]]
-        Top-level key = "<IP>_<table_name>", value = parsed data dict.
-        Always includes ``__poll_meta__`` key.
-    """
+    """Poll all devices in parallel (ThreadPoolExecutor).
+    Always appends __poll_meta__ — caller must pop before update_named_dicts()."""
     clean_ips = [ip.strip() for ip in ip_list if ip.strip()]
     tasks: List[Tuple[str, int, str]] = [
-        (ip, pidx, tname)
-        for ip in clean_ips
+        (ip, pidx, tname) for ip in clean_ips
         for pidx, tname in table_names.items()
     ]
     all_data: Dict[str, Dict[str, Any]] = {}
-
     if not tasks:
         all_data["__poll_meta__"] = {
             "total_ips": 0, "failed_ips": [], "ok_ips": [], "all_failed": True}
         return all_data
-
-    # Track per-IP success for the metadata summary.
     ip_any_success: Dict[str, bool] = {ip: False for ip in clean_ips}
-
-    def _fetch_one(task: Tuple[str, int, str]) -> Tuple[str, str, Dict[str, Any]]:
+    def _fetch_one(task):
         ip_t, pidx, tname_t = task
-        dict_key = f"{ip_t}_{tname_t}"
+        html = None
         try:
-            html   = fetch_table_html(
-                ip_t, pidx, retries=retries, retry_delay=retry_delay)
+            html   = fetch_table_html(ip_t, pidx, retries=retries,
+                                      retry_delay=retry_delay)
             parsed = parse_html_table(html, tname_t, ip_t, pidx)
         except Exception as exc:
-            logger.error("poll_all_devices: %s page %d: %s", ip_t, pidx, exc)
+            logger.error("poll: %s p%d: %s", ip_t, pidx, exc)
             parsed = {"__ip__": ip_t, "__table__": tname_t, "__error__": str(exc)}
-        # Success = html was not None (parse may still be empty but data arrived).
-        success = parsed.get("_meta", {}).get("error") is None and html is not None
-        return dict_key, ip_t, parsed, success  # type: ignore[return-value]
-
+        ok = html is not None and parsed.get("_meta", {}).get("error") is None
+        return f"{ip_t}_{tname_t}", ip_t, parsed, ok
     with concurrent.futures.ThreadPoolExecutor(
         max_workers=min(64, len(tasks)), thread_name_prefix="ab_poll"
     ) as ex:
-        futs = {ex.submit(_fetch_one, t): t for t in tasks}
-        for fut in concurrent.futures.as_completed(futs):
+        for fut in concurrent.futures.as_completed(
+                {ex.submit(_fetch_one, t): t for t in tasks}):
             try:
-                dict_key, ip_t, parsed, success = fut.result()
-                all_data[dict_key] = parsed
-                if success:
+                k, ip_t, parsed, ok = fut.result()
+                all_data[k] = parsed
+                if ok:
                     ip_any_success[ip_t] = True
             except Exception as exc:
                 logger.error("Unexpected poll error: %s", exc)
-
-    failed_ips = [ip for ip, ok in ip_any_success.items() if not ok]
-    ok_ips     = [ip for ip, ok in ip_any_success.items() if ok]
-    all_failed = len(ok_ips) == 0
-
+    failed = [ip for ip, ok in ip_any_success.items() if not ok]
+    ok_ips = [ip for ip, ok in ip_any_success.items() if ok]
     all_data["__poll_meta__"] = {
-        "total_ips":  len(clean_ips),
-        "failed_ips": failed_ips,
-        "ok_ips":     ok_ips,
-        "all_failed": all_failed,
-    }
-
-    if failed_ips:
+        "total_ips": len(clean_ips), "failed_ips": failed,
+        "ok_ips": ok_ips, "all_failed": len(ok_ips) == 0}
+    if failed:
         logger.warning("poll_all_devices: %d IP(s) returned no data: %s",
-                       len(failed_ips), failed_ips)
-    if all_failed:
-        logger.error("poll_all_devices: ALL %d IP(s) failed this cycle.",
-                     len(clean_ips))
-
+                       len(failed), failed)
+    if not ok_ips:
+        logger.error("poll_all_devices: ALL %d IP(s) failed.", len(clean_ips))
     return all_data
 
 
-def accumulate_poll(all_device_data: Dict[str, Dict[str, Dict[str, Any]]]) -> None:
-    """Append current poll snapshot to TIME_SERIES_STORE.
 
-    Thread-safe via _TS_LOCK.  A deduplication guard skips the append when
-    the local timestamp equals the last stored timestamp for that table,
-    preventing duplicate rows from sub-second re-calls.
+# ===========================================================================
+# %% NAMED TABLE DICTS  (always populated; used by all output modules)
+#
+#  These 11 module-level dicts correspond to the 11 meter pages.
+#  They are populated by update_named_dicts() after each poll.
+#  Consumer code should reference these dicts directly.
+# ===========================================================================
+
+# --- Device 1 (last octet = 50, placeholder; populated at runtime) ---
+Device_Configuration_Table:            Dict[str, Any] = {}
+Communications_Configuration_Table:    Dict[str, Any] = {}
+Voltage_Current_Table:                 Dict[str, Any] = {}
+Real_Time_Power_Table:                 Dict[str, Any] = {}
+Cumulative_Power_Table:                Dict[str, Any] = {}
+Demand_Data_Table:                     Dict[str, Any] = {}
+Diagnostic_Table:                      Dict[str, Any] = {}
+Voltage_Current_Snapshot_Log_Table:    Dict[str, Any] = {}
+Power_Snapshot_Log_Table:              Dict[str, Any] = {}
+MinMax_Log_Table:                      Dict[str, Any] = {}
+Diagnostic_Table_Extended:             Dict[str, Any] = {}
+
+# Multi-device storage: keyed by IP then table name
+ALL_DEVICE_DATA: Dict[str, Dict[str, Dict[str, Any]]] = {}
+
+# ===========================================================================
+# %% TIME-SERIES ACCUMULATOR
+#  Columnar store: TIME_SERIES_STORE[ip][table_name] = {
+#      "timestamps_local": [str, ...],   # local-time strings, one per poll
+#      "columns":          {param: [val, ...]},  # growing list per parameter
+#      "units":            {param: unit_str},    # static, set on first poll
+#  }
+#  This is the primary source for CSV / XLSX / log / Veusz output.
+#  ALL_DEVICE_DATA is still updated each poll (latest snapshot) for FITS and
+#  GUI preview.  The accumulator is the authoritative multi-sample record.
+# ===========================================================================
+TIME_SERIES_STORE: Dict[str, Dict[str, Dict[str, Any]]] = {}
+_TS_LOCK = threading.Lock()   # protects TIME_SERIES_STORE across threads
+
+
+def accumulate_poll(all_device_data: Dict[str, Dict[str, Dict[str, Any]]]) -> None:
+    """
+    Append the current poll snapshot to the TIME_SERIES_STORE.
+
+    Called immediately after update_named_dicts() on every poll cycle.
+    Thread-safe via _TS_LOCK.
 
     Parameters
     ----------
@@ -667,41 +623,49 @@ def accumulate_poll(all_device_data: Dict[str, Dict[str, Dict[str, Any]]]) -> No
         Nested dict: {ip: {table_name: parsed_dict}} (latest snapshot).
     """
     local_ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
     with _TS_LOCK:
         for ip, tables in all_device_data.items():
             if ip not in TIME_SERIES_STORE:
                 TIME_SERIES_STORE[ip] = {}
+
             for tname, tdict in tables.items():
                 series = extract_numeric_series(tdict)
                 if not series:
                     continue
+
                 if tname not in TIME_SERIES_STORE[ip]:
+                    # First poll: initialise columns and units
                     TIME_SERIES_STORE[ip][tname] = {
                         "timestamps_local": [],
-                        "columns": {p: [] for p in series},
-                        "units":   {p: u for p, (_, u) in series.items()},
+                        "columns": {param: [] for param in series},
+                        "units":   {param: unit for param, (_, unit) in series.items()},
                     }
-                tstore  = TIME_SERIES_STORE[ip][tname]
-                ts_list = tstore["timestamps_local"]
-                # Dedup guard: skip identical consecutive timestamp
-                if ts_list and ts_list[-1] == local_ts:
-                    logger.debug("accumulate_poll: dup ts %s %s/%s — skipped.",
-                                 local_ts, ip, tname)
-                    continue
-                existing = tstore["columns"]
-                for param in series:
-                    if param not in existing:
-                        existing[param] = [None] * len(ts_list)
-                        tstore["units"][param] = series[param][1]
-                ts_list.append(local_ts)
+                else:
+                    # Subsequent polls: add any newly-appearing parameters
+                    existing = TIME_SERIES_STORE[ip][tname]["columns"]
+                    for param in series:
+                        if param not in existing:
+                            # Back-fill with None for prior rows
+                            n_existing = len(
+                                TIME_SERIES_STORE[ip][tname]["timestamps_local"])
+                            existing[param] = [None] * n_existing
+                            TIME_SERIES_STORE[ip][tname]["units"][param] = series[param][1]
+
+                tstore = TIME_SERIES_STORE[ip][tname]
+                tstore["timestamps_local"].append(local_ts)
                 for param, (val, _) in series.items():
-                    existing[param].append(val)
-                n_ts = len(ts_list)
-                for col_list in existing.values():
+                    tstore["columns"][param].append(val)
+                # Fill None for any column not present in this sample
+                n_ts = len(tstore["timestamps_local"])
+                for col_list in tstore["columns"].values():
                     if len(col_list) < n_ts:
                         col_list.append(None)
-    logger.debug("Accumulator updated — %d devices, ts: %s",
+
+    logger.debug("Accumulator updated — %d devices, local ts: %s",
                  len(all_device_data), local_ts)
+
+# %% Memory Tracking
 
 
 def ts_store_size_mb() -> float:
@@ -757,94 +721,38 @@ def system_free_ram_mb() -> float:
         return 9999.0
 
 
-
-def system_ram_used_pct() -> float:
-    """Return system RAM usage as a percentage (0-100).
-
-    Falls back to 0.0 if psutil is unavailable so the threshold never fires
-    accidentally when psutil is absent.
-
-    Returns
-    -------
-    float
-        RAM used %, or 0.0 if psutil is not installed.
-    """
-    try:
-        import psutil as _ps
-        return _ps.virtual_memory().percent
-    except ImportError:
-        return 0.0
-
-
-def clear_time_series_store() -> None:
-    """Clear TIME_SERIES_STORE under lock then force garbage collection.
-
-    Called after a RAM-% flush so CPython releases freed pages back to the
-    OS immediately.  Safe to call from any thread — protected by _TS_LOCK.
-    """
-    import gc as _gc
-    with _TS_LOCK:
-        TIME_SERIES_STORE.clear()
-    _gc.collect()
-    logger.info("[RAM Flush] Store cleared and GC collected.")
-
-
-def should_flush_and_clear(cfg: Dict[str, Any]) -> bool:
-    """Return True when system RAM usage >= mem_ram_pct_limit.
-
-    Hard flush trigger: callers must write all enabled outputs then call
-    clear_time_series_store() to reclaim RAM before sampling continues.
-
-    Parameters
-    ----------
-    cfg : Dict
-        Runtime config dict; reads ``mem_ram_pct_limit`` key.
-
-    Returns
-    -------
-    bool
-    """
-    pct_limit = float(cfg.get("mem_ram_pct_limit", MEM_RAM_PCT_LIMIT))
-    used_pct  = system_ram_used_pct()
-    if used_pct >= pct_limit:
-        logger.info(
-            "[RAM Flush] System RAM %.1f%% >= limit %.0f%% — triggered.",
-            used_pct, pct_limit)
-        return True
-    return False
-
-
 def should_flush(cfg: Dict[str, Any]) -> bool:
-    """Decide whether a mid-loop intermediate flush should occur.
+    """
+    Decide whether an intermediate mid-loop file flush should occur.
 
-    Returns True when ANY of the following is true:
-
-    * TIME_SERIES_STORE footprint > MEM_FLUSH_THRESHOLD_MB, OR
-    * System free RAM < MEM_FREE_MIN_MB, OR
-    * System RAM used-% >= mem_ram_pct_limit (the flush+clear path).
+    Returns True when either:
+      • TIME_SERIES_STORE footprint exceeds MEM_FLUSH_THRESHOLD_MB, or
+      • System free RAM is below MEM_FREE_MIN_MB.
 
     Parameters
     ----------
     cfg : Dict
-        Runtime config dict.
+        Runtime config dict (reads flush threshold keys).
 
     Returns
     -------
     bool
     """
     threshold = cfg.get("mem_flush_threshold_mb", MEM_FLUSH_THRESHOLD_MB)
-    free_min  = cfg.get("mem_free_min_mb",        MEM_FREE_MIN_MB)
-    store_mb  = ts_store_size_mb()
-    free_mb   = system_free_ram_mb()
+    free_min = cfg.get("mem_free_min_mb",        MEM_FREE_MIN_MB)
+    store_mb = ts_store_size_mb()
+    free_mb = system_free_ram_mb()
     if store_mb > threshold:
-        logger.info("Flush triggered: store %.1f MB > %.1f MB", store_mb, threshold)
+        logger.info(
+            "Flush triggered: store size %.1f MB > threshold %.1f MB", store_mb, threshold)
         return True
     if free_mb < free_min:
-        logger.info("Flush triggered: free RAM %.1f MB < %.1f MB", free_mb, free_min)
-        return True
-    if should_flush_and_clear(cfg):
+        logger.info(
+            "Flush triggered: free RAM %.1f MB < minimum %.1f MB", free_mb, free_min)
         return True
     return False
+
+# %% Dict raw data update
 
 
 def update_named_dicts(all_data: Dict[str, Dict[str, Any]]) -> None:
@@ -991,11 +899,13 @@ def write_fits(
 
     os.makedirs(fits_dir, exist_ok=True)
     if not append:
-        for _f in Path(fits_dir).glob("ABMeter_*.fits"):
+        import glob as _glob
+        for _f in _glob.glob(os.path.join(fits_dir, "*.fits")):
             try:
-                _f.unlink()
+                os.remove(_f)
             except OSError:
                 pass
+
     now_utc = datetime.datetime.utcnow()
 
     # Take a thread-safe snapshot of the full accumulated store.
@@ -1263,7 +1173,7 @@ def write_csv(
                     # Append only rows not yet written
                     rows_to_write = timestamps[existing_row_count:]
                     start_idx = existing_row_count
-                    with open(filename, "a", newline="", encoding="utf-8") as fh:
+                    with open(filename, "a" if append else "w", newline="", encoding="utf-8") as fh:
                         writer = csv.writer(fh)
                         for i, ts in enumerate(rows_to_write):
                             abs_i = start_idx + i
@@ -1322,11 +1232,13 @@ def write_xlsx(
 
     os.makedirs(xlsx_dir, exist_ok=True)
     if not append:
-        for _f in Path(xlsx_dir).glob("ABMeter_*.xlsx"):
+        import glob as _glob
+        for _f in _glob.glob(os.path.join(xlsx_dir, "*.xlsx")):
             try:
-                _f.unlink()
+                os.remove(_f)
             except OSError:
                 pass
+
 
     with _TS_LOCK:
         snapshot = {
@@ -1715,11 +1627,13 @@ def write_veusz(
 
     os.makedirs(veusz_dir, exist_ok=True)
     if not append:
-        for _f in Path(veusz_dir).glob("ABMeter_*.vszh5"):
+        import glob as _glob
+        for _f in _glob.glob(os.path.join(veusz_dir, "*.vszh5")):
             try:
-                _f.unlink()
+                os.remove(_f)
             except OSError:
                 pass
+
     now_utc = datetime.datetime.utcnow().isoformat(timespec="seconds") + "Z"
 
     for ip, tables in all_device_data.items():
@@ -2094,11 +2008,17 @@ def _any_output_enabled(cfg: Dict[str, Any]) -> bool:
 
 
 def flush_outputs_parallel(cfg: Dict[str, Any]) -> "concurrent.futures.Future":
-    """Dispatch non-Veusz output writers to a thread-pool executor.
+    """
+    Dispatch non-Veusz output writers to a thread-pool executor so that
+    CSV / XLSX / log writes happen concurrently with ongoing polling.
 
-    CSV / XLSX / FITS / log writes run concurrently with ongoing polling.
-    Veusz is excluded — vz.Embedded() must not share a pool worker.
-    Lambdas use default-argument early binding to prevent late-binding bugs.
+    Veusz is deliberately excluded — it is always built once at loop end
+    from the complete accumulated dataset.
+
+    The caller receives a Future object; the flush completes asynchronously.
+    The caller should NOT await it synchronously in the poll thread — just
+    fire and forget.  If the previous flush is still running when a new one
+    is triggered, the new one is skipped to prevent file corruption.
 
     Parameters
     ----------
@@ -2108,48 +2028,49 @@ def flush_outputs_parallel(cfg: Dict[str, Any]) -> "concurrent.futures.Future":
     Returns
     -------
     concurrent.futures.Future
-        Future for the background flush task.
+        Future representing the background flush task.
     """
     def _do_flush() -> None:
+        # Skip entirely if no file output is enabled — avoids creating
+        # any output directories on disk.
         if not _any_output_enabled(cfg):
-            logger.debug("All outputs disabled — flush skipped.")
+            logger.debug("All file outputs disabled — flush skipped.")
             return
+
         fits_dir = cfg.get("fits_dir",  FITS_DIR)
-        csv_dir  = cfg.get("csv_dir",   CSV_DIR)
+        _append  = bool(cfg.get("append_files", APPEND_OUTPUT_FILES))
+        csv_dir = cfg.get("csv_dir",   CSV_DIR)
         xlsx_dir = cfg.get("xlsx_dir",  XLSX_DIR)
-        log_dir  = cfg.get("log_dir",   LOG_DIR)
-        append   = bool(cfg.get("append_files", APPEND_OUTPUT_FILES))
-        # Snapshot once — all workers share a consistent, immutable view.
-        data_snap = dict(ALL_DEVICE_DATA)
-        tasks: List[Tuple[str, Any]] = []
+        log_dir = cfg.get("log_dir",   LOG_DIR)
+
+        tasks = []
         if cfg.get("enable_fits"):
-            tasks.append(("FITS",
-                lambda _d=data_snap, _r=fits_dir, _a=append:
-                    write_fits(_d, _r, append=_a)))
+            tasks.append(
+                ("FITS", lambda _a=_append: write_fits(ALL_DEVICE_DATA, fits_dir, append=_a)))
         if cfg.get("enable_csv"):
-            tasks.append(("CSV",
-                lambda _d=data_snap, _r=csv_dir, _a=append:
-                    write_csv(_d, _r, append=_a)))
+            tasks.append(("CSV", lambda _a=_append: write_csv(
+                ALL_DEVICE_DATA, csv_dir, append=_a)))
         if cfg.get("enable_xlsx"):
-            tasks.append(("XLSX",
-                lambda _d=data_snap, _r=xlsx_dir, _a=append:
-                    write_xlsx(_d, _r, append=_a)))
+            tasks.append(
+                ("XLSX", lambda _a=_append: write_xlsx(ALL_DEVICE_DATA, xlsx_dir, append=_a)))
         if cfg.get("enable_log_append"):
-            tasks.append(("LOG",
-                lambda _d=data_snap, _r=log_dir, _a=append:
-                    write_log_text(_d, _r, append=_a)))
-        if not tasks:
-            return
+            tasks.append(
+                ("LOG",  lambda _a=_append: write_log_text(ALL_DEVICE_DATA, log_dir, append=_a)))
+
         with concurrent.futures.ThreadPoolExecutor(
-            max_workers=min(4, len(tasks)), thread_name_prefix="ab_flush"
+            max_workers=min(4, len(tasks)) if tasks else 1,
+            thread_name_prefix="ab_flush",
         ) as ex:
             futs = {ex.submit(fn): name for name, fn in tasks}
             for fut in concurrent.futures.as_completed(futs):
+                name = futs[fut]
                 try:
                     fut.result()
+                    logger.debug("Parallel flush OK: %s", name)
                 except Exception as exc:
-                    logger.error("Parallel flush ERROR (%s): %s", futs[fut], exc)
+                    logger.error("Parallel flush ERROR (%s): %s", name, exc)
 
+    # Use a module-level executor so we can check if one is already running
     ex = concurrent.futures.ThreadPoolExecutor(
         max_workers=1, thread_name_prefix="ab_flush_mgr")
     future = ex.submit(_do_flush)
@@ -2157,134 +2078,306 @@ def flush_outputs_parallel(cfg: Dict[str, Any]) -> "concurrent.futures.Future":
     return future
 
 
+# ===========================================================================
+# %% MATPLOTLIB PREVIEW HELPER (used by GUI)
+# ===========================================================================
 def build_preview_figures(
     all_device_data: Dict[str, Dict[str, Dict[str, Any]]],
 ) -> List[Any]:
-    """Build matplotlib Figure objects for GUI preview (memory-safe).
+    """
+    Build a list of matplotlib Figure objects for GUI preview display.
 
-    Takes a consistent snapshot of TIME_SERIES_STORE under _TS_LOCK then
-    releases the lock before rendering.  Each IP is rendered in its own
-    worker thread (capped at min(n_ips, 4)) so peak RAM is proportional to
-    n_ips x one_figure rather than all figures simultaneously.
+    Reads from TIME_SERIES_STORE (the authoritative accumulator) so that
+    each figure shows a growing line plot across ALL samples collected so
+    far, not just the most recent snapshot.  The ``all_device_data``
+    parameter is accepted for API compatibility but is not used — the
+    store is the canonical source.
+
+    Creates:
+      • One figure per table per device — one line per numeric parameter,
+        x-axis = sample index, growing with each poll.
+      • One overlay figure per unit-group (VEUSZ_OVERLAY_GROUPS) per
+        device — all matching parameters on a single axes.
 
     Parameters
     ----------
     all_device_data : Dict
-        Accepted for API compatibility; TIME_SERIES_STORE is read directly.
+        Accepted for API compatibility; not used internally.
+        TIME_SERIES_STORE is read directly.
 
     Returns
     -------
     List[matplotlib.figure.Figure]
-        Figure objects ready for embedding in a Qt canvas.
+        List of Figure objects ready for embedding in a Qt canvas.
     """
     try:
         import matplotlib
-        matplotlib.use("Agg")
+        matplotlib.use("Agg")   # non-interactive backend for embedding
         import matplotlib.pyplot as plt
     except ImportError as exc:
         logger.error("matplotlib not available — preview skipped: %s", exc)
         return []
 
+    # Close any previously opened figures to prevent the matplotlib warning
+    # "More than 20 figures have been opened" — each call to this function
+    # replaces the prior figure set, so old ones must be explicitly closed.
     plt.close("all")
 
-    # Snapshot the store under lock; render without holding the lock.
+    figures: List[Any] = []
+    prop_cycle_colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
+
+    # Snapshot the store under lock so we read a consistent view.
     with _TS_LOCK:
-        store_snap = {
+        store_snapshot = {
             ip: {
                 tname: {
-                    "timestamps_local": list(td.get("timestamps_local", [])),
-                    "columns": {c: list(v) for c, v in td.get("columns", {}).items()},
-                    "units":   dict(td.get("units", {})),
+                    "timestamps_local": list(tdata.get("timestamps_local", [])),
+                    "columns": {
+                        col: list(vals)
+                        for col, vals in tdata.get("columns", {}).items()
+                    },
+                    "units": dict(tdata.get("units", {})),
                 }
-                for tname, td in tables.items()
+                for tname, tdata in tables.items()
             }
             for ip, tables in TIME_SERIES_STORE.items()
         }
 
-    if not store_snap:
-        return []
+    for ip, tables in store_snapshot.items():
 
-    prop_colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
-
-    def _render_ip(ip: str, tables: dict) -> List[Any]:
-        """Render all figures for one IP inside a worker thread."""
-        ip_figs: List[Any] = []
-        try:
-            import matplotlib.pyplot as plt_t
-        except ImportError:
-            return ip_figs
+        # ── Per-table line plots ───────────────────────────────────────────
         for tname, tdata in tables.items():
-            cols = tdata["columns"]
-            tss  = tdata["timestamps_local"]
-            n    = len(tss)
-            if not cols or n == 0:
+            columns = tdata["columns"]
+            timestamps = tdata["timestamps_local"]
+            n_samples = len(timestamps)
+
+            if not columns or n_samples == 0:
                 continue
-            x = list(range(n))
-            fig, ax = plt_t.subplots(figsize=(10, 4))
-            for ci, (param, values) in enumerate(cols.items()):
-                if len(values) != n:
+
+            # x-axis: integer sample indices so the axis always starts at 0
+            # regardless of how many samples have been collected.
+            x = list(range(n_samples))
+
+            fig, ax = plt.subplots(figsize=(10, 4))
+            color_idx = 0
+
+            for param, values in columns.items():
+                if len(values) != n_samples:
+                    # Length mismatch — skip rather than crash.
                     continue
-                unit  = tdata["units"].get(param, "")
+                unit = tdata["units"].get(param, "")
                 label = f"{param} ({unit})" if unit else param
-                ax.plot(x, values, label=label,
-                        color=prop_colors[ci % len(prop_colors)],
-                        linewidth=1.4, marker="o", markersize=3)
-            if tss:
-                step = max(1, n // 8)
-                ax.set_xticks(x[::step])
-                ax.set_xticklabels(tss[::step], rotation=35, ha="right", fontsize=6)
+                color = prop_cycle_colors[color_idx % len(prop_cycle_colors)]
+                ax.plot(
+                    x, values,
+                    label=label,
+                    color=color,
+                    linewidth=1.4,
+                    marker="o",
+                    markersize=3,
+                )
+                color_idx += 1
+
+            # x-axis tick labels: show timestamps when available, otherwise
+            # show sample numbers.  Rotate and thin to avoid crowding.
+            if timestamps:
+                # Show at most ~8 evenly-spaced labels.
+                step = max(1, n_samples // 8)
+                tick_pos = x[::step]
+                tick_labels = timestamps[::step]
+                ax.set_xticks(tick_pos)
+                ax.set_xticklabels(
+                    tick_labels, rotation=35, ha="right", fontsize=6)
             ax.set_xlabel("Sample index")
             ax.set_ylabel("Value")
             ax.set_title(f"{tname}\n{ip}", fontsize=9)
             ax.grid(alpha=0.3)
-            ax.legend(fontsize=6, loc="upper left",
-                      bbox_to_anchor=(1.01, 1), borderaxespad=0)
-            fig.tight_layout(rect=(0, 0, 0.82, 1))
-            fig._ab_title = f"{ip} — {tname}"  # type: ignore[attr-defined]
-            ip_figs.append(fig)
-        for grp_label, substrings in VEUSZ_OVERLAY_GROUPS.items():
-            grp_series: List[tuple] = []
-            for tname, tdata in tables.items():
-                n = len(tdata["timestamps_local"])
-                for param, values in tdata["columns"].items():
-                    if not any(ss in param.lower() for ss in substrings):
-                        continue
-                    if len(values) != n or n == 0:
-                        continue
-                    unit  = tdata["units"].get(param, "")
-                    label = (f"{tname[:10]}/{param}" +
-                             (f" ({unit})" if unit else ""))
-                    grp_series.append((label, list(range(n)), values))
-            if len(grp_series) < 2:
-                continue
-            fig, ax = plt_t.subplots(figsize=(10, 4))
-            for ci, (label, x, values) in enumerate(grp_series):
-                ax.plot(x, values, label=label,
-                        color=prop_colors[ci % len(prop_colors)],
-                        linewidth=1.4, marker="o", markersize=3)
-            ax.set_xlabel("Sample index")
-            ax.set_ylabel(grp_label)
-            ax.set_title(f"Overlay: {grp_label}\n{ip}", fontsize=9)
-            ax.grid(alpha=0.3)
-            ax.legend(fontsize=6, loc="upper left",
-                      bbox_to_anchor=(1.01, 1), borderaxespad=0)
-            fig.tight_layout(rect=(0, 0, 0.82, 1))
-            fig._ab_title = f"{ip} — Overlay: {grp_label}"  # type: ignore[attr-defined]
-            ip_figs.append(fig)
-        return ip_figs
+            ax.legend(
+                fontsize=6,
+                loc="upper left",
+                bbox_to_anchor=(1.01, 1),
+                borderaxespad=0,
+            )
+            fig.tight_layout(rect=(0, 0, 0.82, 1))   # room for legend
+            # type: ignore[attr-defined]
+            fig._ab_title = f"{ip} — {tname}"
+            figures.append(fig)
 
-    figures: List[Any] = []
-    with concurrent.futures.ThreadPoolExecutor(
-        max_workers=min(len(store_snap), 4), thread_name_prefix="ab_preview"
-    ) as ex:
-        futs = {ex.submit(_render_ip, ip, tbls): ip
-                for ip, tbls in store_snap.items()}
-        for fut in concurrent.futures.as_completed(futs):
-            try:
-                figures.extend(fut.result())
-            except Exception as exc:
-                logger.error("Preview render error [%s]: %s", futs[fut], exc)
+        # ── Overlay line plots by unit group ──────────────────────────────
+        for group_label, substrings in VEUSZ_OVERLAY_GROUPS.items():
+            # Collect (param_label, values_list) pairs that match this group.
+            group_series: List[tuple] = []
+
+            for tname, tdata in tables.items():
+                columns = tdata["columns"]
+                timestamps = tdata["timestamps_local"]
+                n_samples = len(timestamps)
+
+                for param, values in columns.items():
+                    if not any(s in param.lower() for s in substrings):
+                        continue
+                    if len(values) != n_samples or n_samples == 0:
+                        continue
+                    unit = tdata["units"].get(param, "")
+                    label = f"{tname[:10]}/{param}"
+                    if unit:
+                        label += f" ({unit})"
+                    group_series.append(
+                        (label, list(range(n_samples)), values))
+
+            if len(group_series) < 2:
+                continue
+
+            fig, ax = plt.subplots(figsize=(10, 4))
+            for c_idx, (label, x, values) in enumerate(group_series):
+                color = prop_cycle_colors[c_idx % len(prop_cycle_colors)]
+                ax.plot(
+                    x, values,
+                    label=label,
+                    color=color,
+                    linewidth=1.4,
+                    marker="o",
+                    markersize=3,
+                )
+
+            ax.set_xlabel("Sample index")
+            ax.set_ylabel(group_label)
+            ax.set_title(f"Overlay: {group_label}\n{ip}", fontsize=9)
+            ax.grid(alpha=0.3)
+            ax.legend(
+                fontsize=6,
+                loc="upper left",
+                bbox_to_anchor=(1.01, 1),
+                borderaxespad=0,
+            )
+            fig.tight_layout(rect=(0, 0, 0.82, 1))
+            # type: ignore[attr-defined]
+            fig._ab_title = f"{ip} — Overlay: {group_label}"
+            figures.append(fig)
+
     return figures
+
+
+# ===========================================================================
+# %% GUI — PyQt (PySide6 via QtPy abstraction)
+# ===========================================================================
+# QtPy transparently wraps PySide6 (or PyQt6 as fallback).
+# Set QT_API env var to force one: export QT_API=pyside6
+
+
+class _QTextEditHandler(logging.Handler):
+    """
+    A ``logging.Handler`` that appends formatted log records to a
+    ``QTextEdit`` widget in real time.
+
+    This is the bridge that makes every ``logger.*()`` call — including
+    connection warnings from ``fetch_table_html()``, parse errors,
+    FITS/CSV/XLSX failures, and Veusz messages — appear live in the
+    GUI status console without any extra ``_append_log()`` calls scattered
+    through the code.
+
+    Usage
+    -----
+    Instantiate once, pass the target QTextEdit, then add to the module
+    logger::
+
+        handler = _QTextEditHandler(self._log_console)
+        logging.getLogger("ABMonitor").addHandler(handler)
+
+    Remove on window close to avoid writing to a destroyed widget::
+
+        logging.getLogger("ABMonitor").removeHandler(handler)
+
+    Thread safety
+    -------------
+    ``emit()`` uses ``QMetaObject.invokeMethod`` with
+    ``Qt.ConnectionType.QueuedConnection`` so records originating on the
+    background ``PollThread`` are safely marshalled to the GUI thread
+    before touching the widget.
+    """
+
+    # Colour map: log level -> HTML colour for the console text
+    _LEVEL_COLOUR: Dict[int, str] = {
+        logging.DEBUG:    "#6c7086",   # muted grey
+        logging.INFO:     "#cdd6f4",   # default text
+        logging.WARNING:  "#f9e2af",   # yellow
+        logging.ERROR:    "#f38ba8",   # red
+        logging.CRITICAL: "#ff5555",   # bright red
+    }
+
+    def __init__(self, widget: Any, level: int = logging.DEBUG) -> None:
+        """
+        Parameters
+        ----------
+        widget : QTextEdit
+            The console widget to append records to.
+        level : int
+            Minimum logging level to display (default DEBUG — show all).
+        """
+        super().__init__(level)
+        self._widget = widget
+        self.setFormatter(
+            logging.Formatter(
+                fmt="%(asctime)s  %(levelname)-8s  %(message)s",
+                datefmt="%H:%M:%S",
+            )
+        )
+
+    def emit(self, record: logging.LogRecord) -> None:
+        """
+        Append a formatted, coloured log line to the QTextEdit.
+
+        Called by the logging framework on every matching record.
+        Uses a queued cross-thread invoke so it is safe from any thread.
+
+        Parameters
+        ----------
+        record : logging.LogRecord
+            The log record to display.
+        """
+        try:
+            msg = self.format(record)
+            colour = self._LEVEL_COLOUR.get(record.levelno, "#cdd6f4")
+            # Escape HTML special chars so angle brackets in messages render
+            # correctly rather than being interpreted as HTML tags.
+            escaped = (
+                msg.replace("&", "&amp;")
+                   .replace("<", "&lt;")
+                   .replace(">", "&gt;")
+            )
+            html = f'<span style="color:{colour};">{escaped}</span>'
+
+            # Marshal to the GUI thread via a queued invoke.
+            # This is safe whether emit() is called from the main thread
+            # or from PollThread.
+            try:
+                from qtpy.QtCore import QMetaObject, Qt
+                from qtpy.QtCore import Q_ARG
+                QMetaObject.invokeMethod(
+                    self._widget,
+                    "append",
+                    Qt.ConnectionType.QueuedConnection,
+                    Q_ARG(str, html),
+                )
+            except Exception:
+                # Fallback: direct call (only safe on GUI thread)
+                self._widget.append(html)
+
+            # Auto-scroll to bottom
+            try:
+                from qtpy.QtCore import QMetaObject, Qt
+                QMetaObject.invokeMethod(
+                    self._widget.verticalScrollBar(),
+                    "setValue",
+                    Qt.ConnectionType.QueuedConnection,
+                    Q_ARG(int, self._widget.verticalScrollBar().maximum()),
+                )
+            except Exception:
+                pass
+
+        except Exception:
+            # Never let a logging handler crash the application
+            self.handleError(record)
 
 
 def launch_gui(
@@ -2333,52 +2426,6 @@ def launch_gui(
     # -----------------------------------------------------------------------
     # %%% Background polling thread
     # -----------------------------------------------------------------------
-    # -------------------------------------------------------------------------
-    # %% Background preview worker — matplotlib rendering off GUI thread
-    # -------------------------------------------------------------------------
-
-    class _PreviewWorkerThread(QThread):
-        """Render preview figures in a background QThread.
-
-        Emits ``preview_ready`` with (generation_id, figure_list) on
-        completion.  The generation counter lets _on_data_ready discard
-        renders that were superseded by a newer poll cycle.
-
-        Attributes
-        ----------
-        preview_ready : Signal
-            Emitted as (int, list) — generation id and figure list.
-        """
-
-        preview_ready = Signal(int, list)
-
-        def __init__(self, generation: int, parent=None) -> None:
-            """Initialise.
-
-            Parameters
-            ----------
-            generation : int
-                Monotonically increasing integer identifying this render batch.
-            parent : QObject, optional
-                Qt parent object.
-            """
-            super().__init__(parent)
-            self._generation = generation
-
-        def run(self) -> None:
-            """Execute preview build and emit result.
-
-            Calls build_preview_figures() which snapshots TIME_SERIES_STORE
-            under _TS_LOCK before rendering, so the lock is never held
-            during the matplotlib rendering step.
-            """
-            try:
-                figs = build_preview_figures(ALL_DEVICE_DATA)
-            except Exception as exc:
-                logger.error("_PreviewWorkerThread error: %s", exc)
-                figs = []
-            self.preview_ready.emit(self._generation, figs)
-
     class PollThread(QThread):
         """Worker thread that polls devices on a configurable interval."""
 
@@ -2401,7 +2448,12 @@ def launch_gui(
                     data = poll_all_devices(
                         ip_list=self.config["ip_list"],
                         table_names=TABLE_NAMES,
+                        retries=int(self.config.get("http_retry_count", HTTP_RETRY_COUNT)),
+                        retry_delay=float(self.config.get("http_retry_delay_sec", HTTP_RETRY_DELAY_SEC)),
                     )
+                    _meta = data.pop("__poll_meta__", {})
+                    if _meta.get("all_failed", False):
+                        self.error_occur.emit("All IPs failed — check network/device.")
                     update_named_dicts(data)
                     self.data_ready.emit(data)
                     self.log_message.emit(
@@ -2509,9 +2561,6 @@ def launch_gui(
             self._log_handler: Optional[logging.Handler] = None
             # Tracks in-flight background file flush so we never start two at once
             self._flush_future: Optional["concurrent.futures.Future"] = None
-            # Preview worker tracking — generation counter discards stale renders
-            self._preview_generation: int = 0
-            self._preview_thread: Optional["_PreviewWorkerThread"] = None
 
             self._build_menu()
             self._build_central()      # builds self._log_console
@@ -2699,79 +2748,42 @@ def launch_gui(
             log_dir_layout.addWidget(btn_browse_log)
             layout.addLayout(log_dir_layout)
 
-            # ── RAM flush limit ──────────────────────────────────────────────
-            ram_row = QHBoxLayout()
-            ram_row.addWidget(QLabel("RAM Flush Limit (%):"))
-            self._spin_ram_pct = QSpinBox()
-            self._spin_ram_pct.setRange(10, 95)
-            self._spin_ram_pct.setValue(
-                int(self._switches.get("mem_ram_pct_limit", MEM_RAM_PCT_LIMIT)))
-            self._spin_ram_pct.setSuffix(" %")
-            self._spin_ram_pct.setToolTip(
-                "When system RAM usage reaches this % all enabled output files "
-                "are written and the in-memory store is cleared so sampling can "
-                "continue indefinitely.  Default: 70%.  Overrides MEM_RAM_PCT_LIMIT.")
-            ram_row.addWidget(self._spin_ram_pct)
-            ram_row.addStretch()
-            layout.addLayout(ram_row)
-
-            # ── HTTP retry controls ───────────────────────────────────────
-            retry_row = QHBoxLayout()
-            retry_row.addWidget(QLabel("HTTP Retries:"))
+            grp.setLayout(layout)
+            adv = QGroupBox("Reliability & Memory")
+            al  = QGridLayout()
+            al.addWidget(QLabel("HTTP Retries:"), 0, 0)
             self._spin_http_retries = QSpinBox()
-            self._spin_http_retries.setRange(0, 20)
-            self._spin_http_retries.setValue(
-                int(self._switches.get("http_retry_count", HTTP_RETRY_COUNT)))
-            self._spin_http_retries.setToolTip(
-                "Number of retry attempts per HTTP fetch before marking that "
-                "IP as failed for this cycle (0 = no retries, 1 attempt only). "
-                "Default: %d." % HTTP_RETRY_COUNT)
-            retry_row.addWidget(self._spin_http_retries)
-
-            retry_row.addWidget(QLabel("  Retry Delay (s):"))
+            self._spin_http_retries.setRange(1, 10)
+            self._spin_http_retries.setValue(int(HTTP_RETRY_COUNT))
+            self._spin_http_retries.setToolTip("Total fetch attempts per page. 1=no retry.")
+            al.addWidget(self._spin_http_retries, 0, 1)
+            al.addWidget(QLabel("Retry Delay (s):"), 0, 2)
             self._spin_retry_delay = QDoubleSpinBox()
-            self._spin_retry_delay.setRange(0.5, 60.0)
+            self._spin_retry_delay.setRange(0.5, 30.0)
             self._spin_retry_delay.setSingleStep(0.5)
             self._spin_retry_delay.setDecimals(1)
-            self._spin_retry_delay.setValue(
-                float(self._switches.get("http_retry_delay_sec",
-                                         HTTP_RETRY_DELAY_SEC)))
-            self._spin_retry_delay.setToolTip(
-                "Seconds to wait between successive fetch retries. "
-                "Default: %.1f s." % HTTP_RETRY_DELAY_SEC)
-            retry_row.addWidget(self._spin_retry_delay)
-            retry_row.addStretch()
-            layout.addLayout(retry_row)
-
-            # ── Max consecutive-failure exit threshold ────────────────────
-            fail_row = QHBoxLayout()
-            fail_row.addWidget(QLabel("Max Consec. Fails:"))
+            self._spin_retry_delay.setValue(float(HTTP_RETRY_DELAY_SEC))
+            al.addWidget(self._spin_retry_delay, 0, 3)
+            al.addWidget(QLabel("Max Consec Fails:"), 1, 0)
             self._spin_max_fails = QSpinBox()
-            self._spin_max_fails.setRange(0, 9999)
-            self._spin_max_fails.setValue(
-                int(self._switches.get("headless_max_consec_fails",
-                                       HEADLESS_MAX_CONSEC_FAILS)))
-            self._spin_max_fails.setSpecialValueText("Disabled (0)")
-            self._spin_max_fails.setToolTip(
-                "Exit cleanly after this many consecutive all-device poll "
-                "failures (all IPs unreachable after retries). "
-                "0 = never exit on failures. Default: %d." % HEADLESS_MAX_CONSEC_FAILS)
-            fail_row.addWidget(self._spin_max_fails)
-            fail_row.addStretch()
-            layout.addLayout(fail_row)
+            self._spin_max_fails.setRange(0, 100)
+            self._spin_max_fails.setValue(int(HEADLESS_MAX_CONSEC_FAILS))
+            self._spin_max_fails.setToolTip("Headless: exit after N consecutive all-device failures. 0=never.")
+            al.addWidget(self._spin_max_fails, 1, 1)
+            al.addWidget(QLabel("RAM Flush Limit (%):"), 1, 2)
+            self._spin_ram_pct = QSpinBox()
+            self._spin_ram_pct.setRange(10, 95)
+            self._spin_ram_pct.setSuffix(" %")
+            self._spin_ram_pct.setValue(int(MEM_RAM_PCT_LIMIT))
+            self._spin_ram_pct.setToolTip("Flush all outputs and clear store when system RAM reaches this %.")
+            al.addWidget(self._spin_ram_pct, 1, 3)
+            self._cb_append = QCheckBox("Append output files (otherwise overwrite)")
+            self._cb_append.setChecked(bool(APPEND_OUTPUT_FILES))
+            self._cb_append.setToolTip("Checked=append to existing files. Unchecked=overwrite at run start.")
+            al.addWidget(self._cb_append, 2, 0, 1, 4)
+            adv.setLayout(al)
+            layout.addWidget(adv)
 
-            # ── Append / overwrite toggle ─────────────────────────────────────
-            self._cb_append_files = QCheckBox(
-                "Append output files  (uncheck = overwrite on each flush)")
-            self._cb_append_files.setChecked(
-                bool(self._switches.get("append_files", APPEND_OUTPUT_FILES)))
-            self._cb_append_files.setToolTip(
-                "Checked (default): every flush appends new rows to existing "
-                "CSV / XLSX / FITS / Veusz / log files.\n"
-                "Unchecked: each flush deletes prior files and writes fresh ones.")
-            layout.addWidget(self._cb_append_files)
-
-            grp.setLayout(layout)
             return grp
 
         def _build_action_buttons(self) -> QWidget:
@@ -2883,13 +2895,12 @@ def launch_gui(
                 "csv_dir":           os.path.join(base, "csv"),
                 "xlsx_dir":          os.path.join(base, "xlsx"),
                 "veusz_dir":         os.path.join(base, "veusz"),
-                "log_dir":           log,
-                "mem_ram_pct_limit": self._spin_ram_pct.value(),
-                "http_retry_count":          self._spin_http_retries.value(),
-                "http_retry_delay_sec":      self._spin_retry_delay.value(),
-                "headless_max_consec_fails": self._spin_max_fails.value(),
-                "append_files":      int(self._cb_append_files.isChecked()),
-                "preview_cache_dir": PREVIEW_CACHE_DIR,
+                "log_dir":                  log,
+                "http_retry_count":         int(self._spin_http_retries.value()),
+                "http_retry_delay_sec":     float(self._spin_retry_delay.value()),
+                "headless_max_consec_fails":int(self._spin_max_fails.value()),
+                "mem_ram_pct_limit":        float(self._spin_ram_pct.value()),
+                "append_files":             int(self._cb_append.isChecked()),
             }
 
         def _do_poll_once(self) -> None:
@@ -2904,7 +2915,12 @@ def launch_gui(
             data = poll_all_devices(
                 ip_list=cfg["ip_list"],
                 table_names=TABLE_NAMES,
+                retries=int(cfg.get("http_retry_count", HTTP_RETRY_COUNT)),
+                retry_delay=float(cfg.get("http_retry_delay_sec", HTTP_RETRY_DELAY_SEC)),
             )
+            _meta = data.pop("__poll_meta__", {})
+            if _meta.get("all_failed", False):
+                self._append_log("WARNING: All IPs failed — check network/device.")
             # populates ALL_DEVICE_DATA
             update_named_dicts(data)
             self._process_outputs(ALL_DEVICE_DATA, cfg)     # nested shape
@@ -2932,150 +2948,57 @@ def launch_gui(
             self._status_bar.showMessage("Auto-polling started …")
 
         def _do_stop(self) -> None:
-            """Stop auto-poll thread, then write final outputs.
-
-            All file I/O runs in background threads so the GUI stays
-            responsive.  Veusz is dispatched to a ThreadPoolExecutor worker
-            (not the GUI thread) to avoid Qt re-entrancy with vz.Embedded().
-            """
+            """Stop the auto-poll thread, then write final Veusz file if enabled."""
             if self._thread:
                 self._thread.stop()
                 self._thread.wait(3000)
             self._btn_start.setEnabled(True)
             self._btn_stop.setEnabled(False)
-            self._status_bar.showMessage(
-                "Auto-polling stopped — writing final outputs…")
-            cfg    = self._get_runtime_config()
-            append = bool(cfg.get("append_files", APPEND_OUTPUT_FILES))
-            if self._flush_future is not None and not self._flush_future.done():
-                self._append_log("Waiting for in-flight flush…")
-                try:
-                    self._flush_future.result(timeout=30)
-                except Exception as exc:
-                    logger.warning("In-flight flush on stop: %s", exc)
-            if ALL_DEVICE_DATA:
-                fits_dir  = cfg.get("fits_dir",  FITS_DIR)
-                csv_dir   = cfg.get("csv_dir",   CSV_DIR)
-                xlsx_dir  = cfg.get("xlsx_dir",  XLSX_DIR)
-                log_dir   = cfg.get("log_dir",   LOG_DIR)
-                veusz_dir = cfg.get("veusz_dir", VEUSZ_DIR)
-                if cfg.get("enable_fits"):
-                    write_fits(ALL_DEVICE_DATA, fits_dir, append=append)
-                if cfg.get("enable_csv"):
-                    write_csv(ALL_DEVICE_DATA, csv_dir, append=append)
-                if cfg.get("enable_xlsx"):
-                    write_xlsx(ALL_DEVICE_DATA, xlsx_dir, append=append)
-                if cfg.get("enable_log_append"):
-                    write_log_text(ALL_DEVICE_DATA, log_dir, append=append)
-                if cfg.get("enable_veusz"):
-                    self._append_log("Writing final Veusz file…")
-                    _ss = dict(ALL_DEVICE_DATA); _vs = veusz_dir; _as = append
-                    import concurrent.futures as _cfs
-                    _exs = _cfs.ThreadPoolExecutor(
-                        max_workers=1, thread_name_prefix="ab_vsz_stop")
-                    _exs.submit(lambda d=_ss, v=_vs, a=_as:
-                                write_veusz(d, v, show_window=False, append=a))
-                    _exs.shutdown(wait=False)
-                    self._append_log(f"Veusz write dispatched → {veusz_dir}")
             self._status_bar.showMessage("Auto-polling stopped.")
-
+            # Write Veusz with all accumulated samples now that polling has stopped
+            cfg = self._get_runtime_config()
+            if cfg.get("enable_veusz") and ALL_DEVICE_DATA:
+                veusz_dir = cfg.get("veusz_dir", VEUSZ_DIR)
+                self._append_log(
+                    "Writing final Veusz file with all accumulated samples…")
+                try:
+                    _app_f = bool(cfg.get("append_files", APPEND_OUTPUT_FILES))
+                    write_veusz(ALL_DEVICE_DATA, veusz_dir,
+                                show_window=False, append=_app_f)
+                    self._append_log(f"Veusz saved: {veusz_dir}")
+                except Exception as exc:
+                    self._append_log(f"Veusz final write error: {exc}")
+                    logger.error("Veusz final write failed: %s", exc)
 
         def _on_data_ready(self, data: Dict) -> None:
-            """Slot: called when PollThread emits new data.
-
-            Dispatches file output to flush_outputs_parallel() and preview
-            rendering to _PreviewWorkerThread so the GUI thread is never
-            blocked by I/O or matplotlib.  A generation counter ensures
-            stale preview renders are discarded on arrival.
-            """
+            """Slot: called each poll cycle. Handles RAM flush then updates plots."""
             cfg = self._get_runtime_config()
-
-            # ── RAM-% hard flush+clear ────────────────────────────────────────
-            if should_flush_and_clear(cfg):
-                ram_before = system_ram_used_pct()
-                limit_pct  = cfg.get("mem_ram_pct_limit", MEM_RAM_PCT_LIMIT)
-                logger.info("[RAM Flush] GUI: %.1f%% >= %.0f%%.",
-                            ram_before, limit_pct)
+            _ram_pct   = system_ram_used_pct()
+            _ram_limit = float(cfg.get("mem_ram_pct_limit", MEM_RAM_PCT_LIMIT))
+            if _ram_pct >= _ram_limit:
                 self._append_log(
-                    f"[RAM Flush] RAM {ram_before:.1f}% >= limit {limit_pct:.0f}%"
-                    " — writing all outputs and clearing store…")
+                    f"[RAM Flush] RAM {_ram_pct:.1f}% >= {_ram_limit:.0f}%. Flushing...")
                 if self._flush_future is not None and not self._flush_future.done():
                     try:
-                        self._flush_future.result(timeout=30)
-                    except Exception:
-                        pass
-                append = bool(cfg.get("append_files", APPEND_OUTPUT_FILES))
-                if cfg.get("enable_fits"):
-                    write_fits(ALL_DEVICE_DATA,
-                               cfg.get("fits_dir", FITS_DIR), append=append)
-                if cfg.get("enable_csv"):
-                    write_csv(ALL_DEVICE_DATA,
-                              cfg.get("csv_dir", CSV_DIR), append=append)
-                if cfg.get("enable_xlsx"):
-                    write_xlsx(ALL_DEVICE_DATA,
-                               cfg.get("xlsx_dir", XLSX_DIR), append=append)
-                if cfg.get("enable_log_append"):
-                    write_log_text(ALL_DEVICE_DATA,
-                                   cfg.get("log_dir", LOG_DIR), append=append)
-                if cfg.get("enable_veusz"):
-                    _sv = dict(ALL_DEVICE_DATA)
-                    _vv = cfg.get("veusz_dir", VEUSZ_DIR)
-                    _av = append
-                    import concurrent.futures as _cfv
-                    _exv = _cfv.ThreadPoolExecutor(
-                        max_workers=1, thread_name_prefix="ab_vsz_ram")
-                    _exv.submit(lambda d=_sv, v=_vv, a=_av:
-                                write_veusz(d, v, show_window=False, append=a))
-                    _exv.shutdown(wait=False)
-                clear_time_series_store()
-                ram_after = system_ram_used_pct()
-                self._append_log(
-                    f"[RAM Flush] Complete. RAM {ram_before:.1f}% → {ram_after:.1f}%."
-                    " Sampling continues.")
-                self._flush_future = None
-
-            # ── Normal background output flush ────────────────────────────────
+                        self._flush_future.result(timeout=60)
+                    except Exception as _fe:
+                        logger.error("RAM flush wait: %s", _fe)
+                _app = bool(cfg.get("append_files", APPEND_OUTPUT_FILES))
+                flush_outputs_parallel(cfg)
+                if cfg.get("enable_veusz") and ALL_DEVICE_DATA:
+                    try:
+                        write_veusz(ALL_DEVICE_DATA, cfg.get("veusz_dir", VEUSZ_DIR),
+                                    show_window=False, append=_app)
+                    except Exception as _ve:
+                        logger.error("Veusz RAM-flush: %s", _ve)
+                _clear_time_series_store()
+                self._append_log(f"[RAM Flush] Complete. RAM now {system_ram_used_pct():.1f}%.")
             self._process_outputs(ALL_DEVICE_DATA, cfg)
-
-            # ── Preview — launch background QThread ───────────────────────────
-            self._preview_generation += 1
-            gen = self._preview_generation
-            if self._preview_thread is not None and self._preview_thread.isRunning():
-                self._preview_thread.quit()
-            worker = _PreviewWorkerThread(gen, parent=self)
-            worker.preview_ready.connect(self._on_preview_ready)
-            self._preview_thread = worker
-            worker.start()
-
+            figs = build_preview_figures(ALL_DEVICE_DATA)
+            self._populate_plot_tabs(figs)
             self._status_bar.showMessage(
-                f"Updated: {datetime.datetime.now().strftime('%H:%M:%S')}"
-                f" | RAM {system_ram_used_pct():.0f}%"
-                f" / {cfg.get('mem_ram_pct_limit', MEM_RAM_PCT_LIMIT):.0f}% limit")
-
-
-        def _on_preview_ready(self, generation: int, figures: List[Any]) -> None:
-            """Slot: receives rendered figures from _PreviewWorkerThread.
-
-            Discards stale renders — if generation < _preview_generation a
-            newer render is already in flight and this result is obsolete.
-
-            Parameters
-            ----------
-            generation : int
-                The generation id this render was started with.
-            figures : List
-                Rendered matplotlib Figure objects.
-            """
-            if generation < self._preview_generation:
-                try:
-                    import matplotlib.pyplot as _plt
-                    for fig in figures:
-                        _plt.close(fig)
-                except Exception:
-                    pass
-                return
-            self._populate_plot_tabs(figures)
-
+                f"Updated: {datetime.datetime.now().strftime('%H:%M:%S')} "
+                f"| RAM: {_ram_pct:.1f}% / {_ram_limit:.0f}%")
 
         def _on_thread_error(self, msg: str) -> None:
             self._append_log(f"ERROR: {msg}")
@@ -3431,6 +3354,25 @@ def _install_signal_handlers() -> None:
         pass
 
 
+def system_ram_used_pct() -> float:
+    """Return system RAM usage 0-100.  Safe fallback = 0.0."""
+    try:
+        if psutil is not None:
+            return float(psutil.virtual_memory().percent)
+    except Exception:
+        pass
+    return 0.0
+
+
+def _clear_time_series_store() -> None:
+    """Lock, clear TIME_SERIES_STORE, force GC — called after RAM flush."""
+    global TIME_SERIES_STORE
+    with _TS_LOCK:
+        TIME_SERIES_STORE.clear()
+    gc.collect()
+    logger.info("[RAM Flush] TIME_SERIES_STORE cleared — GC collected.")
+
+
 def run_headless(cfg: Dict[str, Any]) -> None:
     """
     Execute headless polling loop — N cycles or infinite until stopped.
@@ -3477,11 +3419,9 @@ def run_headless(cfg: Dict[str, Any]) -> None:
     loop_count = HEADLESS_LOOP_COUNT
     sample_sec = cfg.get("sample_period",          SAMPLE_PERIOD_SEC)
     veusz_dir = cfg.get("veusz_dir",              VEUSZ_DIR)
-    append_files = bool(cfg.get("append_files", APPEND_OUTPUT_FILES))
     infinite = (loop_count == 0)
     cycle = 0
     flush_future: Optional["concurrent.futures.Future"] = None
-    # Consecutive all-device failure counter for clean-exit guard
     _consec_fails: int = 0
     _max_fails:    int = int(cfg.get("headless_max_consec_fails",
                                       HEADLESS_MAX_CONSEC_FAILS))
@@ -3582,38 +3522,45 @@ def run_headless(cfg: Dict[str, Any]) -> None:
                 retry_delay=float(cfg.get("http_retry_delay_sec",
                                           HTTP_RETRY_DELAY_SEC)),
             )
-
-            # ── Consecutive-failure guard ─────────────────────────────────────
-            # Pop the metadata key so it never reaches accumulate_poll().
-            poll_meta = data.pop("__poll_meta__", {})
-            if poll_meta.get("all_failed", False):
+            _poll_meta = data.pop("__poll_meta__", {})
+            if _poll_meta.get("all_failed", False):
                 _consec_fails += 1
                 if not dicts_only:
-                    logger.warning(
-                        "Cycle %d: ALL IPs failed "
-                        "(consecutive failures: %d/%s).",
+                    logger.warning("Cycle %d: ALL IPs failed (consec: %d/%s).",
                         cycle, _consec_fails,
                         str(_max_fails) if _max_fails > 0 else "unlimited")
                 if _max_fails > 0 and _consec_fails >= _max_fails:
-                    logger.error(
-                        "[headless] Consecutive failure limit reached "
-                        "(%d/%d). Writing all outputs and exiting cleanly.",
-                        _consec_fails, _max_fails)
-                    if print_cumulative:
-                        _print_cumulative_store(
-                            cycle, reason="consecutive failure limit")
-                    break  # falls through to final-output block
+                    logger.error("[headless] Consec failure limit %d — exiting.",
+                                 _max_fails)
+                    break
             else:
                 if _consec_fails > 0 and not dicts_only:
-                    logger.info(
-                        "Cycle %d: connectivity restored after %d "
-                        "consecutive failure(s).",
-                        cycle, _consec_fails)
-                _consec_fails = 0  # reset on any successful poll
-
+                    logger.info("Cycle %d: connectivity restored after %d fail(s).",
+                                cycle, _consec_fails)
+                _consec_fails = 0
             update_named_dicts(data)  # also calls accumulate_poll()
 
             poll_elapsed = time.monotonic() - t_poll_start
+            _ram_pct   = system_ram_used_pct()
+            _ram_limit = float(cfg.get("mem_ram_pct_limit", MEM_RAM_PCT_LIMIT))
+            if _ram_pct >= _ram_limit:
+                logger.warning("[RAM Flush] RAM %.1f%% >= %.0f%%. Flushing...", _ram_pct, _ram_limit)
+                if flush_future is not None and not flush_future.done():
+                    try:
+                        flush_future.result(timeout=60)
+                    except Exception as _fe:
+                        logger.error("Flush wait: %s", _fe)
+                _app = bool(cfg.get("append_files", APPEND_OUTPUT_FILES))
+                flush_outputs_parallel(cfg)
+                if cfg.get("enable_veusz") and ALL_DEVICE_DATA:
+                    try:
+                        write_veusz(ALL_DEVICE_DATA, cfg.get("veusz_dir", VEUSZ_DIR),
+                                    show_window=False, append=_app)
+                    except Exception as _ve:
+                        logger.error("Veusz RAM-flush: %s", _ve)
+                _clear_time_series_store()
+                logger.info("[RAM Flush] Complete. RAM now %.1f%%. Sampling continues.", system_ram_used_pct())
+
             if not dicts_only:
                 logger.info("Cycle %d poll complete in %.2f s — store %.1f MB, free RAM %.0f MB",
                             cycle, poll_elapsed, ts_store_size_mb(), system_free_ram_mb())
@@ -3624,58 +3571,25 @@ def run_headless(cfg: Dict[str, Any]) -> None:
             if print_each:
                 _print_named_dicts(cycle, label="current snapshot")
 
-            # ── Adaptive mid-loop flush ──────────────────────────────────────
-            # Hard path (RAM %): write ALL outputs incl. Veusz, clear store.
-            # Soft path (MB / free RAM): background write, no store clear.
-            _do_pct_clear = should_flush_and_clear(cfg)
-
-            if _do_pct_clear:
-                _rb = system_ram_used_pct()
-                logger.info(
-                    "[RAM Flush] Headless cycle %d: %.1f%% >= limit — writing all.",
-                    cycle, _rb)
-                if flush_future is not None and not flush_future.done():
-                    try:
-                        flush_future.result(timeout=60)
-                    except Exception:
-                        pass
-                if cfg.get("enable_fits"):
-                    write_fits(ALL_DEVICE_DATA,
-                               cfg.get("fits_dir", FITS_DIR),
-                               append=append_files)
-                if cfg.get("enable_csv"):
-                    write_csv(ALL_DEVICE_DATA,
-                              cfg.get("csv_dir", CSV_DIR),
-                              append=append_files)
-                if cfg.get("enable_xlsx"):
-                    write_xlsx(ALL_DEVICE_DATA,
-                               cfg.get("xlsx_dir", XLSX_DIR),
-                               append=append_files)
-                if cfg.get("enable_log_append"):
-                    write_log_text(ALL_DEVICE_DATA,
-                                   cfg.get("log_dir", LOG_DIR),
-                                   append=append_files)
-                if cfg.get("enable_veusz"):
-                    write_veusz(ALL_DEVICE_DATA, veusz_dir,
-                                show_window=False, append=append_files)
-                if print_cumulative:
-                    _print_cumulative_store(cycle, reason="RAM-% flush+clear")
-                clear_time_series_store()
-                flush_future = None
-                logger.info("[RAM Flush] Store cleared. RAM now %.1f%%. Continuing.",
-                            system_ram_used_pct())
-
-            elif should_flush(cfg):
+            # ── Adaptive mid-loop flush ───────────────────────────────────────────────
+            # If store is getting large or RAM is tight, trigger a background
+            # flush of CSV / XLSX / log (NOT Veusz — that waits for loop end).
+            # Only launch a new flush if the previous one has completed.
+            # Also print cumulative store (HEADLESS_PRINT_CUMULATIVE) on flush.
+            if should_flush(cfg):
                 if flush_future is None or flush_future.done():
                     if not dicts_only:
-                        logger.info("Dispatching background flush (cycle %d)…", cycle)
+                        logger.info(
+                            "Dispatching background flush (cycle %d)…", cycle)
                     if print_cumulative:
-                        _print_cumulative_store(cycle, reason="memory limit flush")
+                        _print_cumulative_store(
+                            cycle, reason="memory limit flush")
                     flush_future = flush_outputs_parallel(cfg)
                 else:
                     if not dicts_only:
                         logger.warning(
-                            "Prev flush still running — skipping mid-cycle flush.")
+                            "Previous flush still running — skipping mid-cycle flush.")
+
             # ── Wait for next cycle ──────────────────────────────────────────────────────────
             # Skip the sleep entirely if this was the last required cycle so
             # that callers with HEADLESS_LOOP_COUNT=1 return immediately
@@ -3717,17 +3631,17 @@ def run_headless(cfg: Dict[str, Any]) -> None:
     log_dir = cfg.get("log_dir",   LOG_DIR)
 
     if cfg.get("enable_fits"):
-        write_fits(ALL_DEVICE_DATA, fits_dir, append=append_files)
+        write_fits(ALL_DEVICE_DATA, fits_dir)
     if cfg.get("enable_csv"):
-        write_csv(ALL_DEVICE_DATA, csv_dir, append=append_files)
+        write_csv(ALL_DEVICE_DATA, csv_dir, append=True)
     if cfg.get("enable_xlsx"):
-        write_xlsx(ALL_DEVICE_DATA, xlsx_dir, append=append_files)
+        write_xlsx(ALL_DEVICE_DATA, xlsx_dir)
     if cfg.get("enable_log_append"):
-        write_log_text(ALL_DEVICE_DATA, log_dir, append=append_files)
+        write_log_text(ALL_DEVICE_DATA, log_dir)
     if cfg.get("enable_veusz"):
         logger.info(
             "Building Veusz project with all %d accumulated sample(s)…", cycle)
-        write_veusz(ALL_DEVICE_DATA, veusz_dir, append=append_files)
+        write_veusz(ALL_DEVICE_DATA, veusz_dir)
 
     if not dicts_only:
         if _any_output_enabled(cfg):
@@ -3810,9 +3724,6 @@ def main() -> Dict[str, Dict[str, Dict]]:
     cfg: Dict[str, Any] = {
         "ip_list":           list(IP_LIST),   # explicit device IP list
         "sample_period":          SAMPLE_PERIOD_SEC,
-        "http_retry_count":          HTTP_RETRY_COUNT,
-        "http_retry_delay_sec":      HTTP_RETRY_DELAY_SEC,
-        "headless_max_consec_fails": HEADLESS_MAX_CONSEC_FAILS,
         "headless_loop_count":          HEADLESS_LOOP_COUNT,
         "mem_flush_threshold_mb":        MEM_FLUSH_THRESHOLD_MB,
         "mem_free_min_mb":               MEM_FREE_MIN_MB,
@@ -3830,14 +3741,17 @@ def main() -> Dict[str, Dict[str, Dict]]:
         "enable_veusz":      ENABLE_VEUSZ,   # write Veusz HDF5 project file(s)
         # Output directories — all derived from OUTPUT_BASE_DIR.
         # Change OUTPUT_BASE_DIR at the top of the file to relocate everything.
-        "mem_ram_pct_limit": MEM_RAM_PCT_LIMIT,
-        "append_files":      APPEND_OUTPUT_FILES,
         "output_base_dir":   OUTPUT_BASE_DIR,
         "fits_dir":          FITS_DIR,
         "csv_dir":           CSV_DIR,
         "xlsx_dir":          XLSX_DIR,
         "veusz_dir":         VEUSZ_DIR,
-        "log_dir":           LOG_DIR,
+        "log_dir":                  LOG_DIR,
+        "http_retry_count":         HTTP_RETRY_COUNT,
+        "http_retry_delay_sec":     HTTP_RETRY_DELAY_SEC,
+        "headless_max_consec_fails":HEADLESS_MAX_CONSEC_FAILS,
+        "mem_ram_pct_limit":        MEM_RAM_PCT_LIMIT,
+        "append_files":             APPEND_OUTPUT_FILES,
     }
 
     # Create only the output directories that are actually needed.
