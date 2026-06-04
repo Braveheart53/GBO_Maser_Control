@@ -141,7 +141,7 @@ HEADLESS_LOOP_COUNT = 1   # 0 = infinite loop; N = run N cycles then stop
 HEADLESS_CONSOLE_DICTS_ONLY = 0   # 1 = dicts-only stdout; suppress all other text
 HEADLESS_PRINT_EACH_SAMPLE = 0   # 1 = print 11 named dicts after every poll cycle
 HEADLESS_PRINT_CUMULATIVE = 0   # 1 = print full TIME_SERIES_STORE at stop/flush
-HEADLESS_SILENT = 1   # 1 = suppress ALL stdout/stderr console output;
+HEADLESS_SILENT = 0   # 1 = suppress ALL stdout/stderr console output;
 #     file outputs (log, CSV, XLSX, FITS, Veusz)
 #     are unaffected.  Overrides all other console
 #     switches above when set to 1.
@@ -176,8 +176,8 @@ IP_LIST: List[str] = [
 # ---------------------------------------------------------------------------
 SAMPLE_PERIOD_SEC = 30    # Seconds between successive polls of all devices
 HTTP_TIMEOUT_SEC     = 5    # Per-request HTTP timeout (seconds)
-HTTP_RETRY_COUNT     = 3    # Retries per (ip, page) fetch before marking that IP failed
-HTTP_RETRY_DELAY_SEC = 2.0  # Seconds to wait between successive retries
+HTTP_RETRY_COUNT     = 2    # Retries per (ip, page) fetch before marking that IP failed
+HTTP_RETRY_DELAY_SEC = 5.0  # Seconds to wait between successive retries
 HEADLESS_MAX_CONSEC_FAILS = 5  # Consecutive all-device poll failures before clean exit
                                #   0 = never exit on failures (original behaviour)
 
