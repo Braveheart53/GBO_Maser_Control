@@ -61,7 +61,7 @@ Phone  : +1 (304) 456-2216
 Email  : wwallace@nrao.edu
 Email2 : naval.antennas@gmail.com 
 Python : 3.8+
-Version: 1.2.5
+Version: 1.2.6
 """
 # %% Imorts
 import argparse
@@ -143,8 +143,9 @@ def poll_once() -> None:
       2. Append results to abm.TIME_SERIES_STORE via accumulate_poll().
       3. Write enabled file outputs (FITS / CSV / XLSX / log / Veusz).
 
-    The return value of abm.main() (a snapshot dict) is discarded here
-    because get_all_data() / TIME_SERIES_STORE is the authoritative source.
+    The return value of abm.main() (TIME_SERIES_STORE — the full accumulated
+    time-series) is discarded here because get_all_data() returns the same
+    live reference and is the canonical access pattern for this caller.
     Any exception is printed to stderr and swallowed so the caller loop
     continues on transient network errors.
     """
