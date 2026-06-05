@@ -27,7 +27,7 @@ Phone  : +1 (304) 456-2216
 Email  : wwallace@nrao.edu
 Email2 : naval.antennas@gmail.com 
 Python : 3.8+
-Version: 1.4.1
+Version: 1.4.2
 Deps   : PySide6, matplotlib, requests, beautifulsoup4, lxml,
          astropy, openpyxl, veusz  (pip install each)
 
@@ -756,8 +756,6 @@ def ts_store_size_mb() -> float:
     float
         Estimated size in megabytes.
     """
-    import sys
-
     def _size(obj: Any, seen: Optional[set] = None) -> int:
         if seen is None:
             seen = set()
@@ -845,7 +843,7 @@ def update_named_dicts(all_data: Dict[str, Dict[str, Any]]) -> None:
     global Voltage_Current_Table, Real_Time_Power_Table, Cumulative_Power_Table
     global Demand_Data_Table, Diagnostic_Table, Voltage_Current_Snapshot_Log_Table
     global Power_Snapshot_Log_Table, MinMax_Log_Table, Diagnostic_Table_Extended
-    global ALL_DEVICE_DATA
+    # ALL_DEVICE_DATA: no 'global' needed — dict is mutated in-place (.clear(), [ip]=…)
 
     ALL_DEVICE_DATA.clear()
 
@@ -1514,16 +1512,17 @@ def write_log_text(
             #   5+ | data rows |
             # Non-data lines to skip = 4 (heading, blank, header, separator).
             # ----------------------------------------------------------------
-            HEADER_LINES = 4   # heading + blank + table header + separator
+            # HEADER_LINES: number of non-data lines in a Markdown log file.
+            # When read with 'if l.strip()' the blank separator line collapses,
+            # leaving 3 non-empty non-data lines: heading, table-header, separator.
+            HEADER_LINES = 3   # heading + table header row + separator row
             existing_rows = 0
             is_new = not os.path.exists(filename)
             if not is_new:
                 try:
                     with open(filename, "r", encoding="utf-8") as fh:
                         all_lines = [l for l in fh if l.strip()]
-                    # Non-empty lines minus the 3 non-data lines (heading,
-                    # header row, separator row — blank line collapses to 0).
-                    existing_rows = max(0, len(all_lines) - 3)
+                    existing_rows = max(0, len(all_lines) - HEADER_LINES)
                 except Exception:
                     existing_rows = 0
                     is_new = True
@@ -1789,7 +1788,6 @@ def write_veusz(
                 tstore = ts_ip.get(tname, {})
                 ts_columns = tstore.get("columns", {})
                 timestamps = tstore.get("timestamps_local", [])
-                n_samples = len(timestamps)
 
                 # ----------------------------------------------------------------
                 # Datetime float dataset — one per table.
@@ -2497,17 +2495,15 @@ def launch_gui(
     os.environ.setdefault("QT_API", "pyside6")
 
     try:
-        from qtpy import QtWidgets, QtCore, QtGui
+        from qtpy import QtWidgets, QtGui
         from qtpy.QtWidgets import (
-            QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+            QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
             QGridLayout, QGroupBox, QCheckBox, QSpinBox, QDoubleSpinBox,
             QLabel, QPushButton, QFileDialog, QLineEdit, QTabWidget,
-            QScrollArea, QSizePolicy, QMenuBar, QMenu, QAction, QStatusBar,
+            QScrollArea, QAction, QStatusBar,
             QTextEdit, QSplitter,
         )
-        from qtpy.QtCore import Qt, QTimer, Signal, QThread
-        from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-        from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavToolbar
+        from qtpy.QtCore import Qt, Signal, QThread
     except ImportError as exc:
         logger.critical(
             "GUI dependencies missing: %s\nInstall: pip install qtpy pyside6 matplotlib", exc)
@@ -3189,7 +3185,6 @@ def launch_gui(
 
             def _open_in_thread() -> None:
                 try:
-                    import matplotlib
                     # For the interactive window we must switch to a GUI backend.
                     # Qt5Agg / Qt5 work on all platforms where PySide6 is installed.
                     # We do this only for the thread-local renderer; the main Agg
@@ -3346,7 +3341,7 @@ def launch_gui(
                 "stores data in named Python dicts, and\n"
                 "exports to FITS, CSV, XLSX, Veusz, and logs.\n\n"
                 "Author: W. Wallace\n"
-                "Version: 1.0.0\n"
+                "Version: 1.4.1\n"
                 "Python: 3.8+\n"
                 "Qt backend: PySide6 (via QtPy)",
             )
@@ -3608,7 +3603,7 @@ def system_ram_used_pct() -> float:
 
 def _clear_time_series_store() -> None:
     """Lock, clear TIME_SERIES_STORE, force GC — called after RAM flush."""
-    global TIME_SERIES_STORE
+    # No 'global' declaration needed — .clear() mutates in-place, no rebind.
     with _TS_LOCK:
         TIME_SERIES_STORE.clear()
     gc.collect()
@@ -3679,7 +3674,6 @@ def run_headless(cfg: Dict[str, Any]) -> None:
     # Redirect console streams when suppression is requested.
     # File handlers (log file on disk) are deliberately left intact in
     # both cases — only the terminal streams are affected.
-    _null_handler: Optional[logging.Handler] = None
     _devnull_stdout = None
     _devnull_stderr = None
 
@@ -3793,7 +3787,7 @@ def run_headless(cfg: Dict[str, Any]) -> None:
                     except Exception as _fe:
                         logger.error("Flush wait: %s", _fe)
                 _app = bool(cfg.get("append_files", APPEND_OUTPUT_FILES))
-                flush_outputs_parallel(cfg)
+                flush_future = flush_outputs_parallel(cfg)  # track in-flight flush
                 if cfg.get("enable_veusz") and ALL_DEVICE_DATA:
                     try:
                         write_veusz(ALL_DEVICE_DATA, cfg.get("veusz_dir", VEUSZ_DIR),
