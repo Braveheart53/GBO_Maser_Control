@@ -27,7 +27,7 @@ Phone  : +1 (304) 456-2216
 Email  : wwallace@nrao.edu
 Email2 : naval.antennas@gmail.com 
 Python : 3.8+
-Version: 1.4.6
+Version: 1.4.4
 Deps   : PySide6, matplotlib, requests, beautifulsoup4, lxml,
          astropy, openpyxl, veusz  (pip install each)
 
@@ -1058,11 +1058,13 @@ def write_fits(
         primary_hdr["ORIGIN"] = (_fits_ascii(
             "NRAO-GBO"),     "National Radio Astronomy Observatory")
         primary_hdr["OBSERVER"] = (_fits_ascii("WWallace"),     "W. Wallace")
-        # DATE-OBS is set below from the actual first sample timestamp.
-        # DATE-WRT records the UTC time of this specific write operation.
+        primary_hdr["DATE-OBS"] = (
+            _fits_ascii(now_utc.isoformat(timespec="seconds") + "Z"),
+            "UTC of first sample in file",
+        )
         primary_hdr["DATE-WRT"] = (
             _fits_ascii(now_utc.isoformat(timespec="seconds") + "Z"),
-            "UTC timestamp of this write operation",
+            "UTC timestamp of this write",
         )
         primary_hdr["FILENAME"] = (_fits_ascii(
             os.path.basename(filename)), "FITS file name")
@@ -1574,36 +1576,11 @@ def write_log_text(
                 for p in params
             ]
 
-            # Column widths for GFM pipe-table alignment.
-            # Minimum = header label width (or 3 for the GFM separator rule).
-            # When appending to an existing file, seed widths from the
-            # existing header row so appended rows never use narrower
-            # padding than what is already in the file (avoids misaligned
-            # columns mid-file).  Only delta rows are measured for new
-            # maximums so older rows are never retroactively re-padded.
+            # Column widths for alignment (min 3 chars for GFM separator).
+            # Width = max of header label width and widest data value seen.
             col_widths = [max(3, len(h)) for h in col_labels]
-
-            # Seed widths from existing file header if we are in append mode
-            if not is_new and append:
-                try:
-                    with open(filename, "r", encoding="utf-8") as _fh:
-                        for _line in _fh:
-                            stripped = _line.strip()
-                            if stripped.startswith("|") and "---" not in stripped:
-                                # First pipe row is the header
-                                _cells = [c.strip() for c in stripped.strip("|").split("|")]
-                                for _ci, _cell in enumerate(_cells):
-                                    if _ci < len(col_widths):
-                                        col_widths[_ci] = max(col_widths[_ci], len(_cell))
-                                break
-                except Exception:
-                    pass
-
-            # Measure only delta rows (rows_to_write = timestamps[existing_rows:])
-            # so we do not inflate widths for data already on disk.
-            for i in range(existing_rows, len(timestamps)):
-                ts_w = timestamps[i]
-                col_widths[0] = max(col_widths[0], len(ts_w))
+            for i, ts in enumerate(timestamps):
+                col_widths[0] = max(col_widths[0], len(ts))
                 for j, p in enumerate(params, start=1):
                     val = columns[p][i] if (
                         i < len(columns[p]) and columns[p][i] is not None) else ""
@@ -2788,7 +2765,7 @@ def launch_gui(
             QGridLayout, QGroupBox, QCheckBox, QSpinBox, QDoubleSpinBox,
             QLabel, QPushButton, QFileDialog, QLineEdit, QTabWidget,
             QScrollArea, QAction, QStatusBar,
-            QTextEdit, QSplitter, QDialog,
+            QTextEdit, QSplitter,
         )
         from qtpy.QtCore import Qt, Signal, QThread
     except ImportError as exc:
@@ -2811,13 +2788,9 @@ def launch_gui(
             super().__init__(parent)
             self.config = config
             self._running = False
-            # Event is set by stop() so the inter-poll sleep wakes immediately
-            # even if poll_all_devices() is currently blocked on an HTTP request.
-            self._stop_event = threading.Event()
 
         def run(self) -> None:
             self._running = True
-            self._stop_event.clear()
             _consec_fails = 0
             _max_fails = int(self.config.get(
                 "headless_max_consec_fails", HEADLESS_MAX_CONSEC_FAILS))
@@ -2857,19 +2830,14 @@ def launch_gui(
                 except Exception as exc:
                     self.error_occur.emit(f"Poll error: {exc}")
 
-                # Sleep in 0.5 s chunks so stop() is responsive.
-                # _stop_event.wait() wakes immediately when stop() is called,
-                # even if the current poll blocked for the full HTTP timeout.
+                # Sleep in 0.5 s chunks so stop() is responsive
                 remaining = self.config.get("sample_period", SAMPLE_PERIOD_SEC)
                 while remaining > 0 and self._running:
-                    if self._stop_event.wait(timeout=min(0.5, remaining)):
-                        break
+                    time.sleep(min(0.5, remaining))
                     remaining -= 0.5
 
         def stop(self) -> None:
-            """Signal the run loop to exit and wake the inter-poll sleep."""
             self._running = False
-            self._stop_event.set()
 
     # -----------------------------------------------------------------------
     # %%% Main Window
@@ -2878,10 +2846,6 @@ def launch_gui(
         """
         Primary application window for the AB Power Meter Monitor.
         """
-
-        # Emitted to open an interactive plot dialog on the main thread.
-        # Payload: dict with keys title, ip, tname, group, frozen_store, plot_key.
-        _sig_open_iplot = Signal(object)
 
         LIGHT_STYLE = ""   # use Qt default
 
@@ -2973,10 +2937,6 @@ def launch_gui(
             self._build_menu()
             self._build_central()      # builds self._log_console
             self._build_status_bar()
-
-            # Wire the interactive-plot signal so _show_iplot_dialog always
-            # runs on the main thread (Qt requirement for all widget creation).
-            self._sig_open_iplot.connect(self._show_iplot_dialog)
 
             # --- Attach the QTextEditHandler to the module logger so that
             # every logger.info/warning/error call in the entire codebase
@@ -3443,21 +3403,13 @@ def launch_gui(
             """Stop the auto-poll thread, then write final Veusz file if enabled."""
             if self._thread:
                 self._thread.stop()
-                # Wait up to 20 s — poll_all_devices may be mid-HTTP request.
-                # HTTP_TIMEOUT_SEC(5) × retries(3) + margin = ~18 s worst case.
-                if not self._thread.wait(20_000):
-                    logger.warning(
-                        "_do_stop: PollThread did not finish in 20 s — "
-                        "terminating forcibly.")
-                    self._thread.terminate()
-                    self._thread.wait(2000)
+                self._thread.wait(3000)
             self._btn_start.setEnabled(True)
             self._btn_stop.setEnabled(False)
             self._status_bar.showMessage("Auto-polling stopped.")
-            # Write Veusz with all accumulated samples now that polling has stopped.
-            # Use TIME_SERIES_STORE (canonical accumulator) not ALL_DEVICE_DATA.
+            # Write Veusz with all accumulated samples now that polling has stopped
             cfg = self._get_runtime_config()
-            if cfg.get("enable_veusz") and TIME_SERIES_STORE:
+            if cfg.get("enable_veusz") and ALL_DEVICE_DATA:
                 veusz_dir = cfg.get("veusz_dir", VEUSZ_DIR)
                 self._append_log(
                     "Writing final Veusz file with all accumulated samples…")
@@ -3531,21 +3483,25 @@ def launch_gui(
             group:     Optional[str],
             title:     str,
         ) -> None:
-            """Snapshot the store and emit _sig_open_iplot to open an interactive dialog.
+            """Open a frozen interactive matplotlib window for a single plot.
 
             Design
             ------
             * Data is **snapshotted under lock** at the moment the button is
-              clicked.  The QDialog that opens shows that frozen snapshot and
+              clicked.  The interactive window shows that frozen snapshot and
               is never auto-refreshed, giving the user a stable view for
               zooming, panning, and cursor-picking.
-            * All Qt widget creation happens on the main thread via the
-              ``_sig_open_iplot`` signal — Qt prohibits widget creation from
-              worker threads.  This method just builds the frozen data dict
-              and emits the signal; ``_show_iplot_dialog`` does the rest.
             * Background polling, all file writers, and all other preview
               tabs continue to update completely uninterrupted.
-            * The Agg backend (set at module import) is never touched.
+            * Each window runs ``plt.show(block=True)`` inside a daemon
+              ``threading.Thread``, keeping the Qt event loop free.
+            * Backend selection works on both Windows and RHEL 8:
+              ``matplotlib.figure.Figure`` + ``matplotlib.backends`` is used
+              directly instead of relying on ``plt.switch_backend()``, which
+              modifies global state and is not thread-safe.  We use a
+              ``FigureManager`` obtained from the backend-specific
+              ``new_manager()`` call, keeping the Agg backend intact for the
+              main thread.
             * A duplicate-window guard (``_iplot_open_set``) prevents a
               second window for the same plot key from being opened while
               one is already open.
@@ -3624,175 +3580,204 @@ def launch_gui(
             self._append_log(
                 f"Opening interactive window: '{title}' "
                 f"({n_samples} sample(s) — frozen snapshot).")
-            # Emit signal — _show_iplot_dialog runs on the main thread.
-            # Qt prohibits widget creation from worker threads; this is the
-            # only correct pattern for opening a child window from a button
-            # click that may have been triggered by any context.
-            self._sig_open_iplot.emit({
-                "plot_key":     plot_key,
-                "ip":           ip,
-                "tname":        tname,
-                "group":        group,
-                "title":        title,
-                "frozen_store": frozen_store,
-                "n_samples":    n_samples,
-            })
 
-
-        def _show_iplot_dialog(self, payload: dict) -> None:
-            """Build and show a non-modal QDialog with a full matplotlib
-            interactive canvas for the frozen snapshot in *payload*.
-
-            Runs on the main thread (connected via ``_sig_open_iplot`` signal).
-            All Qt widget creation is here; the Agg backend used for preview
-            rendering is never disturbed.
-
-            Parameters
-            ----------
-            payload : dict
-                Dict emitted by ``_open_interactive_for_plot``.  Keys:
-                ``plot_key``, ``ip``, ``tname``, ``group``, ``title``,
-                ``frozen_store``, ``n_samples``.
-            """
-            try:
-                from matplotlib.figure import Figure as MplFigure
-                from matplotlib.backends.backend_qtagg import (
-                    FigureCanvasQTAgg as FigureCanvas,
-                    NavigationToolbar2QT as NavToolbar,
-                )
-            except ImportError:
+            def _iplot_thread() -> None:
+                """Daemon thread: build a figure from the frozen snapshot and
+                display it with a GUI-capable backend without touching the
+                module-level Agg backend used by the main thread."""
                 try:
+                    import matplotlib
+                    import matplotlib.pyplot as plt
                     from matplotlib.figure import Figure as MplFigure
-                    from matplotlib.backends.backend_qt5agg import (
-                        FigureCanvasQTAgg as FigureCanvas,
-                        NavigationToolbar2QT as NavToolbar,
-                    )
-                except ImportError as exc:
-                    self._append_log(
-                        f"Interactive plot unavailable — "
-                        f"no Qt matplotlib backend found: {exc}")
-                    plot_key = payload.get("plot_key")
-                    if plot_key:
-                        self._iplot_open_set.discard(plot_key)
-                    return
 
-            plot_key     = payload["plot_key"]
-            ip           = payload["ip"]
-            tname        = payload["tname"]
-            group        = payload["group"]
-            title        = payload["title"]
-            frozen_store = payload["frozen_store"]
-            # n_samples from payload is used for logging in _open_interactive_for_plot;
-            # inside this dialog we compute lengths locally from the frozen data.
+                    # ── Build the figure using the frozen snapshot ─────────
+                    # We construct the figure manually rather than calling
+                    # build_preview_figures() so we only draw the one plot
+                    # relevant to this window and operate entirely on the
+                    # frozen data — never touching the live store.
+                    prop_colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
 
-            prop_colors = [
-                "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728",
-                "#9467bd", "#8c564b", "#e377c2", "#7f7f7f",
-                "#bcbd22", "#17becf",
-            ]
+                    fig = MplFigure(figsize=(12, 5))
+                    ax  = fig.add_subplot(111)
 
-            fig = MplFigure(figsize=(13, 5))
-            ax  = fig.add_subplot(111)
-            any_data = False
+                    any_data = False
 
-            if tname:
-                tdata = frozen_store.get(ip, {}).get(tname, {})
-                cols  = tdata.get("columns", {})
-                tss   = tdata.get("timestamps_local", [])
-                n     = len(tss)
-                x     = list(range(n))
-                for c_idx, (param, values) in enumerate(cols.items()):
-                    if len(values) != n or n == 0:
-                        continue
-                    unit = tdata.get("units", {}).get(param, "")
-                    lbl  = f"{param} ({unit})" if unit else param
-                    ax.plot(x, values, label=lbl,
-                            color=prop_colors[c_idx % len(prop_colors)],
-                            linewidth=1.4, marker="o", markersize=3, picker=5)
-                    any_data = True
-                if tss and n > 0:
-                    step = max(1, n // 10)
-                    ax.set_xticks(x[::step])
-                    ax.set_xticklabels(
-                        tss[::step], rotation=35, ha="right", fontsize=7)
-                ax.set_xlabel("Sample index")
-                ax.set_ylabel("Value")
-                ax.set_title(
-                    f"{tname}\n{ip}  [Frozen snapshot \u2014 {n} sample(s)]",
-                    fontsize=9)
-            else:
-                c_idx  = 0
-                all_ts: list = []
-                for tn, tdata in frozen_store.get(ip, {}).items():
-                    cols = tdata.get("columns", {})
-                    tss  = tdata.get("timestamps_local", [])
-                    n    = len(tss)
-                    subs = VEUSZ_OVERLAY_GROUPS.get(group, [])
-                    for param, values in cols.items():
-                        if not any(s in param.lower() for s in subs):
+                    if tname:
+                        # Per-table: one line per numeric parameter
+                        tdata  = frozen_store.get(ip, {}).get(tname, {})
+                        cols   = tdata.get("columns", {})
+                        tss    = tdata.get("timestamps_local", [])
+                        n      = len(tss)
+                        x      = list(range(n))
+                        for c_idx, (param, values) in enumerate(cols.items()):
+                            if len(values) != n or n == 0:
+                                continue
+                            unit  = tdata.get("units", {}).get(param, "")
+                            lbl   = f"{param} ({unit})" if unit else param
+                            color = prop_colors[c_idx % len(prop_colors)]
+                            ax.plot(x, values, label=lbl, color=color,
+                                    linewidth=1.4, marker="o", markersize=3,
+                                    picker=5)
+                            any_data = True
+                        # x-tick labels
+                        if tss and n > 0:
+                            step      = max(1, n // 10)
+                            tick_pos  = x[::step]
+                            tick_lbls = tss[::step]
+                            ax.set_xticks(tick_pos)
+                            ax.set_xticklabels(
+                                tick_lbls, rotation=35, ha="right", fontsize=7)
+                        ax.set_xlabel("Sample index")
+                        ax.set_ylabel("Value")
+                        ax.set_title(f"{tname}\n{ip}  [Frozen snapshot \u2014 {n} sample(s)]",
+                                     fontsize=9)
+                    else:
+                        # Overlay: collect matching parameters across tables
+                        from ab_power_meter_monitor import VEUSZ_OVERLAY_GROUPS
+                        c_idx  = 0
+                        all_ts: list = []
+                        for tn, tdata in frozen_store.get(ip, {}).items():
+                            cols = tdata.get("columns", {})
+                            tss  = tdata.get("timestamps_local", [])
+                            n    = len(tss)
+                            subs = VEUSZ_OVERLAY_GROUPS.get(group, [])
+                            for param, values in cols.items():
+                                if not any(s in param.lower() for s in subs):
+                                    continue
+                                if len(values) != n or n == 0:
+                                    continue
+                                unit   = tdata.get("units", {}).get(param, "")
+                                lbl    = f"{tn[:10]}/{param}"
+                                if unit:
+                                    lbl += f" ({unit})"
+                                color  = prop_colors[c_idx % len(prop_colors)]
+                                x      = list(range(n))
+                                ax.plot(x, values, label=lbl, color=color,
+                                        linewidth=1.4, marker="o", markersize=3,
+                                        picker=5)
+                                c_idx += 1
+                                any_data = True
+                                if len(tss) > len(all_ts):
+                                    all_ts = tss
+                        if all_ts:
+                            nn    = len(all_ts)
+                            step  = max(1, nn // 10)
+                            ax.set_xticks(list(range(0, nn, step)))
+                            ax.set_xticklabels(
+                                all_ts[::step], rotation=35, ha="right", fontsize=7)
+                        ax.set_xlabel("Sample index")
+                        ax.set_ylabel(group or "Value")
+                        ax.set_title(f"Overlay: {group}\n{ip}  [Frozen snapshot]",
+                                     fontsize=9)
+
+                    if not any_data:
+                        ax.text(0.5, 0.5, "No numeric data in snapshot",
+                                ha="center", va="center",
+                                transform=ax.transAxes, fontsize=12, color="grey")
+
+                    ax.grid(alpha=0.3)
+                    ax.legend(fontsize=7, loc="upper left",
+                              bbox_to_anchor=(1.01, 1), borderaxespad=0)
+                    fig.tight_layout(rect=(0, 0, 0.82, 1))
+
+                    # ── Open a GUI-capable backend window without disturbing ──
+                    # the module-level Agg backend used by the main thread.
+                    # Strategy: use a backend-specific FigureManager directly.
+                    # This is the only thread-safe approach on both Windows and
+                    # RHEL 8 — plt.switch_backend() is NOT used because it
+                    # modifies shared global state.
+                    opened = False
+                    for bk in ("Qt5Agg", "Qt6Agg", "TkAgg", "GTK3Agg", "wxAgg"):
+                        try:
+                            import importlib
+                            bk_mod = importlib.import_module(
+                                f"matplotlib.backends.backend_{bk.lower()}")
+                            canvas_cls = getattr(bk_mod, f"FigureCanvas{bk}", None)
+                            if canvas_cls is None:
+                                # Try generic name
+                                canvas_cls = getattr(
+                                    bk_mod, "FigureCanvas", None)
+                            if canvas_cls is None:
+                                continue
+                            canvas = canvas_cls(fig)
+                            mgr    = canvas.manager if hasattr(canvas, "manager")                                      else None
+                            # Some backends expose new_manager() on the canvas class
+                            if mgr is None:
+                                try:
+                                    mgr = canvas_cls.new_manager(fig, num=0)
+                                except Exception:
+                                    mgr = None
+                            if mgr is None:
+                                try:
+                                    from matplotlib.backend_bases import (
+                                        FigureManagerBase)
+                                    mgr = FigureManagerBase(canvas, 0)
+                                except Exception:
+                                    pass
+                            if mgr is not None:
+                                mgr.set_window_title(title)
+                                try:
+                                    mgr.show()
+                                except AttributeError:
+                                    pass
+                            # Use plt.show(block=True) with the figure registered
+                            # This blocks the daemon thread only — Qt event loop free
+                            plt.figure(fig.number) if hasattr(fig, "number") else None
+                            plt.show(block=True)
+                            opened = True
+                            break
+                        except Exception as _bke:
+                            logger.debug("iplot backend %s failed: %s", bk, _bke)
                             continue
-                        if len(values) != n or n == 0:
-                            continue
-                        unit = tdata.get("units", {}).get(param, "")
-                        lbl  = f"{tn[:10]}/{param}"
-                        if unit:
-                            lbl += f" ({unit})"
-                        ax.plot(list(range(n)), values, label=lbl,
-                                color=prop_colors[c_idx % len(prop_colors)],
-                                linewidth=1.4, marker="o", markersize=3, picker=5)
-                        c_idx   += 1
-                        any_data = True
-                        if len(tss) > len(all_ts):
-                            all_ts = tss
-                if all_ts:
-                    nn   = len(all_ts)
-                    step = max(1, nn // 10)
-                    ax.set_xticks(list(range(0, nn, step)))
-                    ax.set_xticklabels(
-                        all_ts[::step], rotation=35, ha="right", fontsize=7)
-                ax.set_xlabel("Sample index")
-                ax.set_ylabel(group or "Value")
-                ax.set_title(f"Overlay: {group}\n{ip}  [Frozen snapshot]",
-                             fontsize=9)
 
-            if not any_data:
-                ax.text(0.5, 0.5, "No numeric data in snapshot",
-                        ha="center", va="center",
-                        transform=ax.transAxes, fontsize=12, color="grey")
+                    if not opened:
+                        # Last-resort: register with current (Agg) backend and show.
+                        # Will display a static window on headless systems.
+                        logger.warning(
+                            "No interactive backend available — "
+                            "showing static figure for '%s'.", title)
+                        try:
+                            plt.figure(fig)
+                            plt.show(block=True)
+                        except Exception as exc:
+                            logger.error("iplot fallback failed: %s", exc)
 
-            ax.grid(alpha=0.3)
-            ax.legend(fontsize=7, loc="upper left",
-                      bbox_to_anchor=(1.01, 1), borderaxespad=0)
-            fig.tight_layout(rect=(0, 0, 0.82, 1))
+                    matplotlib.use("Agg", force=True)   # restore for main thread
 
-            # Embed in a non-modal QDialog with the full NavigationToolbar.
-            dlg = QDialog(self)
-            dlg.setWindowTitle(f"Interactive \u2014 {title}")
-            dlg.resize(1100, 520)
-            dlg.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
+                except Exception as exc:
+                    logger.error("Interactive plot thread error: %s", exc)
 
-            canvas  = FigureCanvas(fig)
-            toolbar = NavToolbar(canvas, dlg)
+                finally:
+                    # Always remove from open set and schedule a preview refresh
+                    # on the GUI thread via a queued invoke.
+                    try:
+                        from qtpy.QtCore import QMetaObject, Qt
+                        QMetaObject.invokeMethod(
+                            self,
+                            "_on_iplot_closed",
+                            Qt.ConnectionType.QueuedConnection,
+                        )
+                    except Exception:
+                        pass
 
-            lay = QVBoxLayout(dlg)
-            lay.setContentsMargins(4, 4, 4, 4)
-            lay.setSpacing(2)
-            lay.addWidget(toolbar)
-            lay.addWidget(canvas, stretch=1)
+            t = threading.Thread(target=_iplot_thread, daemon=True,
+                                 name=f"ab_iplot_{ip}_{tname or group}")
+            t.start()
 
-            # Release the open-set guard when the dialog is closed.
-            dlg.finished.connect(lambda _: self._on_iplot_closed(plot_key))
+        def _on_iplot_closed(self) -> None:
+            """Slot: called from the interactive-plot thread when its window is closed.
 
-            dlg.show()   # non-modal: collection never blocks
-
-        def _on_iplot_closed(self, plot_key: tuple) -> None:
-            """Slot: called when an interactive plot dialog is closed.
-
-            Removes *plot_key* from the open-window tracking set so the same
-            plot can be reopened.  The next normal poll cycle refreshes the
-            preview tab automatically.
+            Removes the plot key from the open-window tracking set and emits
+            a log message.  The next normal poll cycle will automatically
+            refresh the preview tab, so no explicit redraw is needed here —
+            avoiding a redundant (and potentially race-prone) figure rebuild
+            immediately on close.
             """
-            self._iplot_open_set.discard(plot_key)
+            # Clear the whole set — any window that closed belongs here.
+            # In practice only one is open at a time per plot key, but
+            # clearing the set is safe and avoids stale keys if a thread
+            # exited unexpectedly.
+            self._iplot_open_set.clear()
             self._append_log(
                 "Interactive window closed. "
                 "Preview will refresh on the next poll cycle.")
@@ -3897,51 +3882,16 @@ def launch_gui(
                 "stores data in named Python dicts, and\n"
                 "exports to FITS, CSV, XLSX, Veusz, and logs.\n\n"
                 "Author: W. Wallace\n"
-                "Version: 1.4.6\n"
+                "Version: 1.4.1\n"
                 "Python: 3.8+\n"
                 "Qt backend: PySide6 (via QtPy)",
             )
 
         def closeEvent(self, event) -> None:
-            """Ensure all resources are released cleanly on window close.
-
-            Order of operations
-            -------------------
-            1. Close any open interactive-plot QDialogs before the parent
-               window is destroyed (prevents dangling child widget crashes).
-            2. Stop PollThread and wait up to 20 s (worst-case HTTP timeout).
-               Forcibly terminate if still alive after the wait.
-            3. Disconnect PollThread signals so no slots fire after destroy.
-            4. Wait up to 30 s for any in-flight background file flush.
-            5. Detach the QTextEditHandler before the QTextEdit is destroyed.
-            6. Force a GC cycle to release matplotlib Agg buffers and any
-               reference cycles held in TIME_SERIES_STORE / ALL_DEVICE_DATA.
-            """
-            # 1. Close child iplot dialogs — findChildren works on QDialog
-            #    children of this QMainWindow (parented via QDialog(self)).
-            try:
-                from qtpy.QtWidgets import QDialog as _QDlg
-                for dlg in list(self.findChildren(_QDlg)):
-                    try:
-                        dlg.close()
-                    except Exception:
-                        pass
-            except Exception:
-                pass
-
-            # 2+3. Stop PollThread; disconnect signals to prevent post-destroy calls.
-            self._do_stop()   # stops PollThread (waits up to 20 s / terminates)
-            if self._thread is not None:
-                try:
-                    self._thread.data_ready.disconnect()
-                    self._thread.error_occur.disconnect()
-                    self._thread.log_message.disconnect()
-                    self._thread.consec_limit.disconnect()
-                except Exception:
-                    pass   # already disconnected or never connected
-                self._thread = None
-
-            # 4. Wait for any in-flight background file flush.
+            """Ensure background thread and any in-flight flush stop cleanly."""
+            self._do_stop()   # stops PollThread and writes final Veusz
+            # Wait up to 30 s for any background file flush to complete so we
+            # do not close the process while CSV / XLSX / log is still writing.
             if self._flush_future is not None and not self._flush_future.done():
                 logger.info(
                     "Waiting for background flush to finish before closing…")
@@ -3949,16 +3899,11 @@ def launch_gui(
                     self._flush_future.result(timeout=30)
                 except Exception as exc:
                     logger.error("Flush error on close: %s", exc)
-            self._flush_future = None
-
-            # 5. Detach QTextEditHandler before widget is destroyed.
+            # Detach the QTextEditHandler before the widget is destroyed
+            # to prevent the logging framework writing to a dangling pointer.
             if self._log_handler is not None:
                 logging.getLogger("ABMonitor").removeHandler(self._log_handler)
                 self._log_handler = None
-
-            # 6. Release large in-memory stores and matplotlib Agg buffers.
-            gc.collect()
-
             event.accept()
 
     # -----------------------------------------------------------------------
@@ -4484,16 +4429,6 @@ def run_headless(cfg: Dict[str, Any]) -> None:
         else:
             logger.info("No File Output Selected, Nothing Generated")
 
-    # Clean up any leftover stop-signal file so the next run does not exit
-    # immediately (handles the case where the file was created externally but
-    # the loop had already exited via a different path before detecting it).
-    try:
-        if os.path.exists(STOP_SIGNAL_FILE):
-            os.remove(STOP_SIGNAL_FILE)
-            logger.debug("Removed residual stop-signal file on clean exit.")
-    except OSError:
-        pass
-
     # ── End-of-loop console output ──────────────────────────────────────────────
     # Print the final snapshot dicts only when NOT in silent mode.
     # Previously this fired unconditionally, wasting CPU emitting output
@@ -4522,12 +4457,6 @@ def run_headless(cfg: Dict[str, Any]) -> None:
                 _devnull_stderr.close()
             except OSError:
                 pass
-
-    # Release large in-memory structures accumulated over the run so that
-    # callers who import and invoke main() do not retain MBs of stale data
-    # in module globals after the function returns.  TIME_SERIES_STORE is
-    # still referenced by the return value in main() — only collect cycles.
-    gc.collect()
 
 
 # ===========================================================================

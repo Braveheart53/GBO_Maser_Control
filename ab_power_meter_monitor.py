@@ -27,7 +27,7 @@ Phone  : +1 (304) 456-2216
 Email  : wwallace@nrao.edu
 Email2 : naval.antennas@gmail.com 
 Python : 3.8+
-Version: 1.4.5
+Version: 1.4.6
 Deps   : PySide6, matplotlib, requests, beautifulsoup4, lxml,
          astropy, openpyxl, veusz  (pip install each)
 
@@ -2811,9 +2811,13 @@ def launch_gui(
             super().__init__(parent)
             self.config = config
             self._running = False
+            # Event is set by stop() so the inter-poll sleep wakes immediately
+            # even if poll_all_devices() is currently blocked on an HTTP request.
+            self._stop_event = threading.Event()
 
         def run(self) -> None:
             self._running = True
+            self._stop_event.clear()
             _consec_fails = 0
             _max_fails = int(self.config.get(
                 "headless_max_consec_fails", HEADLESS_MAX_CONSEC_FAILS))
@@ -2853,14 +2857,19 @@ def launch_gui(
                 except Exception as exc:
                     self.error_occur.emit(f"Poll error: {exc}")
 
-                # Sleep in 0.5 s chunks so stop() is responsive
+                # Sleep in 0.5 s chunks so stop() is responsive.
+                # _stop_event.wait() wakes immediately when stop() is called,
+                # even if the current poll blocked for the full HTTP timeout.
                 remaining = self.config.get("sample_period", SAMPLE_PERIOD_SEC)
                 while remaining > 0 and self._running:
-                    time.sleep(min(0.5, remaining))
+                    if self._stop_event.wait(timeout=min(0.5, remaining)):
+                        break
                     remaining -= 0.5
 
         def stop(self) -> None:
+            """Signal the run loop to exit and wake the inter-poll sleep."""
             self._running = False
+            self._stop_event.set()
 
     # -----------------------------------------------------------------------
     # %%% Main Window
@@ -3434,13 +3443,21 @@ def launch_gui(
             """Stop the auto-poll thread, then write final Veusz file if enabled."""
             if self._thread:
                 self._thread.stop()
-                self._thread.wait(3000)
+                # Wait up to 20 s — poll_all_devices may be mid-HTTP request.
+                # HTTP_TIMEOUT_SEC(5) × retries(3) + margin = ~18 s worst case.
+                if not self._thread.wait(20_000):
+                    logger.warning(
+                        "_do_stop: PollThread did not finish in 20 s — "
+                        "terminating forcibly.")
+                    self._thread.terminate()
+                    self._thread.wait(2000)
             self._btn_start.setEnabled(True)
             self._btn_stop.setEnabled(False)
             self._status_bar.showMessage("Auto-polling stopped.")
-            # Write Veusz with all accumulated samples now that polling has stopped
+            # Write Veusz with all accumulated samples now that polling has stopped.
+            # Use TIME_SERIES_STORE (canonical accumulator) not ALL_DEVICE_DATA.
             cfg = self._get_runtime_config()
-            if cfg.get("enable_veusz") and ALL_DEVICE_DATA:
+            if cfg.get("enable_veusz") and TIME_SERIES_STORE:
                 veusz_dir = cfg.get("veusz_dir", VEUSZ_DIR)
                 self._append_log(
                     "Writing final Veusz file with all accumulated samples…")
@@ -3880,16 +3897,51 @@ def launch_gui(
                 "stores data in named Python dicts, and\n"
                 "exports to FITS, CSV, XLSX, Veusz, and logs.\n\n"
                 "Author: W. Wallace\n"
-                "Version: 1.4.5\n"
+                "Version: 1.4.6\n"
                 "Python: 3.8+\n"
                 "Qt backend: PySide6 (via QtPy)",
             )
 
         def closeEvent(self, event) -> None:
-            """Ensure background thread and any in-flight flush stop cleanly."""
-            self._do_stop()   # stops PollThread and writes final Veusz
-            # Wait up to 30 s for any background file flush to complete so we
-            # do not close the process while CSV / XLSX / log is still writing.
+            """Ensure all resources are released cleanly on window close.
+
+            Order of operations
+            -------------------
+            1. Close any open interactive-plot QDialogs before the parent
+               window is destroyed (prevents dangling child widget crashes).
+            2. Stop PollThread and wait up to 20 s (worst-case HTTP timeout).
+               Forcibly terminate if still alive after the wait.
+            3. Disconnect PollThread signals so no slots fire after destroy.
+            4. Wait up to 30 s for any in-flight background file flush.
+            5. Detach the QTextEditHandler before the QTextEdit is destroyed.
+            6. Force a GC cycle to release matplotlib Agg buffers and any
+               reference cycles held in TIME_SERIES_STORE / ALL_DEVICE_DATA.
+            """
+            # 1. Close child iplot dialogs — findChildren works on QDialog
+            #    children of this QMainWindow (parented via QDialog(self)).
+            try:
+                from qtpy.QtWidgets import QDialog as _QDlg
+                for dlg in list(self.findChildren(_QDlg)):
+                    try:
+                        dlg.close()
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
+            # 2+3. Stop PollThread; disconnect signals to prevent post-destroy calls.
+            self._do_stop()   # stops PollThread (waits up to 20 s / terminates)
+            if self._thread is not None:
+                try:
+                    self._thread.data_ready.disconnect()
+                    self._thread.error_occur.disconnect()
+                    self._thread.log_message.disconnect()
+                    self._thread.consec_limit.disconnect()
+                except Exception:
+                    pass   # already disconnected or never connected
+                self._thread = None
+
+            # 4. Wait for any in-flight background file flush.
             if self._flush_future is not None and not self._flush_future.done():
                 logger.info(
                     "Waiting for background flush to finish before closing…")
@@ -3897,11 +3949,16 @@ def launch_gui(
                     self._flush_future.result(timeout=30)
                 except Exception as exc:
                     logger.error("Flush error on close: %s", exc)
-            # Detach the QTextEditHandler before the widget is destroyed
-            # to prevent the logging framework writing to a dangling pointer.
+            self._flush_future = None
+
+            # 5. Detach QTextEditHandler before widget is destroyed.
             if self._log_handler is not None:
                 logging.getLogger("ABMonitor").removeHandler(self._log_handler)
                 self._log_handler = None
+
+            # 6. Release large in-memory stores and matplotlib Agg buffers.
+            gc.collect()
+
             event.accept()
 
     # -----------------------------------------------------------------------
@@ -4427,6 +4484,16 @@ def run_headless(cfg: Dict[str, Any]) -> None:
         else:
             logger.info("No File Output Selected, Nothing Generated")
 
+    # Clean up any leftover stop-signal file so the next run does not exit
+    # immediately (handles the case where the file was created externally but
+    # the loop had already exited via a different path before detecting it).
+    try:
+        if os.path.exists(STOP_SIGNAL_FILE):
+            os.remove(STOP_SIGNAL_FILE)
+            logger.debug("Removed residual stop-signal file on clean exit.")
+    except OSError:
+        pass
+
     # ── End-of-loop console output ──────────────────────────────────────────────
     # Print the final snapshot dicts only when NOT in silent mode.
     # Previously this fired unconditionally, wasting CPU emitting output
@@ -4455,6 +4522,12 @@ def run_headless(cfg: Dict[str, Any]) -> None:
                 _devnull_stderr.close()
             except OSError:
                 pass
+
+    # Release large in-memory structures accumulated over the run so that
+    # callers who import and invoke main() do not retain MBs of stale data
+    # in module globals after the function returns.  TIME_SERIES_STORE is
+    # still referenced by the return value in main() — only collect cycles.
+    gc.collect()
 
 
 # ===========================================================================
