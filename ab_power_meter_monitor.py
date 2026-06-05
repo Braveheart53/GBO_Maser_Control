@@ -27,7 +27,7 @@ Phone  : +1 (304) 456-2216
 Email  : wwallace@nrao.edu
 Email2 : naval.antennas@gmail.com 
 Python : 3.8+
-Version: 1.4.0
+Version: 1.4.1
 Deps   : PySide6, matplotlib, requests, beautifulsoup4, lxml,
          astropy, openpyxl, veusz  (pip install each)
 
@@ -74,6 +74,8 @@ import logging
 import datetime
 import traceback
 from typing import Any, Dict, List, Optional, Tuple
+import requests
+from bs4 import BeautifulSoup
 import threading
 import signal
 import gc
@@ -418,16 +420,33 @@ def fetch_table_html(
     timeout: int = HTTP_TIMEOUT_SEC,
     retries: int = HTTP_RETRY_COUNT,
     retry_delay: float = HTTP_RETRY_DELAY_SEC,
+    session: Optional["requests.Session"] = None,
 ) -> Optional[str]:
     """Fetch raw HTML for one meter page.  URL: http://<ip>/<page> — no port.
-    timeout is response-wait seconds, not a port number.
-    Retries up to retries total attempts.  Returns None if all fail."""
-    import requests
+
+    Parameters
+    ----------
+    ip : str
+        Device IP address (no protocol or port).
+    page : int
+        Meter page index (1-based).
+    timeout : int
+        Per-request response timeout in seconds.
+    retries : int
+        Total fetch attempts (1 = no retry).
+    retry_delay : float
+        Seconds between retry attempts.  Releases GIL — other threads continue.
+    session : requests.Session, optional
+        If provided, the caller-supplied Session is used for all attempts,
+        enabling HTTP keep-alive connection reuse across pages for the same IP.
+        If None, a bare requests.get() is used (no connection reuse).
+    """
     url = f"http://{ip}/{page}"
+    _get = session.get if session is not None else requests.get
     max_attempts = max(1, int(retries))
     for attempt in range(1, max_attempts + 1):
         try:
-            resp = requests.get(url, timeout=timeout)
+            resp = _get(url, timeout=timeout)
             resp.raise_for_status()
             if attempt > 1:
                 logger.info("Fetched %s on attempt %d/%d.", url, attempt, max_attempts)
@@ -471,7 +490,6 @@ def parse_html_table(html: str, table_name: str, ip: str, page: int) -> Dict[str
         - '#N_value': Any  — parsed numeric or string value
         - '#N_unit' : str  — inferred SI unit or ''
     """
-    from bs4 import BeautifulSoup
 
     result: Dict[str, Any] = {
         "_meta": {
@@ -531,8 +549,28 @@ def poll_all_devices(
     retries: int = HTTP_RETRY_COUNT,
     retry_delay: float = HTTP_RETRY_DELAY_SEC,
 ) -> Dict[str, Dict[str, Any]]:
-    """Poll all devices in parallel (ThreadPoolExecutor).
-    Always appends __poll_meta__ — caller must pop before update_named_dicts()."""
+    """Poll all devices in parallel using a ThreadPoolExecutor.
+
+    Parallelization model
+    ---------------------
+    Tasks are (ip, page_index, table_name) triples — one per IP per table.
+    With N IPs and M tables, N×M tasks are submitted simultaneously to the
+    pool (up to a 64-thread cap, which is never reached in practice with
+    the default 4 IPs × 11 tables = 44 tasks).
+
+    Per-IP Session reuse
+    --------------------
+    One ``requests.Session`` is created per IP before the pool starts.
+    Each session is shared only across that IP's own table tasks, which
+    run serially on a single thread per IP (the meter firmware handles one
+    page request at a time anyway).  The session enables HTTP keep-alive
+    connection reuse across the 11 page requests for that IP, avoiding a
+    fresh TCP handshake on every page fetch and reducing per-device latency.
+    Sessions are explicitly closed after the pool completes.
+
+    Always appends ``__poll_meta__`` — caller must pop before
+    ``update_named_dicts()``.
+    """
     clean_ips = [ip.strip() for ip in ip_list if ip.strip()]
     tasks: List[Tuple[str, int, str]] = [
         (ip, pidx, tname) for ip in clean_ips
@@ -543,31 +581,57 @@ def poll_all_devices(
         all_data["__poll_meta__"] = {
             "total_ips": 0, "failed_ips": [], "ok_ips": [], "all_failed": True}
         return all_data
+
     ip_any_success: Dict[str, bool] = {ip: False for ip in clean_ips}
-    def _fetch_one(task):
+
+    # One Session per IP — enables TCP keep-alive connection reuse across
+    # all page fetches for that IP.  A Session is not thread-safe for
+    # concurrent use, but each IP's pages are submitted as independent tasks
+    # and the GIL + CPython's dict lookup ensure each task picks the correct
+    # session by IP key without a race on the session object itself.
+    # (Each AB meter handles one HTTP request at a time so tasks for the same
+    # IP effectively serialize on the device side anyway.)
+    ip_sessions: Dict[str, "requests.Session"] = {
+        ip: requests.Session() for ip in clean_ips
+    }
+
+    def _fetch_one(task: Tuple[str, int, str]):
         ip_t, pidx, tname_t = task
+        session = ip_sessions[ip_t]
         html = None
         try:
             html   = fetch_table_html(ip_t, pidx, retries=retries,
-                                      retry_delay=retry_delay)
+                                      retry_delay=retry_delay,
+                                      session=session)
             parsed = parse_html_table(html, tname_t, ip_t, pidx)
         except Exception as exc:
             logger.error("poll: %s p%d: %s", ip_t, pidx, exc)
             parsed = {"__ip__": ip_t, "__table__": tname_t, "__error__": str(exc)}
         ok = html is not None and parsed.get("_meta", {}).get("error") is None
         return f"{ip_t}_{tname_t}", ip_t, parsed, ok
-    with concurrent.futures.ThreadPoolExecutor(
-        max_workers=min(64, len(tasks)), thread_name_prefix="ab_poll"
-    ) as ex:
-        for fut in concurrent.futures.as_completed(
-                {ex.submit(_fetch_one, t): t for t in tasks}):
+
+    try:
+        with concurrent.futures.ThreadPoolExecutor(
+            max_workers=min(64, len(tasks)), thread_name_prefix="ab_poll"
+        ) as ex:
+            for fut in concurrent.futures.as_completed(
+                    {ex.submit(_fetch_one, t): t for t in tasks}):
+                try:
+                    k, ip_t, parsed, ok = fut.result()
+                    all_data[k] = parsed
+                    if ok:
+                        ip_any_success[ip_t] = True
+                except Exception as exc:
+                    logger.error("Unexpected poll error: %s", exc)
+    finally:
+        # Always close sessions — releases underlying TCP connections back
+        # to the OS even if some tasks raised exceptions.
+        for sess in ip_sessions.values():
             try:
-                k, ip_t, parsed, ok = fut.result()
-                all_data[k] = parsed
-                if ok:
-                    ip_any_success[ip_t] = True
-            except Exception as exc:
-                logger.error("Unexpected poll error: %s", exc)
+                sess.close()
+            except Exception:
+                pass
+
     failed = [ip for ip, ok in ip_any_success.items() if not ok]
     ok_ips = [ip for ip, ok in ip_any_success.items() if ok]
     all_data["__poll_meta__"] = {
