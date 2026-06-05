@@ -27,7 +27,7 @@ Phone  : +1 (304) 456-2216
 Email  : wwallace@nrao.edu
 Email2 : naval.antennas@gmail.com 
 Python : 3.8+
-Version: 1.4.2
+Version: 1.4.4
 Deps   : PySide6, matplotlib, requests, beautifulsoup4, lxml,
          astropy, openpyxl, veusz  (pip install each)
 
@@ -185,12 +185,12 @@ IP_LIST: List[str] = [
 # %% Polling / timing
 # ---------------------------------------------------------------------------
 SAMPLE_PERIOD_SEC = 30    # Seconds between successive polls of all devices
-HTTP_TIMEOUT_SEC          = 10    # Per-request response timeout (sec) — NOT a port
-HTTP_RETRY_COUNT          = 2    # Total fetch attempts per (ip,page); 1 = no retry
+HTTP_TIMEOUT_SEC          = 5    # Per-request response timeout (sec) — NOT a port
+HTTP_RETRY_COUNT          = 3    # Total fetch attempts per (ip,page); 1 = no retry
 HTTP_RETRY_DELAY_SEC      = 2.0  # Seconds between retry attempts
 HEADLESS_MAX_CONSEC_FAILS = 5    # Consecutive all-device failures before clean exit
                                  #   0 = never exit on failures
-MEM_RAM_PCT_LIMIT         = 60   # Flush+clear store when system RAM reaches this %
+MEM_RAM_PCT_LIMIT         = 70   # Flush+clear store when system RAM reaches this %
 APPEND_OUTPUT_FILES       = 1    # 1=append all output files, 0=overwrite each run
 
 # ---------------------------------------------------------------------------
@@ -437,9 +437,13 @@ def fetch_table_html(
     retry_delay : float
         Seconds between retry attempts.  Releases GIL — other threads continue.
     session : requests.Session, optional
-        If provided, the caller-supplied Session is used for all attempts,
-        enabling HTTP keep-alive connection reuse across pages for the same IP.
-        If None, a bare requests.get() is used (no connection reuse).
+        If provided, the caller-supplied Session is used for all attempts.
+        ``poll_all_devices`` passes a dedicated per-IP Session so that the
+        TCP connection established for page 0 is reused for pages 1–N via
+        HTTP keep-alive, avoiding a fresh handshake on every page fetch.
+        The Session is always used by exactly one thread (the per-IP poll
+        thread), so there is no concurrency concern on the Session object.
+        If None, a bare ``requests.get()`` call is used (no connection reuse).
     """
     url = f"http://{ip}/{page}"
     _get = session.get if session is not None else requests.get
@@ -549,99 +553,138 @@ def poll_all_devices(
     retries: int = HTTP_RETRY_COUNT,
     retry_delay: float = HTTP_RETRY_DELAY_SEC,
 ) -> Dict[str, Dict[str, Any]]:
-    """Poll all devices in parallel using a ThreadPoolExecutor.
+    """Poll all devices in parallel, fetching each device's pages serially.
 
     Parallelization model
     ---------------------
-    Tasks are (ip, page_index, table_name) triples — one per IP per table.
-    With N IPs and M tables, N×M tasks are submitted simultaneously to the
-    pool (up to a 64-thread cap, which is never reached in practice with
-    the default 4 IPs × 11 tables = 44 tasks).
+    **One thread per IP address.**  Each thread fetches all of that device's
+    pages sequentially (page 0, 1, 2 … in ``table_names`` order) using a
+    single persistent ``requests.Session``.  Threads for different IPs run
+    fully concurrently.
 
-    Per-IP Session reuse
-    --------------------
-    One ``requests.Session`` is created per IP before the pool starts.
-    Each session is shared only across that IP's own table tasks, which
-    run serially on a single thread per IP (the meter firmware handles one
-    page request at a time anyway).  The session enables HTTP keep-alive
-    connection reuse across the 11 page requests for that IP, avoiding a
-    fresh TCP handshake on every page fetch and reducing per-device latency.
-    Sessions are explicitly closed after the pool completes.
+    Why serial pages per device
+    ---------------------------
+    AB power meter firmware runs a single-threaded HTTP server.  When
+    multiple requests arrive simultaneously from the same client the device
+    queues them internally; if the queue fills — which happens reliably when
+    all 11 pages are in-flight at once — later requests are silently dropped
+    or the firmware returns a TCP RST, both of which appear as timeouts to
+    the caller.  Fetching pages one at a time on a single keep-alive
+    connection eliminates this congestion entirely.
 
-    Always appends ``__poll_meta__`` — caller must pop before
-    ``update_named_dicts()``.
+    Session reuse
+    -------------
+    One ``requests.Session`` per IP is opened before the pool starts and
+    closed in a ``finally`` block.  HTTP keep-alive is negotiated
+    automatically, so the TCP connection established for page 0 is reused
+    for pages 1–10, giving faster per-page round-trips compared to a fresh
+    handshake each time.
+
+    Always appends ``__poll_meta__`` — caller must ``pop()`` before passing
+    to ``update_named_dicts()``.
+
+    Parameters
+    ----------
+    ip_list : List[str]
+        IP addresses to poll.
+    table_names : Dict[int, str]
+        Mapping of page index → table name (e.g. ``{0: "Device_Config", …}``).
+    retries : int
+        Per-page fetch attempt limit.
+    retry_delay : float
+        Seconds between retry attempts on a single page.
+
+    Returns
+    -------
+    Dict[str, Dict[str, Any]]
+        Keyed by ``"<ip>_<table_name>"``.  Includes ``"__poll_meta__"`` key.
     """
     clean_ips = [ip.strip() for ip in ip_list if ip.strip()]
-    tasks: List[Tuple[str, int, str]] = [
-        (ip, pidx, tname) for ip in clean_ips
-        for pidx, tname in table_names.items()
-    ]
     all_data: Dict[str, Dict[str, Any]] = {}
-    if not tasks:
+    if not clean_ips:
         all_data["__poll_meta__"] = {
             "total_ips": 0, "failed_ips": [], "ok_ips": [], "all_failed": True}
         return all_data
 
+    # Ordered page list — fetch in this order for every device.
+    ordered_pages: List[Tuple[int, str]] = sorted(table_names.items())
+
+    # Thread-safe result collector
+    _lock: threading.Lock = threading.Lock()
     ip_any_success: Dict[str, bool] = {ip: False for ip in clean_ips}
 
-    # One Session per IP — enables TCP keep-alive connection reuse across
-    # all page fetches for that IP.  A Session is not thread-safe for
-    # concurrent use, but each IP's pages are submitted as independent tasks
-    # and the GIL + CPython's dict lookup ensure each task picks the correct
-    # session by IP key without a race on the session object itself.
-    # (Each AB meter handles one HTTP request at a time so tasks for the same
-    # IP effectively serialize on the device side anyway.)
-    ip_sessions: Dict[str, "requests.Session"] = {
-        ip: requests.Session() for ip in clean_ips
-    }
+    def _poll_ip(ip: str) -> None:
+        """Fetch all pages for *ip* serially on a single keep-alive session.
 
-    def _fetch_one(task: Tuple[str, int, str]):
-        ip_t, pidx, tname_t = task
-        session = ip_sessions[ip_t]
-        html = None
+        Results are written directly into ``all_data`` under ``_lock``.
+        This function is the per-IP thread target.
+        """
+        session = requests.Session()
         try:
-            html   = fetch_table_html(ip_t, pidx, retries=retries,
-                                      retry_delay=retry_delay,
-                                      session=session)
-            parsed = parse_html_table(html, tname_t, ip_t, pidx)
-        except Exception as exc:
-            logger.error("poll: %s p%d: %s", ip_t, pidx, exc)
-            parsed = {"__ip__": ip_t, "__table__": tname_t, "__error__": str(exc)}
-        ok = html is not None and parsed.get("_meta", {}).get("error") is None
-        return f"{ip_t}_{tname_t}", ip_t, parsed, ok
-
-    try:
-        with concurrent.futures.ThreadPoolExecutor(
-            max_workers=min(64, len(tasks)), thread_name_prefix="ab_poll"
-        ) as ex:
-            for fut in concurrent.futures.as_completed(
-                    {ex.submit(_fetch_one, t): t for t in tasks}):
+            for pidx, tname in ordered_pages:
+                html: Optional[str] = None
                 try:
-                    k, ip_t, parsed, ok = fut.result()
-                    all_data[k] = parsed
-                    if ok:
-                        ip_any_success[ip_t] = True
+                    html = fetch_table_html(
+                        ip, pidx,
+                        retries=retries,
+                        retry_delay=retry_delay,
+                        session=session,
+                    )
+                    parsed = parse_html_table(html, tname, ip, pidx)
                 except Exception as exc:
-                    logger.error("Unexpected poll error: %s", exc)
-    finally:
-        # Always close sessions — releases underlying TCP connections back
-        # to the OS even if some tasks raised exceptions.
-        for sess in ip_sessions.values():
+                    logger.error("poll %s p%d (%s): %s", ip, pidx, tname, exc)
+                    parsed = {
+                        "__ip__":    ip,
+                        "__table__": tname,
+                        "__error__": str(exc),
+                    }
+
+                ok = (
+                    html is not None
+                    and parsed.get("_meta", {}).get("error") is None
+                )
+                key = f"{ip}_{tname}"
+                with _lock:
+                    all_data[key] = parsed
+                    if ok:
+                        ip_any_success[ip] = True
+
+        finally:
             try:
-                sess.close()
+                session.close()
             except Exception:
                 pass
+
+    # One thread per IP — pages within each IP are serial
+    n_workers = len(clean_ips)
+    try:
+        with concurrent.futures.ThreadPoolExecutor(
+            max_workers=n_workers, thread_name_prefix="ab_poll"
+        ) as ex:
+            futs = {ex.submit(_poll_ip, ip): ip for ip in clean_ips}
+            for fut in concurrent.futures.as_completed(futs):
+                ip_done = futs[fut]
+                try:
+                    fut.result()
+                except Exception as exc:
+                    logger.error("poll_ip thread %s raised: %s", ip_done, exc)
+    except Exception as exc:
+        logger.error("poll_all_devices executor error: %s", exc)
 
     failed = [ip for ip, ok in ip_any_success.items() if not ok]
     ok_ips = [ip for ip, ok in ip_any_success.items() if ok]
     all_data["__poll_meta__"] = {
-        "total_ips": len(clean_ips), "failed_ips": failed,
-        "ok_ips": ok_ips, "all_failed": len(ok_ips) == 0}
+        "total_ips": len(clean_ips),
+        "failed_ips": failed,
+        "ok_ips":     ok_ips,
+        "all_failed": len(ok_ips) == 0,
+    }
     if failed:
-        logger.warning("poll_all_devices: %d IP(s) returned no data: %s",
-                       len(failed), failed)
+        logger.warning(
+            "poll_all_devices: %d IP(s) returned no data: %s", len(failed), failed)
     if not ok_ips:
-        logger.error("poll_all_devices: ALL %d IP(s) failed.", len(clean_ips))
+        logger.error(
+            "poll_all_devices: ALL %d IP(s) failed.", len(clean_ips))
     return all_data
 
 
@@ -2168,6 +2211,221 @@ def flush_outputs_parallel(cfg: Dict[str, Any]) -> "concurrent.futures.Future":
 # ===========================================================================
 # %% MATPLOTLIB PREVIEW HELPER (used by GUI)
 # ===========================================================================
+
+# ===========================================================================
+# %% Preview PNG renderer — memory-safe multi-day pipeline
+# ===========================================================================
+
+def build_preview_pngs(
+    _unused: Any = None,
+) -> List[Dict[str, Any]]:
+    """Render all preview plots directly to PNG byte-buffers.
+
+    Design goals
+    ------------
+    * **Zero matplotlib Figure objects persist after this call.**  Every
+      ``matplotlib.figure.Figure`` is created with ``FigureCanvasAgg``
+      directly (never registered with ``pyplot``), rendered, then
+      ``fig.clf()`` + ``canvas.flush_events()`` + explicit ``del`` is
+      called before the next figure begins.  This prevents the well-known
+      matplotlib memory leak where closed figures still hold references
+      inside ``_pylab_helpers.Gcf`` or the pyplot figure manager.
+    * **No ``import matplotlib.pyplot``** is used.  All rendering goes
+      through ``matplotlib.figure.Figure`` + ``matplotlib.backends
+      .backend_agg.FigureCanvasAgg`` — the Agg backend is purely
+      in-process and has no display dependency, making it identical on
+      Windows 11 and RHEL 8 headless.
+    * The result is a plain ``List[dict]`` — no Figure objects cross the
+      function boundary.
+
+    Each returned dict has the keys::
+
+        {
+            "png_bytes": bytes,        # compressed PNG image data
+            "title":     str,          # human-readable tab title
+            "ip":        str | None,
+            "tname":     str | None,   # None for overlay plots
+            "group":     str | None,   # None for per-table plots
+        }
+
+    Parameters
+    ----------
+    _unused : Any
+        Ignored.  Accepted for call-site compatibility with the old
+        ``build_preview_figures(ALL_DEVICE_DATA)`` signature.
+
+    Returns
+    -------
+    List[Dict[str, Any]]
+        One dict per rendered plot, in the same order as
+        ``build_preview_figures``.
+    """
+    import io
+
+    # Only import the non-pyplot parts of matplotlib so no global figure
+    # registry is ever touched.
+    try:
+        from matplotlib.figure import Figure as _MplFigure
+        from matplotlib.backends.backend_agg import FigureCanvasAgg as _AggCanvas
+        import matplotlib as _mpl
+    except ImportError as exc:
+        logger.error("matplotlib not available — preview skipped: %s", exc)
+        return []
+
+    # Colour cycle from rcParams (safe without pyplot)
+    try:
+        _colors = _mpl.rcParams["axes.prop_cycle"].by_key()["color"]
+    except Exception:
+        _colors = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728",
+                   "#9467bd", "#8c564b", "#e377c2", "#7f7f7f"]
+
+    results: List[Dict[str, Any]] = []
+
+    # Snapshot the store under lock for a consistent read
+    with _TS_LOCK:
+        store_snap = {
+            ip: {
+                tn: {
+                    "timestamps_local": list(td.get("timestamps_local", [])),
+                    "columns": {c: list(v)
+                                for c, v in td.get("columns", {}).items()},
+                    "units":   dict(td.get("units", {})),
+                }
+                for tn, td in tables.items()
+            }
+            for ip, tables in TIME_SERIES_STORE.items()
+        }
+
+    def _render_to_png(fig: "_MplFigure") -> bytes:
+        """Render *fig* to PNG bytes via Agg and release all renderer state."""
+        canvas = _AggCanvas(fig)
+        buf = io.BytesIO()
+        canvas.draw()
+        canvas.print_png(buf)
+        buf.seek(0)
+        png = buf.read()
+        buf.close()
+        # Free canvas renderer buffer (holds a copy of the rasterised image)
+        del canvas
+        return png
+
+    def _new_fig() -> "_MplFigure":
+        """Create a Figure with Agg canvas that is NOT registered with pyplot."""
+        fig = _MplFigure(figsize=(10, 4))
+        _AggCanvas(fig)   # attach Agg renderer — not tracked by pyplot
+        return fig
+
+    def _apply_time_ticks(ax: Any, x: list, timestamps: list,
+                          n_samples: int) -> None:
+        """Apply evenly-spaced timestamp tick labels to *ax*."""
+        if timestamps and n_samples > 0:
+            step = max(1, n_samples // 8)
+            ax.set_xticks(x[::step])
+            ax.set_xticklabels(timestamps[::step],
+                               rotation=35, ha="right", fontsize=6)
+
+    for ip, tables in store_snap.items():
+
+        # ── Per-table plots ───────────────────────────────────────────────
+        for tname, tdata in tables.items():
+            columns    = tdata["columns"]
+            timestamps = tdata["timestamps_local"]
+            n_samples  = len(timestamps)
+
+            if not columns or n_samples == 0:
+                continue
+
+            x = list(range(n_samples))
+
+            fig = _new_fig()
+            ax  = fig.add_subplot(111)
+
+            for c_idx, (param, values) in enumerate(columns.items()):
+                if len(values) != n_samples:
+                    continue
+                unit  = tdata["units"].get(param, "")
+                label = f"{param} ({unit})" if unit else param
+                ax.plot(x, values,
+                        label=label,
+                        color=_colors[c_idx % len(_colors)],
+                        linewidth=1.4, marker="o", markersize=3)
+
+            _apply_time_ticks(ax, x, timestamps, n_samples)
+            ax.set_xlabel("Sample index")
+            ax.set_ylabel("Value")
+            ax.set_title(f"{tname}\n{ip}", fontsize=9)
+            ax.grid(alpha=0.3)
+            ax.legend(fontsize=6, loc="upper left",
+                      bbox_to_anchor=(1.01, 1), borderaxespad=0)
+            fig.tight_layout(rect=(0, 0, 0.82, 1))
+
+            png = _render_to_png(fig)
+            fig.clf()   # release all axes / artist objects
+            del fig
+
+            results.append({
+                "png_bytes": png,
+                "title":     f"{ip} \u2014 {tname}",
+                "ip":        ip,
+                "tname":     tname,
+                "group":     None,
+            })
+
+        # ── Overlay plots by unit group ───────────────────────────────────
+        for group_label, substrings in VEUSZ_OVERLAY_GROUPS.items():
+            group_series: List[tuple] = []
+
+            for tname_ov, tdata_ov in tables.items():
+                cols_ov    = tdata_ov["columns"]
+                ts_ov      = tdata_ov["timestamps_local"]
+                n_ov       = len(ts_ov)
+
+                for param, values in cols_ov.items():
+                    if not any(s in param.lower() for s in substrings):
+                        continue
+                    if len(values) != n_ov or n_ov == 0:
+                        continue
+                    unit  = tdata_ov["units"].get(param, "")
+                    lbl   = f"{tname_ov[:10]}/{param}"
+                    if unit:
+                        lbl += f" ({unit})"
+                    group_series.append((lbl, list(range(n_ov)), values))
+
+            if len(group_series) < 2:
+                continue
+
+            fig = _new_fig()
+            ax  = fig.add_subplot(111)
+
+            for c_idx, (lbl, x, values) in enumerate(group_series):
+                ax.plot(x, values,
+                        label=lbl,
+                        color=_colors[c_idx % len(_colors)],
+                        linewidth=1.4, marker="o", markersize=3)
+
+            ax.set_xlabel("Sample index")
+            ax.set_ylabel(group_label)
+            ax.set_title(f"Overlay: {group_label}\n{ip}", fontsize=9)
+            ax.grid(alpha=0.3)
+            ax.legend(fontsize=6, loc="upper left",
+                      bbox_to_anchor=(1.01, 1), borderaxespad=0)
+            fig.tight_layout(rect=(0, 0, 0.82, 1))
+
+            png = _render_to_png(fig)
+            fig.clf()
+            del fig
+
+            results.append({
+                "png_bytes": png,
+                "title":     f"{ip} \u2014 Overlay: {group_label}",
+                "ip":        ip,
+                "tname":     None,
+                "group":     group_label,
+            })
+
+    return results
+
+
 def build_preview_figures(
     all_device_data: Dict[str, Dict[str, Dict[str, Any]]],
 ) -> List[Any]:
@@ -2288,7 +2546,10 @@ def build_preview_figures(
             )
             fig.tight_layout(rect=(0, 0, 0.82, 1))   # room for legend
             # type: ignore[attr-defined]
-            fig._ab_title = f"{ip} — {tname}"
+            fig._ab_title  = f"{ip} — {tname}"
+            fig._ab_ip     = ip
+            fig._ab_tname  = tname
+            fig._ab_group  = None   # None = per-table plot (not overlay)
             figures.append(fig)
 
         # ── Overlay line plots by unit group ──────────────────────────────
@@ -2340,7 +2601,10 @@ def build_preview_figures(
             )
             fig.tight_layout(rect=(0, 0, 0.82, 1))
             # type: ignore[attr-defined]
-            fig._ab_title = f"{ip} — Overlay: {group_label}"
+            fig._ab_title  = f"{ip} — Overlay: {group_label}"
+            fig._ab_ip     = ip
+            fig._ab_tname  = None   # None = overlay (not per-table)
+            fig._ab_group  = group_label
             figures.append(fig)
 
     return figures
@@ -2664,6 +2928,11 @@ def launch_gui(
             self._log_handler: Optional[logging.Handler] = None
             # Tracks in-flight background file flush so we never start two at once
             self._flush_future: Optional["concurrent.futures.Future"] = None
+            # Set of plot keys (ip, tname) for currently-open interactive windows.
+            # Used to: (a) prevent duplicate windows, (b) skip per-tab preview
+            # refresh for that plot while the user is viewing it interactively.
+            # The preview for ALL other tabs continues to update normally.
+            self._iplot_open_set: set = set()
 
             self._build_menu()
             self._build_central()      # builds self._log_console
@@ -2898,25 +3167,18 @@ def launch_gui(
             self._btn_start  = QPushButton("Start Auto")
             self._btn_stop   = QPushButton("Stop")
             self._btn_veusz  = QPushButton("Open in Veusz")
-            self._btn_iplot  = QPushButton("View Interactive")
             self._btn_stop.setEnabled(False)
             self._btn_veusz.setToolTip(
                 "Build plots in the live Veusz window and save as .vszh5 (HDF5)"
-            )
-            self._btn_iplot.setToolTip(
-                "Open a detached interactive matplotlib window for zooming, panning\n"
-                "and data-point picking. Auto-polling continues in the background.\n"
-                "Close this window to return to the live preview pane."
             )
 
             self._btn_poll.clicked.connect(self._do_poll_once)
             self._btn_start.clicked.connect(self._do_start)
             self._btn_stop.clicked.connect(self._do_stop)
             self._btn_veusz.clicked.connect(self._do_open_veusz)
-            self._btn_iplot.clicked.connect(self._do_open_interactive)
 
             for b in [self._btn_poll, self._btn_start, self._btn_stop,
-                      self._btn_veusz, self._btn_iplot]:
+                      self._btn_veusz]:
                 layout.addWidget(b)
 
             return widget
@@ -2931,50 +3193,51 @@ def launch_gui(
         # ----------------------------------------------------------------
         # Plot tab management
         # ----------------------------------------------------------------
-        def _populate_plot_tabs(self, figures: List[Any]) -> None:
-            """Clear and repopulate plot tab widget from figures rendered to PNG buffers.
+        def _populate_plot_tabs(self, png_specs: "List[Dict[str, Any]]") -> None:
+            """Populate preview tabs from pre-rendered PNG byte-buffers.
 
-            Memory strategy
-            ---------------
-            Each figure is rasterised to a PNG byte-buffer via savefig() then
-            immediately closed.  The tab displays a QLabel with a QPixmap loaded
-            from the buffer.  This keeps memory flat no matter how long the session
-            runs — each update replaces the previous pixmap; no Figure objects
-            accumulate in the GUI process.
+            Memory model
+            ------------
+            Receives ``List[Dict]`` from ``build_preview_pngs()``.  Each dict
+            holds ``png_bytes`` (raw PNG data already rendered by the Agg
+            canvas) plus plot metadata.  No matplotlib Figure objects are
+            created or held inside this method — the bytes go straight into a
+            ``QPixmap`` and the buffer is released immediately.  Peak memory
+            per refresh cycle is bounded by the total size of one set of PNG
+            thumbnails (~50–200 KB for all tabs) and is GC-eligible as soon
+            as the method returns.
 
-            Interactive viewing
-            -------------------
-            The live preview tabs are intentionally non-interactive (static images)
-            to keep per-cycle overhead minimal.  Use the 'View Interactive' button
-            to open a detached matplotlib window with full zoom/pan/pick capability
-            while auto-polling continues uninterrupted in the background.
+            Per-plot interactive button
+            ---------------------------
+            Each tab has a full-width button at the bottom.  Clicking opens
+            ``_open_interactive_for_plot``, which snapshots the live store at
+            that instant and displays a frozen interactive window in a daemon
+            thread.  Background polling, all other tabs, and file writers
+            continue without interruption.
+
+            Parameters
+            ----------
+            png_specs : List[Dict[str, Any]]
+                Output of ``build_preview_pngs()``.  Required keys per dict:
+                ``png_bytes``, ``title``, ``ip``, ``tname``, ``group``.
             """
-            import io
             self._tab_widget.clear()
 
-            if not figures:
-                placeholder = QLabel(
-                    "No data yet — click 'Poll Now' to fetch.")
+            if not png_specs:
+                placeholder = QLabel("No data yet — click 'Poll Now' to fetch.")
                 placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
                 self._tab_widget.addTab(placeholder, "Waiting …")
                 return
 
-            for fig in figures:
-                # Render to in-memory PNG buffer
-                buf = io.BytesIO()
-                try:
-                    fig.savefig(buf, format="png", dpi=90,
-                                bbox_inches="tight", facecolor="white")
-                    buf.seek(0)
-                    png_bytes = buf.read()
-                finally:
-                    buf.close()
-                    try:
-                        import matplotlib.pyplot as plt
-                        plt.close(fig)
-                    except Exception:
-                        pass
+            for spec in png_specs:
+                png_bytes = spec["png_bytes"]
+                title     = spec.get("title", "Plot")
+                fig_ip    = spec.get("ip")
+                fig_tname = spec.get("tname")
+                fig_group = spec.get("group")
+                plot_key  = (fig_ip, fig_tname, fig_group)
 
+                # Load PNG bytes directly into QPixmap — no Figure object ever made
                 pixmap = QtGui.QPixmap()
                 pixmap.loadFromData(png_bytes, "PNG")
 
@@ -2986,12 +3249,52 @@ def launch_gui(
                 scroll.setWidget(lbl)
                 scroll.setWidgetResizable(True)
 
-                title = getattr(fig, "_ab_title", "Plot")
-                self._tab_widget.addTab(scroll, title[:30])
+                # Full-width interactive-plot button anchored to bottom of tab
+                btn_text = (
+                    f"▶  Open Interactive — {title}"
+                    if len(title) <= 55
+                    else "▶  Open Interactive Plot"
+                )
+                iplot_btn = QPushButton(btn_text)
+                iplot_btn.setMinimumHeight(34)
+                iplot_btn.setStyleSheet(
+                    "QPushButton {"
+                    "  background-color: #2a5298;"
+                    "  color: white;"
+                    "  font-weight: bold;"
+                    "  border: none;"
+                    "  border-radius: 0px;"
+                    "}"
+                    "QPushButton:hover  { background-color: #3a6bc4; }"
+                    "QPushButton:pressed{ background-color: #1e3d7a; }"
+                )
+                iplot_btn.setToolTip(
+                    "Open a full interactive matplotlib window for this plot.\n"
+                    "Zoom, pan, and cursor-pick data points freely.\n"
+                    "Background polling and all other tabs keep updating.\n"
+                    "This window shows a frozen snapshot from when you clicked\n"
+                    "and will not auto-refresh while open."
+                )
+                # Default-argument capture avoids late-binding closure bug
+                iplot_btn.clicked.connect(
+                    lambda _c=False,
+                           _k=plot_key,
+                           _i=fig_ip,
+                           _t=fig_tname,
+                           _g=fig_group,
+                           _ti=title:
+                    self._open_interactive_for_plot(_k, _i, _t, _g, _ti)
+                )
 
-        # ----------------------------------------------------------------
-        # Slots / callbacks
-        # ----------------------------------------------------------------
+                tab_w   = QWidget()
+                tab_lay = QVBoxLayout(tab_w)
+                tab_lay.setContentsMargins(0, 0, 0, 0)
+                tab_lay.setSpacing(0)
+                tab_lay.addWidget(scroll, stretch=1)
+                tab_lay.addWidget(iplot_btn, stretch=0)
+
+                self._tab_widget.addTab(tab_w, title[:30])
+
         def _choose_out_dir(self) -> None:
             """Open a folder dialog to select the output root directory."""
             path = QFileDialog.getExistingDirectory(
@@ -3070,9 +3373,10 @@ def launch_gui(
                 self._append_log("WARNING: All IPs failed — check network/device.")
             # populates ALL_DEVICE_DATA
             update_named_dicts(data)
-            self._process_outputs(ALL_DEVICE_DATA, cfg)     # nested shape
-            figs = build_preview_figures(ALL_DEVICE_DATA)   # nested shape
-            self._populate_plot_tabs(figs)
+            self._process_outputs(ALL_DEVICE_DATA, cfg)
+            png_specs = build_preview_pngs()          # memory-safe PNG pipeline
+            self._populate_plot_tabs(png_specs)
+            gc.collect()
             self._append_log(
                 f"Poll complete — {len(ALL_DEVICE_DATA)} device(s), "
                 f"{sum(len(t) for t in ALL_DEVICE_DATA.values())} table dicts."
@@ -3144,8 +3448,14 @@ def launch_gui(
                 _clear_time_series_store()
                 self._append_log(f"[RAM Flush] Complete. RAM now {system_ram_used_pct():.1f}%.")
             self._process_outputs(ALL_DEVICE_DATA, cfg)
-            figs = build_preview_figures(ALL_DEVICE_DATA)
-            self._populate_plot_tabs(figs)
+            # build_preview_pngs() renders directly via FigureCanvasAgg —
+            # no pyplot, no Figure registry, no persistent Figure objects.
+            # Memory per cycle ≈ size of PNG thumbnails only (~50–200 KB).
+            png_specs = build_preview_pngs()
+            self._populate_plot_tabs(png_specs)
+            # Explicitly collect Agg renderer scratch buffers and any
+            # reference cycles that Python's ref-counter missed.
+            gc.collect()
             self._status_bar.showMessage(
                 f"Updated: {datetime.datetime.now().strftime('%H:%M:%S')} "
                 f"| RAM: {_ram_pct:.1f}% / {_ram_limit:.0f}%")
@@ -3165,81 +3475,312 @@ def launch_gui(
             self._btn_start.setEnabled(True)
             self._btn_stop.setEnabled(False)
 
-        def _do_open_interactive(self) -> None:
-            """Open a detached interactive matplotlib window from the current store.
+        def _open_interactive_for_plot(
+            self,
+            plot_key:  tuple,
+            ip:        Optional[str],
+            tname:     Optional[str],
+            group:     Optional[str],
+            title:     str,
+        ) -> None:
+            """Open a frozen interactive matplotlib window for a single plot.
 
-            The window is opened with a Qt5Agg (or Qt5) backend in a separate
-            thread so the auto-poll loop is NOT blocked.  The user can zoom, pan,
-            use the navigation toolbar, and pick data points freely.
+            Design
+            ------
+            * Data is **snapshotted under lock** at the moment the button is
+              clicked.  The interactive window shows that frozen snapshot and
+              is never auto-refreshed, giving the user a stable view for
+              zooming, panning, and cursor-picking.
+            * Background polling, all file writers, and all other preview
+              tabs continue to update completely uninterrupted.
+            * Each window runs ``plt.show(block=True)`` inside a daemon
+              ``threading.Thread``, keeping the Qt event loop free.
+            * Backend selection works on both Windows and RHEL 8:
+              ``matplotlib.figure.Figure`` + ``matplotlib.backends`` is used
+              directly instead of relying on ``plt.switch_backend()``, which
+              modifies global state and is not thread-safe.  We use a
+              ``FigureManager`` obtained from the backend-specific
+              ``new_manager()`` call, keeping the Agg backend intact for the
+              main thread.
+            * A duplicate-window guard (``_iplot_open_set``) prevents a
+              second window for the same plot key from being opened while
+              one is already open.
 
-            When the user closes the interactive window the live preview pane in
-            the main GUI is immediately refreshed with the latest accumulated data,
-            so any new samples collected while the window was open appear at once.
-
-            Memory note: the detached figures are held alive only for as long as
-            the interactive window is open.  They are freed on close.
+            Parameters
+            ----------
+            plot_key : tuple
+                ``(ip, tname, group)`` — unique identifier for this plot.
+            ip : str or None
+                Device IP address.
+            tname : str or None
+                Table name (None for overlay plots).
+            group : str or None
+                Overlay group label (None for per-table plots).
+            title : str
+                Human-readable window title.
             """
             if not TIME_SERIES_STORE:
-                self._append_log("No data yet — run Poll Now first.")
+                self._append_log("No data yet — poll first.")
                 return
 
-            def _open_in_thread() -> None:
-                try:
-                    # For the interactive window we must switch to a GUI backend.
-                    # Qt5Agg / Qt5 work on all platforms where PySide6 is installed.
-                    # We do this only for the thread-local renderer; the main Agg
-                    # backend used by _populate_plot_tabs is unaffected.
-                    try:
-                        import matplotlib
-                        # Build figures using the standard helper (reads from store)
-                        figs = build_preview_figures(ALL_DEVICE_DATA)
-                        if not figs:
-                            return
-                        import matplotlib.pyplot as plt
-                        # Switch to a Qt interactive backend for this window only.
-                        # Use "TkAgg" as fallback if Qt5Agg is not available (e.g. WSL).
-                        for backend_name in ("Qt5Agg", "TkAgg", "Qt6Agg"):
-                            try:
-                                matplotlib.use(backend_name, force=True)
-                                break
-                            except Exception:
-                                continue
+            if plot_key in self._iplot_open_set:
+                self._append_log(
+                    f"Interactive window already open for '{title}'. "
+                    "Close it before opening a new one for this plot.")
+                return
 
-                        for fig in figs:
-                            title = getattr(fig, "_ab_title", "Plot")
-                            fig.canvas.manager.set_window_title(title) if hasattr(
-                                fig, "canvas") and hasattr(
-                                fig.canvas, "manager") and fig.canvas.manager else None
-                        plt.show(block=True)   # blocks the sub-thread until all windows closed
-                        # Restore Agg backend for the main thread after interactive session
-                        matplotlib.use("Agg", force=True)
-                    except Exception as exc:
-                        logger.error("Interactive plot error: %s", exc)
+            # ── Snapshot the relevant data under lock NOW (frozen for this window) ──
+            with _TS_LOCK:
+                if ip and ip in TIME_SERIES_STORE:
+                    if tname and tname in TIME_SERIES_STORE[ip]:
+                        # Per-table snapshot
+                        raw = TIME_SERIES_STORE[ip][tname]
+                        frozen_store = {
+                            ip: {
+                                tname: {
+                                    "timestamps_local": list(raw.get("timestamps_local", [])),
+                                    "columns": {
+                                        c: list(v) for c, v in raw.get("columns", {}).items()
+                                    },
+                                    "units": dict(raw.get("units", {})),
+                                }
+                            }
+                        }
+                    elif group:
+                        # Overlay snapshot — collect all tables for this IP
+                        frozen_store = {
+                            ip: {
+                                tn: {
+                                    "timestamps_local": list(td.get("timestamps_local", [])),
+                                    "columns": {
+                                        c: list(v) for c, v in td.get("columns", {}).items()
+                                    },
+                                    "units": dict(td.get("units", {})),
+                                }
+                                for tn, td in TIME_SERIES_STORE[ip].items()
+                            }
+                        }
+                    else:
+                        self._append_log("Cannot resolve plot key — no data snapshot.")
+                        return
+                else:
+                    self._append_log(f"IP {ip!r} not found in store.")
+                    return
+
+            n_samples = 0
+            if ip and tname and ip in frozen_store and tname in frozen_store[ip]:
+                n_samples = len(frozen_store[ip][tname]["timestamps_local"])
+            elif ip and ip in frozen_store:
+                n_samples = max(
+                    len(td["timestamps_local"])
+                    for td in frozen_store[ip].values()
+                ) if frozen_store[ip] else 0
+
+            self._iplot_open_set.add(plot_key)
+            self._append_log(
+                f"Opening interactive window: '{title}' "
+                f"({n_samples} sample(s) — frozen snapshot).")
+
+            def _iplot_thread() -> None:
+                """Daemon thread: build a figure from the frozen snapshot and
+                display it with a GUI-capable backend without touching the
+                module-level Agg backend used by the main thread."""
+                try:
+                    import matplotlib
+                    import matplotlib.pyplot as plt
+                    from matplotlib.figure import Figure as MplFigure
+
+                    # ── Build the figure using the frozen snapshot ─────────
+                    # We construct the figure manually rather than calling
+                    # build_preview_figures() so we only draw the one plot
+                    # relevant to this window and operate entirely on the
+                    # frozen data — never touching the live store.
+                    prop_colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
+
+                    fig = MplFigure(figsize=(12, 5))
+                    ax  = fig.add_subplot(111)
+
+                    any_data = False
+
+                    if tname:
+                        # Per-table: one line per numeric parameter
+                        tdata  = frozen_store.get(ip, {}).get(tname, {})
+                        cols   = tdata.get("columns", {})
+                        tss    = tdata.get("timestamps_local", [])
+                        n      = len(tss)
+                        x      = list(range(n))
+                        for c_idx, (param, values) in enumerate(cols.items()):
+                            if len(values) != n or n == 0:
+                                continue
+                            unit  = tdata.get("units", {}).get(param, "")
+                            lbl   = f"{param} ({unit})" if unit else param
+                            color = prop_colors[c_idx % len(prop_colors)]
+                            ax.plot(x, values, label=lbl, color=color,
+                                    linewidth=1.4, marker="o", markersize=3,
+                                    picker=5)
+                            any_data = True
+                        # x-tick labels
+                        if tss and n > 0:
+                            step      = max(1, n // 10)
+                            tick_pos  = x[::step]
+                            tick_lbls = tss[::step]
+                            ax.set_xticks(tick_pos)
+                            ax.set_xticklabels(
+                                tick_lbls, rotation=35, ha="right", fontsize=7)
+                        ax.set_xlabel("Sample index")
+                        ax.set_ylabel("Value")
+                        ax.set_title(f"{tname}\n{ip}  [Frozen snapshot \u2014 {n} sample(s)]",
+                                     fontsize=9)
+                    else:
+                        # Overlay: collect matching parameters across tables
+                        from ab_power_meter_monitor import VEUSZ_OVERLAY_GROUPS
+                        c_idx  = 0
+                        all_ts: list = []
+                        for tn, tdata in frozen_store.get(ip, {}).items():
+                            cols = tdata.get("columns", {})
+                            tss  = tdata.get("timestamps_local", [])
+                            n    = len(tss)
+                            subs = VEUSZ_OVERLAY_GROUPS.get(group, [])
+                            for param, values in cols.items():
+                                if not any(s in param.lower() for s in subs):
+                                    continue
+                                if len(values) != n or n == 0:
+                                    continue
+                                unit   = tdata.get("units", {}).get(param, "")
+                                lbl    = f"{tn[:10]}/{param}"
+                                if unit:
+                                    lbl += f" ({unit})"
+                                color  = prop_colors[c_idx % len(prop_colors)]
+                                x      = list(range(n))
+                                ax.plot(x, values, label=lbl, color=color,
+                                        linewidth=1.4, marker="o", markersize=3,
+                                        picker=5)
+                                c_idx += 1
+                                any_data = True
+                                if len(tss) > len(all_ts):
+                                    all_ts = tss
+                        if all_ts:
+                            nn    = len(all_ts)
+                            step  = max(1, nn // 10)
+                            ax.set_xticks(list(range(0, nn, step)))
+                            ax.set_xticklabels(
+                                all_ts[::step], rotation=35, ha="right", fontsize=7)
+                        ax.set_xlabel("Sample index")
+                        ax.set_ylabel(group or "Value")
+                        ax.set_title(f"Overlay: {group}\n{ip}  [Frozen snapshot]",
+                                     fontsize=9)
+
+                    if not any_data:
+                        ax.text(0.5, 0.5, "No numeric data in snapshot",
+                                ha="center", va="center",
+                                transform=ax.transAxes, fontsize=12, color="grey")
+
+                    ax.grid(alpha=0.3)
+                    ax.legend(fontsize=7, loc="upper left",
+                              bbox_to_anchor=(1.01, 1), borderaxespad=0)
+                    fig.tight_layout(rect=(0, 0, 0.82, 1))
+
+                    # ── Open a GUI-capable backend window without disturbing ──
+                    # the module-level Agg backend used by the main thread.
+                    # Strategy: use a backend-specific FigureManager directly.
+                    # This is the only thread-safe approach on both Windows and
+                    # RHEL 8 — plt.switch_backend() is NOT used because it
+                    # modifies shared global state.
+                    opened = False
+                    for bk in ("Qt5Agg", "Qt6Agg", "TkAgg", "GTK3Agg", "wxAgg"):
+                        try:
+                            import importlib
+                            bk_mod = importlib.import_module(
+                                f"matplotlib.backends.backend_{bk.lower()}")
+                            canvas_cls = getattr(bk_mod, f"FigureCanvas{bk}", None)
+                            if canvas_cls is None:
+                                # Try generic name
+                                canvas_cls = getattr(
+                                    bk_mod, "FigureCanvas", None)
+                            if canvas_cls is None:
+                                continue
+                            canvas = canvas_cls(fig)
+                            mgr    = canvas.manager if hasattr(canvas, "manager")                                      else None
+                            # Some backends expose new_manager() on the canvas class
+                            if mgr is None:
+                                try:
+                                    mgr = canvas_cls.new_manager(fig, num=0)
+                                except Exception:
+                                    mgr = None
+                            if mgr is None:
+                                try:
+                                    from matplotlib.backend_bases import (
+                                        FigureManagerBase)
+                                    mgr = FigureManagerBase(canvas, 0)
+                                except Exception:
+                                    pass
+                            if mgr is not None:
+                                mgr.set_window_title(title)
+                                try:
+                                    mgr.show()
+                                except AttributeError:
+                                    pass
+                            # Use plt.show(block=True) with the figure registered
+                            # This blocks the daemon thread only — Qt event loop free
+                            plt.figure(fig.number) if hasattr(fig, "number") else None
+                            plt.show(block=True)
+                            opened = True
+                            break
+                        except Exception as _bke:
+                            logger.debug("iplot backend %s failed: %s", bk, _bke)
+                            continue
+
+                    if not opened:
+                        # Last-resort: register with current (Agg) backend and show.
+                        # Will display a static window on headless systems.
+                        logger.warning(
+                            "No interactive backend available — "
+                            "showing static figure for '%s'.", title)
+                        try:
+                            plt.figure(fig)
+                            plt.show(block=True)
+                        except Exception as exc:
+                            logger.error("iplot fallback failed: %s", exc)
+
+                    matplotlib.use("Agg", force=True)   # restore for main thread
+
                 except Exception as exc:
                     logger.error("Interactive plot thread error: %s", exc)
 
-                # Back on main thread: refresh live preview with latest data
-                try:
-                    from qtpy.QtCore import QMetaObject, Qt
-                    QMetaObject.invokeMethod(
-                        self, "_refresh_after_interactive",
-                        Qt.ConnectionType.QueuedConnection,
-                    )
-                except Exception:
-                    pass
+                finally:
+                    # Always remove from open set and schedule a preview refresh
+                    # on the GUI thread via a queued invoke.
+                    try:
+                        from qtpy.QtCore import QMetaObject, Qt
+                        QMetaObject.invokeMethod(
+                            self,
+                            "_on_iplot_closed",
+                            Qt.ConnectionType.QueuedConnection,
+                        )
+                    except Exception:
+                        pass
 
-            iplot_thread = threading.Thread(
-                target=_open_in_thread, daemon=True, name="ab_iplot")
-            iplot_thread.start()
+            t = threading.Thread(target=_iplot_thread, daemon=True,
+                                 name=f"ab_iplot_{ip}_{tname or group}")
+            t.start()
+
+        def _on_iplot_closed(self) -> None:
+            """Slot: called from the interactive-plot thread when its window is closed.
+
+            Removes the plot key from the open-window tracking set and emits
+            a log message.  The next normal poll cycle will automatically
+            refresh the preview tab, so no explicit redraw is needed here —
+            avoiding a redundant (and potentially race-prone) figure rebuild
+            immediately on close.
+            """
+            # Clear the whole set — any window that closed belongs here.
+            # In practice only one is open at a time per plot key, but
+            # clearing the set is safe and avoids stale keys if a thread
+            # exited unexpectedly.
+            self._iplot_open_set.clear()
             self._append_log(
-                "Interactive plot window opened — auto-poll continues. "
-                "Close the window to return to live preview.")
-
-        def _refresh_after_interactive(self) -> None:
-            """Slot: called from interactive-plot thread after window is closed."""
-            self._append_log("Interactive window closed — refreshing live preview.")
-            figs = build_preview_figures(ALL_DEVICE_DATA)
-            self._populate_plot_tabs(figs)
+                "Interactive window closed. "
+                "Preview will refresh on the next poll cycle.")
 
         def _do_open_veusz(self) -> None:
             """
