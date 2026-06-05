@@ -27,7 +27,7 @@ Phone  : +1 (304) 456-2216
 Email  : wwallace@nrao.edu
 Email2 : naval.antennas@gmail.com 
 Python : 3.8+
-Version: 1.3.1
+Version: 1.4.0
 Deps   : PySide6, matplotlib, requests, beautifulsoup4, lxml,
          astropy, openpyxl, veusz  (pip install each)
 
@@ -84,6 +84,17 @@ except ImportError:
     # type: ignore[assignment]  graceful degradation: memory-based
     psutil = None
     # flush threshold will not trigger, sentinel 9999 MB is returned
+
+# Set matplotlib backend at import time — before any Qt or GUI code runs.
+# 'Agg' is a non-interactive raster backend used for rendering figures into
+# in-memory PNG buffers that are then embedded in the Qt FigureCanvas widgets.
+# This must be set ONCE here; calling matplotlib.use() inside a function
+# after Qt has already initialised its own backend silently fails or raises.
+try:
+    import matplotlib
+    matplotlib.use("Agg")
+except ImportError:
+    pass   # matplotlib unavailable — GUI preview skipped gracefully
 
 # ===========================================================================
 # %% Switches
@@ -1686,7 +1697,30 @@ def write_veusz(
             with _TS_LOCK:
                 ts_ip = TIME_SERIES_STORE.get(ip, {})
 
+            # ---------------------------------------------------------------
+            # Veusz datetime epoch: days since 1900-01-01 00:00:00 (local).
+            # Veusz stores datetimes internally as float days since its own
+            # epoch of 1900-01-01.  Setting axis.mode.val = 'datetime' causes
+            # Veusz to interpret the x-dataset as these epoch-float values,
+            # enabling true datetime axis scaling, zooming, and data picking
+            # with proper time-based grid lines and labels.
+            # ---------------------------------------------------------------
+            _VZ_EPOCH = datetime.datetime(1900, 1, 1)
+
+            def _ts_to_veusz_epoch(ts_str: str) -> float:
+                """Convert 'YYYY-MM-DD HH:MM:SS' local string to Veusz epoch days."""
+                try:
+                    dt = datetime.datetime.strptime(ts_str, "%Y-%m-%d %H:%M:%S")
+                except ValueError:
+                    return float("nan")
+                delta = dt - _VZ_EPOCH
+                return delta.days + delta.seconds / 86400.0
+
             n_datasets = 0
+            # _ts_ds_map: {tname: datetime_ds_name} — built during dataset loading
+            # and referenced during graph-building without mutating the series dict.
+            _ts_ds_map: Dict[str, Optional[str]] = {}
+
             for tname, series in all_series.items():
                 tstore = ts_ip.get(tname, {})
                 ts_columns = tstore.get("columns", {})
@@ -1694,35 +1728,39 @@ def write_veusz(
                 n_samples = len(timestamps)
 
                 # ----------------------------------------------------------------
-                # Timestamp text dataset — one per table.
-                # Named:  ts_<tname_safe>   e.g. ts_Real_Time_Power_Table
-                # Used as tickLabels on the x-axis of every graph in this table's
-                # page so that real local-time strings appear instead of integers.
-                # doc.SetDataText() is available in Veusz 3.6+ and 4.x.
+                # Datetime float dataset — one per table.
+                # Named:  dt_<tname_safe>   e.g. dt_Real_Time_Power_Table
+                # Contains float days-since-Veusz-epoch (1900-01-01) for each
+                # sample.  This is the x-dataset for all graphs in this table's
+                # page.  axis.mode = 'datetime' interprets these as real times.
+                # A companion text dataset ts_<tname_safe> is also loaded so that
+                # tickLabels can fall back to string labels on older Veusz builds.
                 # ----------------------------------------------------------------
-                ts_ds_name = _veusz_safe(f"ts_{tname}")
+                dt_ds_name  = _veusz_safe(f"dt_{tname}")    # numeric datetime x-axis
+                ts_ds_name  = _veusz_safe(f"ts_{tname}")    # text fallback labels
+
                 if timestamps:
+                    dt_vals = [_ts_to_veusz_epoch(t) for t in timestamps]
+                    doc.SetData(dt_ds_name, dt_vals)
                     try:
                         doc.SetDataText(ts_ds_name, list(timestamps))
                     except AttributeError:
-                        # Older Veusz build without SetDataText — fall back
-                        # gracefully; x-axis will show integer indices only.
-                        ts_ds_name = None
+                        ts_ds_name = None   # older Veusz without SetDataText
+                    _ts_ds_map[tname] = dt_ds_name   # use numeric datetime ds
                 else:
-                    ts_ds_name = None
+                    _ts_ds_map[tname] = None
 
                 for param in series:
-                    ds_name = _veusz_safe(f"{tname}_{param}")
+                    ds_name  = _veusz_safe(f"{tname}_{param}")
+                    # Keep idx dataset for backward-compat; datetime ds is primary x.
                     idx_name = _veusz_safe(f"idx_{tname}_{param}")
 
                     if param in ts_columns and ts_columns[param]:
-                        # Use full accumulated series; replace None with NaN
-                        raw = ts_columns[param]
+                        raw  = ts_columns[param]
                         vals = [float(v) if v is not None else float("nan")
                                 for v in raw]
                         idxs = [float(k) for k in range(len(vals))]
                     else:
-                        # Fallback: single-point from latest snapshot
                         vals = [float(series[param][0])]
                         idxs = [0.0]
 
@@ -1730,13 +1768,8 @@ def write_veusz(
                     doc.SetData(idx_name, idxs)
                     n_datasets += 1
 
-                # Store ts_ds_name on the series dict so graph-building can
-                # reference it when wiring x-axis tick labels.
-                # type: ignore[index]
-                all_series[tname]["__ts_ds"] = ts_ds_name
-
-            logger.debug("Veusz: loaded %d datasets (%d samples each) for %s",
-                         n_datasets, n_samples if n_samples else 1, ip)
+            logger.debug("Veusz: loaded %d datasets for %s",
+                         n_datasets, ip)
 
             # ---------------------------------------------------------------
             # Step 2 — Per-table pages (new-style object API).
@@ -1781,9 +1814,10 @@ def write_veusz(
 
             for tname, series in all_series.items():
 
-                # Retrieve the timestamp text-dataset name stored during
-                # dataset loading (None if timestamps unavailable).
-                ts_ds = series.pop("__ts_ds", None)   # type: ignore[arg-type]
+                # Retrieve the datetime x-axis dataset name from _ts_ds_map.
+                # This avoids the __ts_ds pop() bug where the first loop consumed
+                # the stored name before the overlay loop could read it.
+                dt_ds = _ts_ds_map.get(tname)   # numeric datetime float dataset
 
                 # --- Page — human-readable name (spaces, no underscores) ---
                 page_wname = _veusz_safe(f"{tname}_page")
@@ -1795,43 +1829,44 @@ def write_veusz(
                 grid.columns.val = 2
 
                 for p_idx, (param, (val, unit)) in enumerate(series.items()):
-                    ds_name = _veusz_safe(f"{tname}_{param}")
+                    ds_name  = _veusz_safe(f"{tname}_{param}")
                     idx_name = _veusz_safe(f"idx_{tname}_{param}")
-                    gname = _veusz_safe(f"g_{param}")
-                    colour = _colour(p_idx)
+                    gname    = _veusz_safe(f"g_{param}")
+                    colour   = _colour(p_idx)
                     # Y-axis label: human-readable param + unit, no underscores
-                    axis_label = f"{_human(param)} [{unit}]" if unit else _human(
-                        param)
+                    axis_label = f"{_human(param)} [{unit}]" if unit else _human(param)
 
                     # --- Graph ---
                     graph = grid.Add("graph", name=gname, autoadd=False)
 
-                    # --- x-axis with optional timestamp tick labels ---
+                    # --- x-axis: true datetime mode when dt_ds available ---
                     ax = graph.Add("axis", name="x", autoadd=False)
                     ax.label.val = "Local Time"
                     ax.direction.val = "horizontal"
-                    # Wire the timestamp text dataset as axis tick labels so
-                    # actual time strings appear on the x-axis instead of
-                    # integer sample indices.
-                    if ts_ds:
+                    if dt_ds:
+                        # mode='datetime' tells Veusz to interpret the x-dataset
+                        # as days since 1900-01-01, enabling true datetime scaling,
+                        # zooming, data-point picking with time-based grid lines.
                         try:
-                            ax.tickLabels.val = ts_ds
+                            ax.mode.val = "datetime"
                         except Exception:
-                            pass  # graceful: older Veusz without tickLabels
+                            pass  # graceful: very old Veusz without mode setting
+                    else:
+                        # Fallback: integer sample-index axis
+                        ax.label.val = "Sample Index"
 
                     # --- y-axis (carries the parameter label) ---
                     ay = graph.Add("axis", name="y", autoadd=False)
                     ay.label.val = axis_label
                     ay.direction.val = "vertical"
 
-                    # --- xy plotter with auto colour ---
+                    # --- xy plotter: use datetime dataset when available ---
                     xy = graph.Add("xy", name="plot1", autoadd=False)
-                    xy.xData.val = idx_name
+                    # Use datetime float dataset as x-axis; fall back to sample index.
+                    xy.xData.val = dt_ds if dt_ds else idx_name
                     xy.yData.val = ds_name
                     xy.marker.val = "circle"
                     xy.PlotLine.width.val = "1.5pt"
-                    # Line and marker colour — set the same colour on both so
-                    # line and marker are always consistent.
                     try:
                         xy.PlotLine.color.val = colour
                         xy.MarkerFill.color.val = colour
@@ -1880,37 +1915,25 @@ def write_veusz(
                     "graph", name="overlay graph", autoadd=False)
 
                 # --- Axes ---
-                # For the overlay, use the timestamp dataset from the first
-                # contributing table (all tables share the same poll cadence).
-                ov_ts_ds = None
-                if overlay:
-                    first_tname = None
-                    for _ds, _idx, _param, _unit in overlay:
-                        # Recover the tname from ds_name: ds_name = tname_param_safe
-                        # Use the first tname we can find in all_series keys.
-                        for tn in all_series:
-                            candidate = _veusz_safe(f"ts_{tn}")
-                            ov_ts_ds_candidate = all_series[tn].get(
-                                "__ts_ds", candidate)
-                            if ov_ts_ds_candidate:
-                                ov_ts_ds = ov_ts_ds_candidate
-                                break
-                        if ov_ts_ds:
-                            break
-                    # Simpler: just use the ts_ dataset for the first table in all_series
-                    if not ov_ts_ds:
-                        first_tn = next(iter(all_series), None)
-                        if first_tn:
-                            ov_ts_ds = _veusz_safe(f"ts_{first_tn}")
+                # Use the datetime float dataset from the first contributing
+                # table (all tables share the same poll cadence / timestamps).
+                # _ts_ds_map is populated during Step 1 dataset loading and is
+                # always current — no pop() risk here.
+                ov_dt_ds: Optional[str] = None
+                first_tn = next(iter(all_series), None)
+                if first_tn:
+                    ov_dt_ds = _ts_ds_map.get(first_tn)
 
                 ox = ov_graph.Add("axis", name="x", autoadd=False)
                 ox.label.val = "Local Time"
                 ox.direction.val = "horizontal"
-                if ov_ts_ds:
+                if ov_dt_ds:
                     try:
-                        ox.tickLabels.val = ov_ts_ds
+                        ox.mode.val = "datetime"
                     except Exception:
-                        pass
+                        pass   # older Veusz without datetime mode
+                else:
+                    ox.label.val = "Sample Index"
 
                 oy = ov_graph.Add("axis", name="y", autoadd=False)
                 oy.label.val = y_label
@@ -1925,7 +1948,9 @@ def write_veusz(
                     xy_wname = _veusz_safe(f"xy_{ds_name}")
                     colour = _colour(ov_idx)
                     xy = ov_graph.Add("xy", name=xy_wname, autoadd=False)
-                    xy.xData.val = idx_name
+                    # Use the datetime float dataset as x-axis so all overlay
+                    # series are time-aligned with true datetime scaling.
+                    xy.xData.val = ov_dt_ds if ov_dt_ds else idx_name
                     xy.yData.val = ds_name
                     # legend entry (no underscores)
                     xy.key.val = _human(param)
@@ -2111,17 +2136,18 @@ def build_preview_figures(
         List of Figure objects ready for embedding in a Qt canvas.
     """
     try:
-        import matplotlib
-        matplotlib.use("Agg")   # non-interactive backend for embedding
         import matplotlib.pyplot as plt
     except ImportError as exc:
         logger.error("matplotlib not available — preview skipped: %s", exc)
         return []
 
-    # Close any previously opened figures to prevent the matplotlib warning
-    # "More than 20 figures have been opened" — each call to this function
-    # replaces the prior figure set, so old ones must be explicitly closed.
-    plt.close("all")
+    # Note: plt.close("all") is intentionally NOT called here.
+    # Figure lifecycle is managed by the caller:
+    #   - _populate_plot_tabs() renders each figure to a PNG buffer then
+    #     calls plt.close(fig) immediately, keeping memory flat.
+    #   - _do_open_interactive() keeps figures alive for the interactive
+    #     window and closes them when the window is dismissed.
+    # The Agg backend is set once at module import time (not here).
 
     figures: List[Any] = []
     prop_cycle_colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
@@ -2429,9 +2455,10 @@ def launch_gui(
     class PollThread(QThread):
         """Worker thread that polls devices on a configurable interval."""
 
-        data_ready = Signal(dict)    # emits all_device_data dict each cycle
-        error_occur = Signal(str)     # emits error description string
-        log_message = Signal(str)     # emits log text for status console
+        data_ready    = Signal(dict)   # emits all_device_data dict each cycle
+        error_occur   = Signal(str)    # emits error description string
+        log_message   = Signal(str)    # emits log text for status console
+        consec_limit  = Signal(int)    # emits fail count when limit reached → auto-stop
 
         def __init__(self, config: Dict[str, Any], parent=None):
             super().__init__(parent)
@@ -2440,6 +2467,9 @@ def launch_gui(
 
         def run(self) -> None:
             self._running = True
+            _consec_fails = 0
+            _max_fails = int(self.config.get(
+                "headless_max_consec_fails", HEADLESS_MAX_CONSEC_FAILS))
             while self._running:
                 try:
                     self.log_message.emit(
@@ -2453,13 +2483,26 @@ def launch_gui(
                     )
                     _meta = data.pop("__poll_meta__", {})
                     if _meta.get("all_failed", False):
-                        self.error_occur.emit("All IPs failed — check network/device.")
-                    update_named_dicts(data)
-                    self.data_ready.emit(data)
-                    self.log_message.emit(
-                        f"[{datetime.datetime.now().strftime('%H:%M:%S')}] "
-                        f"Poll complete — {len(data)} table dicts."
-                    )
+                        _consec_fails += 1
+                        self.error_occur.emit(
+                            f"All IPs failed (consecutive: {_consec_fails}"
+                            + (f"/{_max_fails}" if _max_fails > 0 else "") + ") — check network/device.")
+                        # Auto-stop when consecutive failure limit is reached (0 = never stop)
+                        if _max_fails > 0 and _consec_fails >= _max_fails:
+                            self.consec_limit.emit(_consec_fails)
+                            self._running = False
+                            break
+                    else:
+                        if _consec_fails > 0:
+                            self.log_message.emit(
+                                f"Connectivity restored after {_consec_fails} failure(s).")
+                        _consec_fails = 0
+                        update_named_dicts(data)
+                        self.data_ready.emit(data)
+                        self.log_message.emit(
+                            f"[{datetime.datetime.now().strftime('%H:%M:%S')}] "
+                            f"Poll complete — {len(data)} table dicts."
+                        )
                 except Exception as exc:
                     self.error_occur.emit(f"Poll error: {exc}")
 
@@ -2791,21 +2834,29 @@ def launch_gui(
             widget = QWidget()
             layout = QHBoxLayout(widget)
 
-            self._btn_poll = QPushButton("Poll Now")
-            self._btn_start = QPushButton("Start Auto")
-            self._btn_stop = QPushButton("Stop")
-            self._btn_veusz = QPushButton("Open in Veusz")
+            self._btn_poll   = QPushButton("Poll Now")
+            self._btn_start  = QPushButton("Start Auto")
+            self._btn_stop   = QPushButton("Stop")
+            self._btn_veusz  = QPushButton("Open in Veusz")
+            self._btn_iplot  = QPushButton("View Interactive")
             self._btn_stop.setEnabled(False)
             self._btn_veusz.setToolTip(
                 "Build plots in the live Veusz window and save as .vszh5 (HDF5)"
+            )
+            self._btn_iplot.setToolTip(
+                "Open a detached interactive matplotlib window for zooming, panning\n"
+                "and data-point picking. Auto-polling continues in the background.\n"
+                "Close this window to return to the live preview pane."
             )
 
             self._btn_poll.clicked.connect(self._do_poll_once)
             self._btn_start.clicked.connect(self._do_start)
             self._btn_stop.clicked.connect(self._do_stop)
             self._btn_veusz.clicked.connect(self._do_open_veusz)
+            self._btn_iplot.clicked.connect(self._do_open_interactive)
 
-            for b in [self._btn_poll, self._btn_start, self._btn_stop, self._btn_veusz]:
+            for b in [self._btn_poll, self._btn_start, self._btn_stop,
+                      self._btn_veusz, self._btn_iplot]:
                 layout.addWidget(b)
 
             return widget
@@ -2821,7 +2872,24 @@ def launch_gui(
         # Plot tab management
         # ----------------------------------------------------------------
         def _populate_plot_tabs(self, figures: List[Any]) -> None:
-            """Clear and repopulate plot tab widget from a list of figures."""
+            """Clear and repopulate plot tab widget from figures rendered to PNG buffers.
+
+            Memory strategy
+            ---------------
+            Each figure is rasterised to a PNG byte-buffer via savefig() then
+            immediately closed.  The tab displays a QLabel with a QPixmap loaded
+            from the buffer.  This keeps memory flat no matter how long the session
+            runs — each update replaces the previous pixmap; no Figure objects
+            accumulate in the GUI process.
+
+            Interactive viewing
+            -------------------
+            The live preview tabs are intentionally non-interactive (static images)
+            to keep per-cycle overhead minimal.  Use the 'View Interactive' button
+            to open a detached matplotlib window with full zoom/pan/pick capability
+            while auto-polling continues uninterrupted in the background.
+            """
+            import io
             self._tab_widget.clear()
 
             if not figures:
@@ -2832,15 +2900,34 @@ def launch_gui(
                 return
 
             for fig in figures:
-                canvas = FigureCanvas(fig)
-                toolbar = NavToolbar(canvas, self._tab_widget)
-                tab_w = QWidget()
-                tab_lay = QVBoxLayout(tab_w)
-                tab_lay.addWidget(toolbar)
-                tab_lay.addWidget(canvas)
+                # Render to in-memory PNG buffer
+                buf = io.BytesIO()
+                try:
+                    fig.savefig(buf, format="png", dpi=90,
+                                bbox_inches="tight", facecolor="white")
+                    buf.seek(0)
+                    png_bytes = buf.read()
+                finally:
+                    buf.close()
+                    try:
+                        import matplotlib.pyplot as plt
+                        plt.close(fig)
+                    except Exception:
+                        pass
+
+                pixmap = QtGui.QPixmap()
+                pixmap.loadFromData(png_bytes, "PNG")
+
+                lbl = QLabel()
+                lbl.setPixmap(pixmap)
+                lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+                scroll = QScrollArea()
+                scroll.setWidget(lbl)
+                scroll.setWidgetResizable(True)
 
                 title = getattr(fig, "_ab_title", "Plot")
-                self._tab_widget.addTab(tab_w, title[:30])
+                self._tab_widget.addTab(scroll, title[:30])
 
         # ----------------------------------------------------------------
         # Slots / callbacks
@@ -2942,6 +3029,7 @@ def launch_gui(
             self._thread.data_ready.connect(self._on_data_ready)
             self._thread.error_occur.connect(self._on_thread_error)
             self._thread.log_message.connect(self._append_log)
+            self._thread.consec_limit.connect(self._on_consec_limit)
             self._thread.start()
             self._btn_start.setEnabled(False)
             self._btn_stop.setEnabled(True)
@@ -2984,7 +3072,9 @@ def launch_gui(
                     except Exception as _fe:
                         logger.error("RAM flush wait: %s", _fe)
                 _app = bool(cfg.get("append_files", APPEND_OUTPUT_FILES))
-                flush_outputs_parallel(cfg)
+                # Assign the returned future so the flush guard at _process_outputs
+                # knows this flush is in-flight and won't launch a concurrent write.
+                self._flush_future = flush_outputs_parallel(cfg)
                 if cfg.get("enable_veusz") and ALL_DEVICE_DATA:
                     try:
                         write_veusz(ALL_DEVICE_DATA, cfg.get("veusz_dir", VEUSZ_DIR),
@@ -3003,6 +3093,94 @@ def launch_gui(
         def _on_thread_error(self, msg: str) -> None:
             self._append_log(f"ERROR: {msg}")
             self._status_bar.showMessage(f"Error — {msg[:60]}")
+
+        def _on_consec_limit(self, count: int) -> None:
+            """Slot: PollThread hit the consecutive-failure limit — auto-stop."""
+            limit = int(self._spin_max_fails.value())
+            self._append_log(
+                f"[Auto-Stop] {count} consecutive all-device failure(s) reached "
+                f"the limit ({limit}). Polling stopped.")
+            self._status_bar.showMessage(
+                f"Auto-stopped after {count} consecutive failure(s).")
+            self._btn_start.setEnabled(True)
+            self._btn_stop.setEnabled(False)
+
+        def _do_open_interactive(self) -> None:
+            """Open a detached interactive matplotlib window from the current store.
+
+            The window is opened with a Qt5Agg (or Qt5) backend in a separate
+            thread so the auto-poll loop is NOT blocked.  The user can zoom, pan,
+            use the navigation toolbar, and pick data points freely.
+
+            When the user closes the interactive window the live preview pane in
+            the main GUI is immediately refreshed with the latest accumulated data,
+            so any new samples collected while the window was open appear at once.
+
+            Memory note: the detached figures are held alive only for as long as
+            the interactive window is open.  They are freed on close.
+            """
+            if not TIME_SERIES_STORE:
+                self._append_log("No data yet — run Poll Now first.")
+                return
+
+            def _open_in_thread() -> None:
+                try:
+                    import matplotlib
+                    # For the interactive window we must switch to a GUI backend.
+                    # Qt5Agg / Qt5 work on all platforms where PySide6 is installed.
+                    # We do this only for the thread-local renderer; the main Agg
+                    # backend used by _populate_plot_tabs is unaffected.
+                    try:
+                        import matplotlib
+                        # Build figures using the standard helper (reads from store)
+                        figs = build_preview_figures(ALL_DEVICE_DATA)
+                        if not figs:
+                            return
+                        import matplotlib.pyplot as plt
+                        # Switch to a Qt interactive backend for this window only.
+                        # Use "TkAgg" as fallback if Qt5Agg is not available (e.g. WSL).
+                        for backend_name in ("Qt5Agg", "TkAgg", "Qt6Agg"):
+                            try:
+                                matplotlib.use(backend_name, force=True)
+                                break
+                            except Exception:
+                                continue
+
+                        for fig in figs:
+                            title = getattr(fig, "_ab_title", "Plot")
+                            fig.canvas.manager.set_window_title(title) if hasattr(
+                                fig, "canvas") and hasattr(
+                                fig.canvas, "manager") and fig.canvas.manager else None
+                        plt.show(block=True)   # blocks the sub-thread until all windows closed
+                        # Restore Agg backend for the main thread after interactive session
+                        matplotlib.use("Agg", force=True)
+                    except Exception as exc:
+                        logger.error("Interactive plot error: %s", exc)
+                except Exception as exc:
+                    logger.error("Interactive plot thread error: %s", exc)
+
+                # Back on main thread: refresh live preview with latest data
+                try:
+                    from qtpy.QtCore import QMetaObject, Qt
+                    QMetaObject.invokeMethod(
+                        self, "_refresh_after_interactive",
+                        Qt.ConnectionType.QueuedConnection,
+                    )
+                except Exception:
+                    pass
+
+            iplot_thread = threading.Thread(
+                target=_open_in_thread, daemon=True, name="ab_iplot")
+            iplot_thread.start()
+            self._append_log(
+                "Interactive plot window opened — auto-poll continues. "
+                "Close the window to return to live preview.")
+
+        def _refresh_after_interactive(self) -> None:
+            """Slot: called from interactive-plot thread after window is closed."""
+            self._append_log("Interactive window closed — refreshing live preview.")
+            figs = build_preview_figures(ALL_DEVICE_DATA)
+            self._populate_plot_tabs(figs)
 
         def _do_open_veusz(self) -> None:
             """
@@ -3624,24 +3802,26 @@ def run_headless(cfg: Dict[str, Any]) -> None:
         logger.info(
             "Headless loop ended after %d cycle(s). Writing final outputs…", cycle)
 
-    # Final full write of all enabled formats (including Veusz with all samples)
-    fits_dir = cfg.get("fits_dir",  FITS_DIR)
-    csv_dir = cfg.get("csv_dir",   CSV_DIR)
-    xlsx_dir = cfg.get("xlsx_dir",  XLSX_DIR)
-    log_dir = cfg.get("log_dir",   LOG_DIR)
+    # Final full write of all enabled formats (including Veusz with all samples).
+    # Honour cfg['append_files'] consistently across every writer here.
+    fits_dir  = cfg.get("fits_dir",  FITS_DIR)
+    csv_dir   = cfg.get("csv_dir",   CSV_DIR)
+    xlsx_dir  = cfg.get("xlsx_dir",  XLSX_DIR)
+    log_dir   = cfg.get("log_dir",   LOG_DIR)
+    _app_f    = bool(cfg.get("append_files", APPEND_OUTPUT_FILES))
 
     if cfg.get("enable_fits"):
-        write_fits(ALL_DEVICE_DATA, fits_dir)
+        write_fits(ALL_DEVICE_DATA, fits_dir, append=_app_f)
     if cfg.get("enable_csv"):
-        write_csv(ALL_DEVICE_DATA, csv_dir, append=True)
+        write_csv(ALL_DEVICE_DATA, csv_dir, append=_app_f)
     if cfg.get("enable_xlsx"):
-        write_xlsx(ALL_DEVICE_DATA, xlsx_dir)
+        write_xlsx(ALL_DEVICE_DATA, xlsx_dir, append=_app_f)
     if cfg.get("enable_log_append"):
-        write_log_text(ALL_DEVICE_DATA, log_dir)
+        write_log_text(ALL_DEVICE_DATA, log_dir, append=_app_f)
     if cfg.get("enable_veusz"):
         logger.info(
             "Building Veusz project with all %d accumulated sample(s)…", cycle)
-        write_veusz(ALL_DEVICE_DATA, veusz_dir)
+        write_veusz(ALL_DEVICE_DATA, veusz_dir, append=_app_f)
 
     if not dicts_only:
         if _any_output_enabled(cfg):
@@ -3651,9 +3831,11 @@ def run_headless(cfg: Dict[str, Any]) -> None:
             logger.info("No File Output Selected, Nothing Generated")
 
     # ── End-of-loop console output ──────────────────────────────────────────────
-    # Always print the final snapshot dicts (this matches the original
-    # behaviour and is always shown regardless of switch settings).
-    _print_named_dicts(cycle, label="final snapshot")
+    # Print the final snapshot dicts only when NOT in silent mode.
+    # Previously this fired unconditionally, wasting CPU emitting output
+    # into /dev/null and confusing callers expecting total silence.
+    if not silent and not dicts_only:
+        _print_named_dicts(cycle, label="final snapshot")
 
     # Print cumulative store at end-of-loop when switch 3 is enabled
     # (unless it was already printed by a stop/flush trigger earlier).
@@ -3699,19 +3881,21 @@ def main() -> Dict[str, Dict[str, Dict]]:
         # address a specific device + table directly
         results["10.16.130.51"]["Voltage_Current_Table"]
 
-    Return shape::
+    Return shape (TIME_SERIES_STORE — full accumulated time-series)::
 
         {
             "10.16.130.50": {
-                "Device_Configuration_Table":         { ... },
-                "Communications_Configuration_Table": { ... },
-                ...  # all 11 tables
+                "Real_Time_Power_Table": {
+                    "timestamps_local": ["2026-05-13 12:00:00", ...],  # one per sample
+                    "columns": {"L1 Voltage": [120.1, ...], ...},
+                    "units":   {"L1 Voltage": "V", ...},
+                },
+                ... # all tables that returned numeric data
             },
             "10.16.130.51": { ... },
-            "10.16.130.52": { ... },
-            "10.16.130.53": { ... },
         }
 
+    When HEADLESS_LOOP_COUNT=1, the store contains exactly one poll cycle.
     When run directly (``python ab_power_meter_monitor.py``) the return
     value is discarded by the ``if __name__ == "__main__"`` block.
     """
@@ -3804,9 +3988,13 @@ def main() -> Dict[str, Dict[str, Dict]]:
     else:
         run_headless(cfg)
 
-    # Return the 11 named dicts so callers that import and invoke main()
-    # directly receive the final snapshot without any extra steps.
-    return _get_named_dicts()
+    # Return the full accumulated TIME_SERIES_STORE so callers that import
+    # and invoke main() directly receive the complete multi-sample time-series.
+    # Structure: {ip: {table_name: {"timestamps_local": [...], "columns": {...}, "units": {...}}}}
+    # This is the same store that every output file (CSV, XLSX, FITS, Veusz) reads from,
+    # so sample counts here always match what was written to disk.
+    # When HEADLESS_LOOP_COUNT=1 this contains exactly one poll cycle per device.
+    return TIME_SERIES_STORE
 
 
 if __name__ == "__main__":
