@@ -27,7 +27,7 @@ Phone  : +1 (304) 456-2216
 Email  : wwallace@nrao.edu
 Email2 : naval.antennas@gmail.com 
 Python : 3.8+
-Version: 1.4.6
+Version: 1.4.8
 Deps   : PySide6, matplotlib, requests, beautifulsoup4, lxml,
          astropy, openpyxl, veusz  (pip install each)
 
@@ -483,7 +483,7 @@ def parse_html_table(html: str, table_name: str, ip: str, page: int) -> Dict[str
     ip : str
         Source IP address (stored as metadata).
     page : int
-        Source page index (stored as metadata).
+        Source page index, 0-based (0 \u2013 10, matching TABLE_NAMES keys).
 
     Returns
     -------
@@ -880,7 +880,7 @@ def update_named_dicts(all_data: Dict[str, Dict[str, Any]]) -> None:
     Parameters
     ----------
     all_data : Dict[str, Dict[str, Any]]
-        Output of poll_all_devices().
+        Output of poll_all_devices() with ``__poll_meta__`` already popped.
     """
     global Device_Configuration_Table, Communications_Configuration_Table
     global Voltage_Current_Table, Real_Time_Power_Table, Cumulative_Power_Table
@@ -898,6 +898,18 @@ def update_named_dicts(all_data: Dict[str, Dict[str, Any]]) -> None:
         if ip not in ALL_DEVICE_DATA:
             ALL_DEVICE_DATA[ip] = {}
         ALL_DEVICE_DATA[ip][tname] = data
+
+    # Ensure ALL expected IPs appear in ALL_DEVICE_DATA even if they returned
+    # no pages this cycle (network timeout, device reboot, etc.).
+    # accumulate_poll() is called below — if an IP is absent from ALL_DEVICE_DATA
+    # its timestamp is not appended, creating a length mismatch between
+    # timestamps_local and the column lists in TIME_SERIES_STORE.
+    # Inserting an empty dict for the missing IP lets accumulate_poll() skip it
+    # gracefully (no numeric series → no append) rather than causing misalignment.
+    for expected_ip in IP_LIST:
+        clean = expected_ip.strip()
+        if clean and clean not in ALL_DEVICE_DATA:
+            ALL_DEVICE_DATA[clean] = {}
 
     # Populate module-level dicts from the FIRST available device
     # (convenience reference; full multi-device access via ALL_DEVICE_DATA)
@@ -1257,8 +1269,10 @@ def write_csv(
                         reader = csv.reader(fh)
                         for row_idx, row in enumerate(reader):
                             if row_idx == 0:
-                                # skip Timestamp_Local
-                                existing_params = row[1:]
+                                # skip Timestamp_Local; strip whitespace to
+                                # prevent phantom duplicates when the header
+                                # cell was written with trailing spaces.
+                                existing_params = [c.strip() for c in row[1:]]
                             elif row_idx == 1:
                                 pass  # units row
                             else:
@@ -1298,7 +1312,7 @@ def write_csv(
                             ]
                             writer.writerow(row)
 
-                logger.debug("CSV written (columnar): %s", filename)
+                logger.info("CSV written (columnar): %s", filename)
             except Exception as exc:
                 logger.error("CSV write failed for %s / %s: %s",
                              ip, tname, exc)
@@ -1454,16 +1468,25 @@ def write_xlsx(
                     chart.width = 24
                     chart.height = 14
 
-                    # cap at 12 series for legibility
+                    # Data rows start at row 3 (row 1 = header, row 2 = units).
+                    # Reference only the data rows so neither the header text
+                    # nor the "(units)" string is included in chart values.
+                    # Series titles are taken from row 1 (header) separately
+                    # via a second single-row Reference — this is the correct
+                    # openpyxl pattern when header and data are not contiguous.
                     for nc in numeric_cols[:12]:
                         data_ref = Reference(
                             ws,
                             min_col=nc, max_col=nc,
-                            min_row=1, max_row=n_data_rows + 2,
+                            min_row=3, max_row=n_data_rows + 2,
                         )
-                        chart.add_data(data_ref, titles_from_data=True)
+                        chart.add_data(data_ref, titles_from_data=False)
+                        # Apply header cell (row 1) as the series title
+                        title_ref = Reference(ws, min_col=nc, max_col=nc,
+                                              min_row=1, max_row=1)
+                        chart.series[-1].title = title_ref
 
-                    # x-axis categories = Timestamp_Local column
+                    # x-axis categories = Timestamp_Local column, data rows only
                     cat_ref = Reference(
                         ws, min_col=1, min_row=3, max_row=n_data_rows + 2)
                     chart.set_categories(cat_ref)
@@ -1556,6 +1579,14 @@ def write_log_text(
             # HEADER_LINES: number of non-data lines in a Markdown log file.
             # When read with 'if l.strip()' the blank separator line collapses,
             # leaving 3 non-empty non-data lines: heading, table-header, separator.
+            # HEADER_LINES counts non-empty non-data lines in a Markdown log file.
+            # The blank line after the ## heading is collapsed by the
+            # 'if l.strip()' filter below, so non-empty lines are:
+            #   1. ## heading
+            #   2. | Timestamp_Local | … |  (table header row)
+            #   3. |---|---|…|              (GFM separator row)
+            # = 3 non-data lines, giving existing_rows = total_nonempty - 3.
+            # If HEADER_LINES were wrong, appended rows would duplicate or gap.
             HEADER_LINES = 3   # heading + table header row + separator row
             existing_rows = 0
             is_new = not os.path.exists(filename)
@@ -1638,7 +1669,7 @@ def write_log_text(
                         ]
                         fh.write(_md_row(row) + "\n")
 
-                logger.debug("Markdown log written: %s", filename)
+                logger.info("Markdown log written: %s", filename)
             except Exception as exc:
                 logger.error(
                     "Markdown log write failed for %s / %s: %s", ip, tname, exc)
@@ -1776,7 +1807,25 @@ def write_veusz(
 
     now_utc = datetime.datetime.utcnow().isoformat(timespec="seconds") + "Z"
 
-    for ip, tables in all_device_data.items():
+    # Use TIME_SERIES_STORE as the authoritative IP source so that every
+    # device with accumulated data is written, even if the most recent poll
+    # failed for that IP and it is absent from all_device_data.
+    with _TS_LOCK:
+        ts_ips = list(TIME_SERIES_STORE.keys())
+    if not ts_ips:
+        logger.warning("write_veusz: TIME_SERIES_STORE is empty — nothing to write.")
+        return
+
+    for ip in ts_ips:
+        # Build a minimal tables dict for this IP from the latest snapshot.
+        # write_veusz reads TIME_SERIES_STORE internally for data; this dict
+        # is only used for extract_numeric_series() on the latest values.
+        tables = all_device_data.get(ip, {})
+        # Fallback: if IP has no current snapshot, derive table names from store
+        if not tables:
+            with _TS_LOCK:
+                store_tnames = list(TIME_SERIES_STORE.get(ip, {}).keys())
+            tables = {tn: {} for tn in store_tnames}
         safe_ip = ip.replace(".", "_")
         filename = os.path.join(veusz_dir, f"ABMeter_{safe_ip}.vszh5")
 
@@ -2414,7 +2463,7 @@ def build_preview_pngs(
                         lbl += f" ({unit})"
                     group_series.append((lbl, list(range(n_ov)), values))
 
-            if len(group_series) < 2:
+            if not group_series:   # skip only when truly empty
                 continue
 
             fig = _new_fig()
@@ -3411,9 +3460,13 @@ def launch_gui(
             _meta = data.pop("__poll_meta__", {})
             if _meta.get("all_failed", False):
                 self._append_log("WARNING: All IPs failed — check network/device.")
-            # populates ALL_DEVICE_DATA
-            update_named_dicts(data)
-            self._process_outputs(ALL_DEVICE_DATA, cfg)
+                # Do not call update_named_dicts or _process_outputs when every
+                # device failed — ALL_DEVICE_DATA would be rebuilt with only
+                # error entries, corrupting the time-series accumulator.
+            else:
+                # populates ALL_DEVICE_DATA and appends to TIME_SERIES_STORE
+                update_named_dicts(data)
+                self._process_outputs(ALL_DEVICE_DATA, cfg)
             png_specs = build_preview_pngs()          # memory-safe PNG pipeline
             self._populate_plot_tabs(png_specs)
             gc.collect()
@@ -3463,6 +3516,8 @@ def launch_gui(
                     "Writing final Veusz file with all accumulated samples…")
                 try:
                     _app_f = bool(cfg.get("append_files", APPEND_OUTPUT_FILES))
+                    # write_veusz uses TIME_SERIES_STORE internally for all IPs —
+                    # ALL_DEVICE_DATA is only used as a fallback for table-name hints.
                     write_veusz(ALL_DEVICE_DATA, veusz_dir,
                                 show_window=False, append=_app_f)
                     self._append_log(f"Veusz saved: {veusz_dir}")
@@ -3493,7 +3548,16 @@ def launch_gui(
                                     show_window=False, append=_app)
                     except Exception as _ve:
                         logger.error("Veusz RAM-flush: %s", _ve)
+                # Wait for the background flush to finish BEFORE clearing the
+                # store — avoids a race where flush threads read TIME_SERIES_STORE
+                # concurrently with _clear_time_series_store().
+                if self._flush_future is not None and not self._flush_future.done():
+                    try:
+                        self._flush_future.result(timeout=60)
+                    except Exception as _fw:
+                        logger.error("RAM flush wait before clear: %s", _fw)
                 _clear_time_series_store()
+                self._flush_future = None
                 self._append_log(f"[RAM Flush] Complete. RAM now {system_ram_used_pct():.1f}%.")
             self._process_outputs(ALL_DEVICE_DATA, cfg)
             # build_preview_pngs() renders directly via FigureCanvasAgg —
@@ -3769,7 +3833,11 @@ def launch_gui(
             dlg = QDialog(self)
             dlg.setWindowTitle(f"Interactive \u2014 {title}")
             dlg.resize(1100, 520)
-            dlg.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
+            try:
+                dlg.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
+            except AttributeError:
+                # PySide2 / older PyQt5 use the short form
+                dlg.setAttribute(Qt.WA_DeleteOnClose, True)
 
             canvas  = FigureCanvas(fig)
             toolbar = NavToolbar(canvas, dlg)
@@ -3897,7 +3965,7 @@ def launch_gui(
                 "stores data in named Python dicts, and\n"
                 "exports to FITS, CSV, XLSX, Veusz, and logs.\n\n"
                 "Author: W. Wallace\n"
-                "Version: 1.4.6\n"
+                "Version: 1.4.8\n"
                 "Python: 3.8+\n"
                 "Qt backend: PySide6 (via QtPy)",
             )
@@ -4390,6 +4458,15 @@ def run_headless(cfg: Dict[str, Any]) -> None:
                                     show_window=False, append=_app)
                     except Exception as _ve:
                         logger.error("Veusz RAM-flush: %s", _ve)
+                # Wait for the background flush to finish BEFORE clearing the
+                # store — avoids a race where flush threads read TIME_SERIES_STORE
+                # concurrently with _clear_time_series_store().
+                if flush_future is not None and not flush_future.done():
+                    try:
+                        flush_future.result(timeout=60)
+                    except Exception as _fw:
+                        logger.error("RAM flush wait before clear: %s", _fw)
+                    flush_future = None
                 _clear_time_series_store()
                 logger.info("[RAM Flush] Complete. RAM now %.1f%%. Sampling continues.", system_ram_used_pct())
 
