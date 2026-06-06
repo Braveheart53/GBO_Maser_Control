@@ -61,7 +61,7 @@ Phone  : +1 (304) 456-2216
 Email  : wwallace@nrao.edu
 Email2 : naval.antennas@gmail.com 
 Python : 3.8+
-Version: 1.2.6
+Version: 1.2.7
 """
 # %% Imorts
 import argparse
@@ -252,6 +252,10 @@ def run(count: int = 1, interval: float = 30.0, ram_pct: Optional[float] = None)
     infinite = (count == 0)
     iteration = 0
 
+    # Clear any stop signal left over from a previous run() call so a
+    # Ctrl-C from an earlier invocation does not prematurely abort this one.
+    abm._HEADLESS_STOP.clear()
+
     # Sync the monitor's SAMPLE_PERIOD_SEC with the caller's interval so
     # any internal cfg logging or reporting reflects the actual wait time.
     abm.SAMPLE_PERIOD_SEC = interval
@@ -273,6 +277,16 @@ def run(count: int = 1, interval: float = 30.0, ram_pct: Optional[float] = None)
             # accumulate_poll() inside abm.main() appends to TIME_SERIES_STORE.
             poll_once()
 
+            # ── Check for stop signal set by Ctrl-C inside abm ─────────────
+            # _install_signal_handlers() in abm intercepts SIGINT and sets
+            # _HEADLESS_STOP instead of raising KeyboardInterrupt, so the
+            # except KeyboardInterrupt below would never fire on its own.
+            # This explicit check ensures the outer loop exits cleanly.
+            if abm._HEADLESS_STOP.is_set():
+                print(f"\n[ab_meter_caller] Stop signal received — "
+                      f"exiting after {iteration} iteration(s).")
+                break
+
             # ── Your application logic goes here ───────────────────────────
             # get_all_data() returns the live TIME_SERIES_STORE reference.
             #
@@ -289,7 +303,13 @@ def run(count: int = 1, interval: float = 30.0, ram_pct: Optional[float] = None)
             remaining = interval - elapsed
             if remaining > 0 and (infinite or iteration < count):
                 print(f"  Next poll in {remaining:.1f}s …")
-                time.sleep(remaining)
+                # Chunked sleep so Ctrl-C (which sets _HEADLESS_STOP via abm's
+                # signal handler) is honoured promptly during long waits.
+                deadline = time.monotonic() + remaining
+                while time.monotonic() < deadline:
+                    if abm._HEADLESS_STOP.is_set():
+                        break
+                    time.sleep(min(0.5, deadline - time.monotonic()))
 
     except KeyboardInterrupt:
         print(f"\nStopped after {iteration} iteration(s).")
