@@ -27,7 +27,7 @@ Phone  : +1 (304) 456-2216
 Email  : wwallace@nrao.edu
 Email2 : naval.antennas@gmail.com 
 Python : 3.8+
-Version: 1.4.17
+Version: 1.4.19
 Deps   : PySide6, matplotlib, requests, beautifulsoup4, lxml,
          astropy, openpyxl, veusz  (pip install each)
 
@@ -739,6 +739,12 @@ ALL_DEVICE_DATA: Dict[str, Dict[str, Dict[str, Any]]] = {}
 # ===========================================================================
 TIME_SERIES_STORE: Dict[str, Dict[str, Dict[str, Any]]] = {}
 _TS_LOCK = threading.Lock()   # protects TIME_SERIES_STORE across threads
+# Counts how many RAM flushes have fired in the current run.
+# Reset at the start of each new run (GUI Start / headless loop entry).
+# Used by write_veusz at Stop/end to decide whether to use a timestamped
+# filename (flush occurred — store is partial) or the fixed canonical name
+# (no flush — store contains the entire run).
+_VEUSZ_FLUSH_COUNT: int = 0
 
 
 def accumulate_poll(all_device_data: Dict[str, Dict[str, Dict[str, Any]]]) -> None:
@@ -902,6 +908,7 @@ def should_flush(cfg: Dict[str, Any]) -> bool:
     Returns
     -------
     bool
+        True when a flush is needed, False otherwise.
     """
     threshold = cfg.get("mem_flush_threshold_mb", MEM_FLUSH_THRESHOLD_MB)
     free_min = cfg.get("mem_free_min_mb",        MEM_FREE_MIN_MB)
@@ -2706,198 +2713,31 @@ def build_preview_pngs(
     return results
 
 
+
 def build_preview_figures(
     all_device_data: Dict[str, Dict[str, Dict[str, Any]]],
 ) -> List[Any]:
     """
-    Build a list of matplotlib Figure objects for GUI preview display.
+    Deprecated compatibility shim — delegates to build_preview_pngs().
 
-    Reads from TIME_SERIES_STORE (the authoritative accumulator) so that
-    each figure shows a growing line plot across ALL samples collected so
-    far, not just the most recent snapshot.  The ``all_device_data``
-    parameter is accepted for API compatibility but is not used — the
-    store is the canonical source.
-
-    Creates:
-      • One figure per table per device — one line per numeric parameter,
-        x-axis = sample index, growing with each poll.
-      • One overlay figure per unit-group (VEUSZ_OVERLAY_GROUPS) per
-        device — all matching parameters on a single axes.
+    The GUI pipeline uses the memory-safe Agg-only renderer
+    (``build_preview_pngs``) which never imports ``matplotlib.pyplot``
+    and returns ``List[Dict]`` instead of ``List[Figure]``.  This wrapper
+    is retained only for external callers that invoke this function by
+    name; it returns the same ``List[Dict]`` format as the PNG renderer.
 
     Parameters
     ----------
     all_device_data : Dict
-        Accepted for API compatibility; not used internally.
-        TIME_SERIES_STORE is read directly.
+        Accepted for API compatibility; ignored internally.
+        TIME_SERIES_STORE is read directly by build_preview_pngs().
 
     Returns
     -------
-    List[matplotlib.figure.Figure]
-        List of Figure objects ready for embedding in a Qt canvas.
+    List[Dict[str, Any]]
+        Same as ``build_preview_pngs()`` — one dict per rendered plot.
     """
-    try:
-        import matplotlib.pyplot as plt
-    except ImportError as exc:
-        logger.error("matplotlib not available — preview skipped: %s", exc)
-        return []
-
-    # Note: plt.close("all") is intentionally NOT called here.
-    # Figure lifecycle is managed by the caller:
-    #   - _populate_plot_tabs() renders each figure to a PNG buffer then
-    #     calls plt.close(fig) immediately, keeping memory flat.
-    #   - _do_open_interactive() keeps figures alive for the interactive
-    #     window and closes them when the window is dismissed.
-    # The Agg backend is set once at module import time (not here).
-
-    figures: List[Any] = []
-    prop_cycle_colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
-
-    # Snapshot the store under lock so we read a consistent view.
-    with _TS_LOCK:
-        store_snapshot = {
-            ip: {
-                tname: {
-                    "timestamps_local": list(tdata.get("timestamps_local", [])),
-                    "columns": {
-                        col: list(vals)
-                        for col, vals in tdata.get("columns", {}).items()
-                    },
-                    "units": dict(tdata.get("units", {})),
-                }
-                for tname, tdata in tables.items()
-            }
-            for ip, tables in TIME_SERIES_STORE.items()
-        }
-
-    for ip, tables in store_snapshot.items():
-
-        # ── Per-table line plots ───────────────────────────────────────────
-        for tname, tdata in tables.items():
-            columns = tdata["columns"]
-            timestamps = tdata["timestamps_local"]
-            n_samples = len(timestamps)
-
-            if not columns or n_samples == 0:
-                continue
-
-            # x-axis: integer sample indices so the axis always starts at 0
-            # regardless of how many samples have been collected.
-            x = list(range(n_samples))
-
-            fig, ax = plt.subplots(figsize=(10, 4))
-            color_idx = 0
-
-            for param, values in columns.items():
-                if len(values) != n_samples:
-                    # Length mismatch — skip rather than crash.
-                    continue
-                unit = tdata["units"].get(param, "")
-                label = f"{param} ({unit})" if unit else param
-                color = prop_cycle_colors[color_idx % len(prop_cycle_colors)]
-                ax.plot(
-                    x, values,
-                    label=label,
-                    color=color,
-                    linewidth=1.4,
-                    marker="o",
-                    markersize=3,
-                )
-                color_idx += 1
-
-            # x-axis tick labels: show timestamps when available, otherwise
-            # show sample numbers.  Rotate and thin to avoid crowding.
-            if timestamps:
-                # Show at most ~8 evenly-spaced labels.
-                step = max(1, n_samples // 8)
-                tick_pos = x[::step]
-                tick_labels = timestamps[::step]
-                ax.set_xticks(tick_pos)
-                ax.set_xticklabels(
-                    tick_labels, rotation=35, ha="right", fontsize=6)
-            ax.set_xlabel("Sample index")
-            ax.set_ylabel("Value")
-            ax.set_title(f"{tname}\n{ip}", fontsize=9)
-            ax.grid(alpha=0.3)
-            ax.legend(
-                fontsize=6,
-                loc="upper left",
-                bbox_to_anchor=(1.01, 1),
-                borderaxespad=0,
-            )
-            fig.tight_layout(rect=(0, 0, 0.82, 1))   # room for legend
-            # type: ignore[attr-defined]
-            fig._ab_title  = f"{ip} — {tname}"
-            fig._ab_ip     = ip
-            fig._ab_tname  = tname
-            fig._ab_group  = None   # None = per-table plot (not overlay)
-            figures.append(fig)
-
-        # ── Overlay line plots by unit group ──────────────────────────────
-        for group_label, substrings in VEUSZ_OVERLAY_GROUPS.items():
-            # Collect (param_label, values_list) pairs that match this group.
-            group_series: List[tuple] = []
-
-            for tname, tdata in tables.items():
-                columns = tdata["columns"]
-                timestamps = tdata["timestamps_local"]
-                n_samples = len(timestamps)
-
-                for param, values in columns.items():
-                    if not any(s in param.lower() for s in substrings):
-                        continue
-                    if len(values) != n_samples or n_samples == 0:
-                        continue
-                    unit = tdata["units"].get(param, "")
-                    label = f"{tname[:10]}/{param}"
-                    if unit:
-                        label += f" ({unit})"
-                    group_series.append(
-                        (label, list(range(n_samples)), values))
-
-            # Threshold: show overlay page whenever at least one matching
-            # series exists.  Using < 2 would hide valid single-series overlays
-            # and is inconsistent with build_preview_pngs (which uses 'not').
-            if not group_series:
-                continue
-
-            fig, ax = plt.subplots(figsize=(10, 4))
-            for c_idx, (label, x, values) in enumerate(group_series):
-                color = prop_cycle_colors[c_idx % len(prop_cycle_colors)]
-                ax.plot(
-                    x, values,
-                    label=label,
-                    color=color,
-                    linewidth=1.4,
-                    marker="o",
-                    markersize=3,
-                )
-
-            ax.set_xlabel("Sample index")
-            ax.set_ylabel(group_label)
-            ax.set_title(f"Overlay: {group_label}\n{ip}", fontsize=9)
-            ax.grid(alpha=0.3)
-            ax.legend(
-                fontsize=6,
-                loc="upper left",
-                bbox_to_anchor=(1.01, 1),
-                borderaxespad=0,
-            )
-            fig.tight_layout(rect=(0, 0, 0.82, 1))
-            # type: ignore[attr-defined]
-            fig._ab_title  = f"{ip} — Overlay: {group_label}"
-            fig._ab_ip     = ip
-            fig._ab_tname  = None   # None = overlay (not per-table)
-            fig._ab_group  = group_label
-            figures.append(fig)
-
-    return figures
-
-
-# ===========================================================================
-# %% GUI — PyQt (PySide6 via QtPy abstraction)
-# ===========================================================================
-# QtPy transparently wraps PySide6 (or PyQt6 as fallback).
-# Set QT_API env var to force one: export QT_API=pyside6
+    return build_preview_pngs()
 
 
 class _QTextEditHandler(logging.Handler):
@@ -3229,6 +3069,9 @@ def launch_gui(
             # refresh for that plot while the user is viewing it interactively.
             # The preview for ALL other tabs continues to update normally.
             self._iplot_open_set: set = set()
+            # Guard: True after _do_stop has written the final Veusz file so that
+            # closeEvent (which also calls _do_stop) does not write it a second time.
+            self._veusz_final_written: bool = False
 
             self._build_menu()
             self._build_central()      # builds self._log_console
@@ -3384,18 +3227,31 @@ def launch_gui(
                 bool(self._switches.get("enable_veusz",      ENABLE_VEUSZ)))
             self._cb_veusz_on_flush.setChecked(
                 bool(self._switches.get("veusz_write_on_flush", VEUSZ_WRITE_ON_FLUSH)))
+            # Sub-option depends on parent: disable when Enable Veusz is unchecked.
+            self._cb_veusz_on_flush.setEnabled(self._cb_veusz.isChecked())
+            self._cb_veusz.stateChanged.connect(
+                lambda state: self._cb_veusz_on_flush.setEnabled(
+                    bool(state)))
             self._cb_veusz_on_flush.setToolTip(
-                "When checked: each RAM flush saves a separate timestamped\n"
-                "  ABMeter_<ip>_YYYYMMDD_HHMMSS.vszh5 snapshot covering\n"
-                "  that flush window's data.\n"
-                "When unchecked: a single ABMeter_<ip>.vszh5 is written\n"
-                "  only at Stop or loop end, containing whatever remains\n"
-                "  in the store since the last flush.\n"
+                "Controls whether mid-run RAM flush events also produce Veusz files.\n"
                 "\n"
-                "For multi-day runs: check this box to preserve every\n"
-                "flush window as a separate file.\n"
-                "The store is cleared before the subprocess launches,\n"
-                "so RAM impact is low in either case.")
+                "Unchecked (default):\n"
+                "  Veusz is written only at Stop / loop end.\n"
+                "  If a RAM flush fired during the run, the final file is\n"
+                "  automatically timestamped so it covers only its flush\n"
+                "  window — no data is silently lost or overwritten.\n"
+                "  Short runs (no flush) produce the fixed canonical file\n"
+                "  ABMeter_<ip>.vszh5 containing the full run.\n"
+                "\n"
+                "Checked:\n"
+                "  Each RAM flush ALSO saves a timestamped snapshot\n"
+                "  ABMeter_<ip>_YYYYMMDD_HHMMSS.vszh5 for that window,\n"
+                "  in addition to the final Stop write.\n"
+                "  Use for multi-day runs where you want a Veusz file\n"
+                "  available without waiting until Stop.\n"
+                "\n"
+                "The store is always cleared before the subprocess\n"
+                "launches so RAM impact is low in either case.")
 
             for cb in [self._cb_fits, self._cb_csv, self._cb_xlsx,
                        self._cb_log, self._cb_log_file, self._cb_veusz,
@@ -3710,6 +3566,11 @@ def launch_gui(
             """Start the background polling thread."""
             if self._thread and self._thread.isRunning():
                 return
+            # Reset flush counter so the end-of-run Veusz write correctly
+            # reflects whether any RAM flush fired during this run.
+            global _VEUSZ_FLUSH_COUNT
+            _VEUSZ_FLUSH_COUNT = 0
+            self._veusz_final_written = False   # reset guard for new run
             cfg = self._get_runtime_config()
             self._thread = PollThread(cfg, parent=self)
             self._thread.data_ready.connect(self._on_data_ready)
@@ -3738,18 +3599,30 @@ def launch_gui(
             self._status_bar.showMessage("Auto-polling stopped.")
             # Write Veusz with all accumulated samples now that polling has stopped.
             # Use TIME_SERIES_STORE (canonical accumulator) not ALL_DEVICE_DATA.
+            # _veusz_final_written guards against a second write when closeEvent
+            # also calls _do_stop after the user has already clicked Stop.
             cfg = self._get_runtime_config()
-            if cfg.get("enable_veusz") and TIME_SERIES_STORE:
+            if cfg.get("enable_veusz") and TIME_SERIES_STORE and not self._veusz_final_written:
                 veusz_dir = cfg.get("veusz_dir", VEUSZ_DIR)
+                # If any RAM flush fired during this run, TIME_SERIES_STORE only
+                # holds post-last-flush data.  Use a timestamped filename so this
+                # partial window is preserved alongside any earlier flush snapshots
+                # rather than overwriting the canonical fixed-name file with
+                # incomplete data.  If no flush ever fired, the store holds the
+                # entire run — write the fixed canonical file.
+                _end_ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S") \
+                    if _VEUSZ_FLUSH_COUNT > 0 else None
+                _label = f"(flush window {_VEUSZ_FLUSH_COUNT + 1})" \
+                    if _end_ts else "(full run)"
                 self._append_log(
-                    "Writing final Veusz file with all accumulated samples…")
+                    f"Writing final Veusz file {_label}…")
                 try:
                     _app_f = bool(cfg.get("append_files", APPEND_OUTPUT_FILES))
-                    # write_veusz uses TIME_SERIES_STORE internally for all IPs —
-                    # ALL_DEVICE_DATA is only used as a fallback for table-name hints.
                     write_veusz(ALL_DEVICE_DATA, veusz_dir,
-                                show_window=False, append=_app_f)
+                                show_window=False, append=_app_f,
+                                timestamp_suffix=_end_ts)
                     self._append_log(f"Veusz saved: {veusz_dir}")
+                    self._veusz_final_written = True   # prevent duplicate write on close
                 except Exception as exc:
                     self._append_log(f"Veusz final write error: {exc}")
                     logger.error("Veusz final write failed: %s", exc)
@@ -3789,6 +3662,8 @@ def launch_gui(
                 # Clear the store NOW — before launching Veusz subprocess so
                 # the subprocess starts with system RAM already freed.
                 _clear_time_series_store()
+                global _VEUSZ_FLUSH_COUNT
+                _VEUSZ_FLUSH_COUNT += 1
                 self._flush_future = None
                 self._append_log(f"[RAM Flush] Store cleared. RAM now {system_ram_used_pct():.1f}%.")
                 if _vz_snapshot and ALL_DEVICE_DATA:
@@ -4109,6 +3984,12 @@ def launch_gui(
 
             # Release the open-set guard when the dialog is closed.
             dlg.finished.connect(lambda _: self._on_iplot_closed(plot_key))
+            # Release the Agg renderer memory when the dialog is closed.
+            # fig.clf() drops all axes/artists; the canvas widget is then
+            # freed by Qt via WA_DeleteOnClose.  Without this, the Agg
+            # backing buffer (~13 MB for 1100×520) is retained until the
+            # next GC cycle.
+            dlg.finished.connect(lambda _: (fig.clf(), gc.collect()))
 
             dlg.show()   # non-modal: collection never blocks
 
@@ -4224,7 +4105,7 @@ def launch_gui(
                 "stores data in named Python dicts, and\n"
                 "exports to FITS, CSV, XLSX, Veusz, and logs.\n\n"
                 "Author: W. Wallace\n"
-                "Version: 1.4.17\n"
+                "Version: 1.4.19\n"
                 "Python: 3.8+\n"
                 "Qt backend: PySide6 (via QtPy)",
             )
@@ -4572,6 +4453,8 @@ def run_headless(cfg: Dict[str, Any]) -> None:
     """
     _install_signal_handlers()
     _HEADLESS_STOP.clear()   # ensure flag is clear for this run
+    global _VEUSZ_FLUSH_COUNT
+    _VEUSZ_FLUSH_COUNT = 0   # reset so end-of-run write knows if any flush fired
 
     # Read loop_count directly from the module global so that a caller
     # that sets  abm.HEADLESS_LOOP_COUNT = 1  is always honoured, even
@@ -4734,6 +4617,7 @@ def run_headless(cfg: Dict[str, Any]) -> None:
                 # Clear the store NOW — before launching Veusz subprocess so
                 # the subprocess starts with system RAM already freed.
                 _clear_time_series_store()
+                _VEUSZ_FLUSH_COUNT += 1   # global declared at run_headless() entry
                 logger.info("[RAM Flush] Store cleared. RAM now %.1f%%. Sampling continues.",
                             system_ram_used_pct())
                 if _vz_snapshot and ALL_DEVICE_DATA:
@@ -4844,9 +4728,17 @@ def run_headless(cfg: Dict[str, Any]) -> None:
         if cfg.get("enable_log_append"):
             write_log_text(ALL_DEVICE_DATA, log_dir, append=_app_f)
         if cfg.get("enable_veusz"):
+            # Use a timestamped filename if any RAM flush fired during this run
+            # (store is partial — covers only post-last-flush window).  Use the
+            # fixed canonical name only when no flush occurred (full-run data).
+            _end_ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S") \
+                if _VEUSZ_FLUSH_COUNT > 0 else None
+            _label = f"flush window {_VEUSZ_FLUSH_COUNT + 1}" \
+                if _end_ts else "full run"
             logger.info(
-                "Building Veusz project with all %d accumulated sample(s)…", cycle)
-            write_veusz(ALL_DEVICE_DATA, veusz_dir, append=_app_f)
+                "Building Veusz project (%s, %d cycle(s))…", _label, cycle)
+            write_veusz(ALL_DEVICE_DATA, veusz_dir, append=_app_f,
+                        timestamp_suffix=_end_ts)
 
         if not dicts_only:
             if _any_output_enabled(cfg):
