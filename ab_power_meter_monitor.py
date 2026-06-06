@@ -27,7 +27,7 @@ Phone  : +1 (304) 456-2216
 Email  : wwallace@nrao.edu
 Email2 : naval.antennas@gmail.com 
 Python : 3.8+
-Version: 1.4.8
+Version: 1.4.9
 Deps   : PySide6, matplotlib, requests, beautifulsoup4, lxml,
          astropy, openpyxl, veusz  (pip install each)
 
@@ -429,7 +429,7 @@ def fetch_table_html(
     ip : str
         Device IP address (no protocol or port).
     page : int
-        Meter page index (1-based).
+        Meter page index, 0-based (0 – 10, matching TABLE_NAMES keys).
     timeout : int
         Per-request response timeout in seconds.
     retries : int
@@ -1854,11 +1854,34 @@ def write_veusz(
 
             for tname, tdict in tables.items():
                 series = extract_numeric_series(tdict)
-                if not series:
-                    logger.debug(
-                        "Veusz: no numeric data in '%s' — skipping", tname)
+                if series:
+                    all_series[tname] = series
                     continue
-                all_series[tname] = series
+                # Fallback: tdict may be an empty stub (e.g. the IP failed on
+                # the last poll but has accumulated data in TIME_SERIES_STORE).
+                # Derive parameter names and units directly from the store so
+                # the device is not silently skipped.
+                with _TS_LOCK:
+                    tstore_fb = TIME_SERIES_STORE.get(ip, {}).get(tname, {})
+                fb_cols  = tstore_fb.get("columns", {})
+                fb_units = tstore_fb.get("units",   {})
+                if fb_cols:
+                    # Build a minimal series dict: {param: (last_val_or_0, unit)}
+                    fb_series: Dict[str, Tuple[float, str]] = {}
+                    for param, col_vals in fb_cols.items():
+                        last_v = next(
+                            (v for v in reversed(col_vals) if v is not None),
+                            0.0
+                        )
+                        fb_series[param] = (float(last_v), fb_units.get(param, ""))
+                    if fb_series:
+                        all_series[tname] = fb_series
+                        logger.debug(
+                            "Veusz: used TIME_SERIES_STORE fallback for '%s' "
+                            "(snapshot was empty).", tname)
+                        continue
+                logger.debug(
+                    "Veusz: no numeric data in '%s' — skipping", tname)
 
             if not all_series:
                 logger.warning(
@@ -2245,19 +2268,32 @@ def flush_outputs_parallel(cfg: Dict[str, Any]) -> "concurrent.futures.Future":
         xlsx_dir = cfg.get("xlsx_dir",  XLSX_DIR)
         log_dir = cfg.get("log_dir",   LOG_DIR)
 
+        # Snapshot the IP set at dispatch time so that lambdas below are
+        # not affected by ALL_DEVICE_DATA being cleared/rebuilt by a
+        # concurrent poll cycle while the flush thread is still running.
+        # All writer functions (write_fits, write_csv, …) iterate IPs
+        # from TIME_SERIES_STORE internally; the dict passed here is only
+        # used as an IP hint.  Using a frozen snapshot guarantees the
+        # correct set of IPs is visible to the writers regardless of
+        # whether ALL_DEVICE_DATA is mutated between dispatch and execution.
+        with _TS_LOCK:
+            _ts_snap: Dict[str, Any] = {
+                ip: {} for ip in TIME_SERIES_STORE
+            }
+
         tasks = []
         if cfg.get("enable_fits"):
             tasks.append(
-                ("FITS", lambda _a=_append: write_fits(ALL_DEVICE_DATA, fits_dir, append=_a)))
+                ("FITS", lambda _a=_append, _d=_ts_snap: write_fits(_d, fits_dir, append=_a)))
         if cfg.get("enable_csv"):
-            tasks.append(("CSV", lambda _a=_append: write_csv(
-                ALL_DEVICE_DATA, csv_dir, append=_a)))
+            tasks.append(("CSV", lambda _a=_append, _d=_ts_snap: write_csv(
+                _d, csv_dir, append=_a)))
         if cfg.get("enable_xlsx"):
             tasks.append(
-                ("XLSX", lambda _a=_append: write_xlsx(ALL_DEVICE_DATA, xlsx_dir, append=_a)))
+                ("XLSX", lambda _a=_append, _d=_ts_snap: write_xlsx(_d, xlsx_dir, append=_a)))
         if cfg.get("enable_log_append"):
             tasks.append(
-                ("LOG",  lambda _a=_append: write_log_text(ALL_DEVICE_DATA, log_dir, append=_a)))
+                ("LOG",  lambda _a=_append, _d=_ts_snap: write_log_text(_d, log_dir, append=_a)))
 
         with concurrent.futures.ThreadPoolExecutor(
             max_workers=min(4, len(tasks)) if tasks else 1,
@@ -2646,7 +2682,10 @@ def build_preview_figures(
                     group_series.append(
                         (label, list(range(n_samples)), values))
 
-            if len(group_series) < 2:
+            # Threshold: show overlay page whenever at least one matching
+            # series exists.  Using < 2 would hide valid single-series overlays
+            # and is inconsistent with build_preview_pngs (which uses 'not').
+            if not group_series:
                 continue
 
             fig, ax = plt.subplots(figsize=(10, 4))
@@ -3965,7 +4004,7 @@ def launch_gui(
                 "stores data in named Python dicts, and\n"
                 "exports to FITS, CSV, XLSX, Veusz, and logs.\n\n"
                 "Author: W. Wallace\n"
-                "Version: 1.4.8\n"
+                "Version: 1.4.9\n"
                 "Python: 3.8+\n"
                 "Qt backend: PySide6 (via QtPy)",
             )
@@ -4433,12 +4472,16 @@ def run_headless(cfg: Dict[str, Any]) -> None:
                     logger.error("[headless] Consec failure limit %d — exiting.",
                                  _max_fails)
                     break
+                # All IPs failed this cycle — do NOT call update_named_dicts.
+                # Doing so would clear ALL_DEVICE_DATA and rebuild it with
+                # only error entries, corrupting the TIME_SERIES_STORE
+                # accumulator with gap timestamps.
             else:
                 if _consec_fails > 0 and not dicts_only:
                     logger.info("Cycle %d: connectivity restored after %d fail(s).",
                                 cycle, _consec_fails)
                 _consec_fails = 0
-            update_named_dicts(data)  # also calls accumulate_poll()
+                update_named_dicts(data)  # also calls accumulate_poll()
 
             poll_elapsed = time.monotonic() - t_poll_start
             _ram_pct   = system_ram_used_pct()
