@@ -27,7 +27,7 @@ Phone  : +1 (304) 456-2216
 Email  : wwallace@nrao.edu
 Email2 : naval.antennas@gmail.com 
 Python : 3.8+
-Version: 1.4.16
+Version: 1.4.17
 Deps   : PySide6, matplotlib, requests, beautifulsoup4, lxml,
          astropy, openpyxl, veusz  (pip install each)
 
@@ -123,8 +123,10 @@ ENABLE_LOG_APPEND = 1   # Write per-device Markdown (.md) data log tables
 ENABLE_LOG_FILE = 1   # Write ab_monitor.log (Python logging file handler)
 # Set to 0 to keep logging console-only (no file created)
 ENABLE_VEUSZ = 1   # Write Veusz HDF5 project file(s) (.vszh5)
-VEUSZ_WRITE_ON_FLUSH = 0  # 1 = also write Veusz on mid-run RAM flush (high RAM cost)
-                          # 0 = write Veusz only at loop end / Stop (recommended)
+VEUSZ_WRITE_ON_FLUSH = 0  # 1 = also save a timestamped Veusz snapshot on each RAM flush
+                          # 0 = write Veusz only at loop end / Stop (default)
+                          # Store is cleared BEFORE the Veusz subprocess is launched
+                          # so RAM impact is minimal regardless of this setting.
 
 # ---------------------------------------------------------------------------
 # %% Headless loop control
@@ -3366,7 +3368,7 @@ def launch_gui(
             self._cb_log_file = QCheckBox("Write ab_monitor.log file")
             self._cb_veusz = QCheckBox("Enable Veusz HDF5 output (.vszh5)")
             self._cb_veusz_on_flush = QCheckBox(
-                "Write Veusz on RAM flush (high RAM cost — end-of-run only if unchecked)")
+                "  └ Save timestamped Veusz snapshot on each RAM flush (requires Enable Veusz)")
 
             self._cb_fits.setChecked(
                 bool(self._switches.get("enable_fits",       ENABLE_FITS)))
@@ -3383,10 +3385,17 @@ def launch_gui(
             self._cb_veusz_on_flush.setChecked(
                 bool(self._switches.get("veusz_write_on_flush", VEUSZ_WRITE_ON_FLUSH)))
             self._cb_veusz_on_flush.setToolTip(
-                "When checked, Veusz is rebuilt during mid-run RAM flushes.\n"
-                "Veusz spawns a subprocess and copies all accumulated data —\n"
-                "this can consume several hundred MB. Leave unchecked to write\n"
-                "Veusz only at Stop or loop end.")
+                "When checked: each RAM flush saves a separate timestamped\n"
+                "  ABMeter_<ip>_YYYYMMDD_HHMMSS.vszh5 snapshot covering\n"
+                "  that flush window's data.\n"
+                "When unchecked: a single ABMeter_<ip>.vszh5 is written\n"
+                "  only at Stop or loop end, containing whatever remains\n"
+                "  in the store since the last flush.\n"
+                "\n"
+                "For multi-day runs: check this box to preserve every\n"
+                "flush window as a separate file.\n"
+                "The store is cleared before the subprocess launches,\n"
+                "so RAM impact is low in either case.")
 
             for cb in [self._cb_fits, self._cb_csv, self._cb_xlsx,
                        self._cb_log, self._cb_log_file, self._cb_veusz,
@@ -4215,7 +4224,7 @@ def launch_gui(
                 "stores data in named Python dicts, and\n"
                 "exports to FITS, CSV, XLSX, Veusz, and logs.\n\n"
                 "Author: W. Wallace\n"
-                "Version: 1.4.16\n"
+                "Version: 1.4.17\n"
                 "Python: 3.8+\n"
                 "Qt backend: PySide6 (via QtPy)",
             )
