@@ -27,7 +27,7 @@ Phone  : +1 (304) 456-2216
 Email  : wwallace@nrao.edu
 Email2 : naval.antennas@gmail.com 
 Python : 3.8+
-Version: 1.4.13
+Version: 1.4.15
 Deps   : PySide6, matplotlib, requests, beautifulsoup4, lxml,
          astropy, openpyxl, veusz  (pip install each)
 
@@ -122,6 +122,8 @@ ENABLE_LOG_APPEND = 1   # Write per-device Markdown (.md) data log tables
 ENABLE_LOG_FILE = 1   # Write ab_monitor.log (Python logging file handler)
 # Set to 0 to keep logging console-only (no file created)
 ENABLE_VEUSZ = 1   # Write Veusz HDF5 project file(s) (.vszh5)
+VEUSZ_WRITE_ON_FLUSH = 0  # 1 = also write Veusz on mid-run RAM flush (high RAM cost)
+                          # 0 = write Veusz only at loop end / Stop (recommended)
 
 # ---------------------------------------------------------------------------
 # %% Headless loop control
@@ -1872,6 +1874,7 @@ def write_veusz(
     veusz_dir: str,
     show_window: bool = False,
     append: bool = True,
+    timestamp_suffix: Optional[str] = None,
 ) -> None:
     """
     Build and save Veusz HDF5 project files (.vszh5) — one per device.
@@ -1894,6 +1897,22 @@ def write_veusz(
       ``axis.label.val = 'Voltage [V]'``.
     * ``doc.Save(path, mode='hdf5')`` — saves as HDF5 (.vszh5), Veusz >= 3.6.
 
+    Filename strategy
+    -----------------
+    The Veusz embed API has no incremental-append mode — every ``doc.Save()``
+    call builds and overwrites a complete document from whatever is currently
+    in ``TIME_SERIES_STORE``.  For multi-day runs where the store is cleared
+    after each RAM flush, each flush must produce a **separate** timestamped
+    file so no data is lost.  Pass ``timestamp_suffix`` (a compact UTC string
+    such as ``"20260606_103000"``) to produce::
+
+        ABMeter_10_16_130_50_20260606_103000.vszh5
+
+    Leave ``timestamp_suffix=None`` (default) for the final end-of-run write
+    which produces the fixed canonical file::
+
+        ABMeter_10_16_130_50.vszh5
+
     Parameters
     ----------
     all_device_data : Dict[str, Dict[str, Dict[str, Any]]]
@@ -1903,6 +1922,14 @@ def write_veusz(
     show_window : bool, optional
         If True the embedded Veusz window is shown (toolbar visible for
         interactive inspection).  Defaults to False (headless / silent).
+    append : bool, optional
+        When False, all existing ``.vszh5`` files in ``veusz_dir`` are deleted
+        before writing.  Only honoured when ``timestamp_suffix`` is None (the
+        end-of-run fixed-name write); flush writes never delete existing files.
+    timestamp_suffix : str or None, optional
+        If provided, appended to the filename before the extension so each
+        RAM-flush write produces a distinct file.  Format: ``YYYYMMDD_HHMMSS``.
+        When None the fixed canonical filename is used (end-of-run write).
 
     Raises
     ------
@@ -1921,7 +1948,10 @@ def write_veusz(
         return
 
     os.makedirs(veusz_dir, exist_ok=True)
-    if not append:
+    # Only delete existing files for a final end-of-run (non-timestamped) write
+    # when append=False.  Flush writes use unique timestamped filenames so they
+    # never overwrite or delete any previous Veusz file.
+    if not append and timestamp_suffix is None:
         import glob as _glob
         for _f in _glob.glob(os.path.join(veusz_dir, "*.vszh5")):
             try:
@@ -1951,7 +1981,14 @@ def write_veusz(
                 store_tnames = list(TIME_SERIES_STORE.get(ip, {}).keys())
             tables = {tn: {} for tn in store_tnames}
         safe_ip = ip.replace(".", "_")
-        filename = os.path.join(veusz_dir, f"ABMeter_{safe_ip}.vszh5")
+        # Timestamped filename for mid-run flush writes (one file per flush
+        # window so no data from prior flush periods is overwritten).
+        # Fixed canonical filename for the final end-of-run write.
+        if timestamp_suffix:
+            filename = os.path.join(
+                veusz_dir, f"ABMeter_{safe_ip}_{timestamp_suffix}.vszh5")
+        else:
+            filename = os.path.join(veusz_dir, f"ABMeter_{safe_ip}.vszh5")
 
         # -------------------------------------------------------------------
         # Open the embedded document window.
@@ -3319,6 +3356,8 @@ def launch_gui(
             self._cb_log = QCheckBox("Append to Markdown log tables (.md)")
             self._cb_log_file = QCheckBox("Write ab_monitor.log file")
             self._cb_veusz = QCheckBox("Enable Veusz HDF5 output (.vszh5)")
+            self._cb_veusz_on_flush = QCheckBox(
+                "Write Veusz on RAM flush (high RAM cost — end-of-run only if unchecked)")
 
             self._cb_fits.setChecked(
                 bool(self._switches.get("enable_fits",       ENABLE_FITS)))
@@ -3332,9 +3371,17 @@ def launch_gui(
                 bool(self._switches.get("enable_log_file",   ENABLE_LOG_FILE)))
             self._cb_veusz.setChecked(
                 bool(self._switches.get("enable_veusz",      ENABLE_VEUSZ)))
+            self._cb_veusz_on_flush.setChecked(
+                bool(self._switches.get("veusz_write_on_flush", VEUSZ_WRITE_ON_FLUSH)))
+            self._cb_veusz_on_flush.setToolTip(
+                "When checked, Veusz is rebuilt during mid-run RAM flushes.\n"
+                "Veusz spawns a subprocess and copies all accumulated data —\n"
+                "this can consume several hundred MB. Leave unchecked to write\n"
+                "Veusz only at Stop or loop end.")
 
             for cb in [self._cb_fits, self._cb_csv, self._cb_xlsx,
-                       self._cb_log, self._cb_log_file, self._cb_veusz]:
+                       self._cb_log, self._cb_log_file, self._cb_veusz,
+                       self._cb_veusz_on_flush]:
                 layout.addWidget(cb)
 
             # --- Output root directory (drives FITS, CSV, XLSX, Veusz sub-dirs) ---
@@ -3589,6 +3636,7 @@ def launch_gui(
                 "enable_log_append": int(self._cb_log.isChecked()),
                 "enable_log_file":   int(self._cb_log_file.isChecked()),
                 "enable_veusz":      int(self._cb_veusz.isChecked()),
+                "veusz_write_on_flush": int(self._cb_veusz_on_flush.isChecked()),
                 # Runtime output directories — derived from the GUI fields.
                 # All sub-dirs are built under output_base_dir unless the
                 # user has overridden log_dir independently.
@@ -3701,16 +3749,28 @@ def launch_gui(
                         self._flush_future.result(timeout=60)
                     except Exception as _fe:
                         logger.error("RAM flush wait: %s", _fe)
-                _app = bool(cfg.get("append_files", APPEND_OUTPUT_FILES))
                 # Assign the returned future so the flush guard at _process_outputs
                 # knows this flush is in-flight and won't launch a concurrent write.
                 self._flush_future = flush_outputs_parallel(cfg)
-                if cfg.get("enable_veusz") and ALL_DEVICE_DATA:
+                if cfg.get("enable_veusz") and cfg.get("veusz_write_on_flush") and ALL_DEVICE_DATA:
                     try:
-                        write_veusz(ALL_DEVICE_DATA, cfg.get("veusz_dir", VEUSZ_DIR),
-                                    show_window=False, append=_app)
+                        # Timestamped filename so each flush window is preserved
+                        # as a separate file.  The Veusz embed API cannot append
+                        # to an existing .vszh5 — every Save() builds from scratch.
+                        _vts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+                        _vdir = cfg.get("veusz_dir", VEUSZ_DIR)
+                        write_veusz(ALL_DEVICE_DATA, _vdir,
+                                    show_window=False, append=True,
+                                    timestamp_suffix=_vts)
+                        self._append_log(
+                            f"[Veusz flush] Saved flush window to {_vdir} "
+                            f"(suffix {_vts}).")
                     except Exception as _ve:
                         logger.error("Veusz RAM-flush: %s", _ve)
+                else:
+                    logger.debug(
+                        "Veusz skipped during RAM flush (veusz_write_on_flush=0). "
+                        "Will write at Stop/loop-end.")
                 # Wait for the background flush to finish BEFORE clearing the
                 # store — avoids a race where flush threads read TIME_SERIES_STORE
                 # concurrently with _clear_time_series_store().
@@ -4132,7 +4192,7 @@ def launch_gui(
                 "stores data in named Python dicts, and\n"
                 "exports to FITS, CSV, XLSX, Veusz, and logs.\n\n"
                 "Author: W. Wallace\n"
-                "Version: 1.4.13\n"
+                "Version: 1.4.15\n"
                 "Python: 3.8+\n"
                 "Qt backend: PySide6 (via QtPy)",
             )
@@ -4621,14 +4681,25 @@ def run_headless(cfg: Dict[str, Any]) -> None:
                         flush_future.result(timeout=60)
                     except Exception as _fe:
                         logger.error("Flush wait: %s", _fe)
-                _app = bool(cfg.get("append_files", APPEND_OUTPUT_FILES))
                 flush_future = flush_outputs_parallel(cfg)  # track in-flight flush
-                if cfg.get("enable_veusz") and ALL_DEVICE_DATA:
+                if cfg.get("enable_veusz") and cfg.get("veusz_write_on_flush") and ALL_DEVICE_DATA:
                     try:
-                        write_veusz(ALL_DEVICE_DATA, cfg.get("veusz_dir", VEUSZ_DIR),
-                                    show_window=False, append=_app)
+                        # Timestamped filename so each flush window is preserved
+                        # as a separate file.  The Veusz embed API cannot append
+                        # to an existing .vszh5 — every Save() builds from scratch.
+                        _vts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+                        _vdir = cfg.get("veusz_dir", VEUSZ_DIR)
+                        write_veusz(ALL_DEVICE_DATA, _vdir,
+                                    show_window=False, append=True,
+                                    timestamp_suffix=_vts)
+                        logger.info("[Veusz flush] Saved flush window: %s (suffix %s)",
+                                    _vdir, _vts)
                     except Exception as _ve:
                         logger.error("Veusz RAM-flush: %s", _ve)
+                else:
+                    logger.debug(
+                        "Veusz skipped during RAM flush (VEUSZ_WRITE_ON_FLUSH=0). "
+                        "Will write at loop end.")
                 # Wait for the background flush to finish BEFORE clearing the
                 # store — avoids a race where flush threads read TIME_SERIES_STORE
                 # concurrently with _clear_time_series_store().
@@ -4848,6 +4919,7 @@ def main() -> Dict[str, Dict[str, Dict]]:
         "enable_log_append": ENABLE_LOG_APPEND,
         "enable_log_file":   ENABLE_LOG_FILE,
         "enable_veusz":      ENABLE_VEUSZ,   # write Veusz HDF5 project file(s)
+        "veusz_write_on_flush": VEUSZ_WRITE_ON_FLUSH,  # 1=also write on RAM flush
         # Output directories — all derived from OUTPUT_BASE_DIR.
         # Change OUTPUT_BASE_DIR at the top of the file to relocate everything.
         "output_base_dir":   OUTPUT_BASE_DIR,
