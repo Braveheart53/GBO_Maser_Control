@@ -27,7 +27,7 @@ Phone  : +1 (304) 456-2216
 Email  : wwallace@nrao.edu
 Email2 : naval.antennas@gmail.com 
 Python : 3.8+
-Version: 1.4.12
+Version: 1.4.13
 Deps   : PySide6, matplotlib, requests, beautifulsoup4, lxml,
          astropy, openpyxl, veusz  (pip install each)
 
@@ -1165,7 +1165,7 @@ def write_fits(
             primary_hdr["NSAMP"] = (
                 max(len(td.get("timestamps_local", []))
                     for td in ip_tables.values()),
-                _fits_ascii("Maximum accumulated poll cycles across all tables"),
+                _fits_ascii("Max accumulated poll cycles across all tables"),
             )
 
         for tname, tdata in ip_tables.items():
@@ -4132,7 +4132,7 @@ def launch_gui(
                 "stores data in named Python dicts, and\n"
                 "exports to FITS, CSV, XLSX, Veusz, and logs.\n\n"
                 "Author: W. Wallace\n"
-                "Version: 1.4.12\n"
+                "Version: 1.4.13\n"
                 "Python: 3.8+\n"
                 "Qt backend: PySide6 (via QtPy)",
             )
