@@ -27,7 +27,7 @@ Phone  : +1 (304) 456-2216
 Email  : wwallace@nrao.edu
 Email2 : naval.antennas@gmail.com 
 Python : 3.8+
-Version: 1.4.10
+Version: 1.4.11
 Deps   : PySide6, matplotlib, requests, beautifulsoup4, lxml,
          astropy, openpyxl, veusz  (pip install each)
 
@@ -735,12 +735,45 @@ def accumulate_poll(all_device_data: Dict[str, Dict[str, Dict[str, Any]]]) -> No
     Called immediately after update_named_dicts() on every poll cycle.
     Thread-safe via _TS_LOCK.
 
+    Timestamp accuracy
+    ------------------
+    Each table entry uses the per-page ``_meta["fetch_utc"]`` timestamp
+    recorded by :func:`parse_html_table` immediately after the HTTP response
+    was received for that page.  This is more accurate than a single shared
+    ``datetime.now()`` taken after all IPs and all pages have completed,
+    which can lag the actual data acquisition by 10-30 s for a 2-IP /
+    11-page poll under typical timeout conditions.
+
+    ``fetch_utc`` is stored as a UTC ISO-8601 string (e.g.
+    ``"2026-06-06T10:05:03Z"``); it is converted to local wall-clock time
+    before storage so that all timestamps_local values remain in the same
+    timezone-unaware local format used by every output file.  If the
+    conversion fails for any reason the function falls back to
+    ``datetime.datetime.now()`` so no sample is lost.
+
     Parameters
     ----------
     all_device_data : Dict
         Nested dict: {ip: {table_name: parsed_dict}} (latest snapshot).
     """
-    local_ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    # Fallback timestamp used when _meta fetch_utc is absent or unparseable.
+    _fallback_ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    def _local_ts_from_meta(tdict: Dict[str, Any]) -> str:
+        """Convert _meta fetch_utc (UTC ISO string) to local time string.
+
+        Falls back to _fallback_ts if the key is missing or malformed.
+        """
+        fetch_utc = tdict.get("_meta", {}).get("fetch_utc", "")
+        if not fetch_utc:
+            return _fallback_ts
+        try:
+            utc_dt = datetime.datetime.strptime(
+                fetch_utc, "%Y-%m-%dT%H:%M:%SZ"
+            ).replace(tzinfo=datetime.timezone.utc)
+            return utc_dt.astimezone(tz=None).strftime("%Y-%m-%d %H:%M:%S")
+        except Exception:
+            return _fallback_ts
 
     with _TS_LOCK:
         for ip, tables in all_device_data.items():
@@ -751,6 +784,9 @@ def accumulate_poll(all_device_data: Dict[str, Dict[str, Dict[str, Any]]]) -> No
                 series = extract_numeric_series(tdict)
                 if not series:
                     continue
+
+                # Per-table timestamp derived from the actual HTTP fetch time.
+                local_ts = _local_ts_from_meta(tdict)
 
                 if tname not in TIME_SERIES_STORE[ip]:
                     # First poll: initialise columns and units
@@ -780,8 +816,8 @@ def accumulate_poll(all_device_data: Dict[str, Dict[str, Dict[str, Any]]]) -> No
                     if len(col_list) < n_ts:
                         col_list.append(None)
 
-    logger.debug("Accumulator updated — %d devices, local ts: %s",
-                 len(all_device_data), local_ts)
+    logger.debug("Accumulator updated - %d devices, fallback ts: %s",
+                 len(all_device_data), _fallback_ts)
 
 # %% Memory Tracking
 
@@ -1278,8 +1314,10 @@ def write_csv(
                     # detect new columns, then append only the new rows.
                     existing_params: List[str] = []
                     existing_row_count = 0
+                    last_file_ts: str = ""
                     with open(filename, "r", newline="", encoding="utf-8") as fh:
                         reader = csv.reader(fh)
+                        last_data_row: List[str] = []
                         for row_idx, row in enumerate(reader):
                             if row_idx == 0:
                                 # skip Timestamp_Local; strip whitespace to
@@ -1290,6 +1328,32 @@ def write_csv(
                                 pass  # units row
                             else:
                                 existing_row_count += 1
+                                last_data_row = row
+                        if last_data_row:
+                            last_file_ts = last_data_row[0].strip()
+
+                    # Post-flush reset detection:
+                    # After a RAM flush, TIME_SERIES_STORE is cleared and
+                    # re-accumulates from index 0.  If the store has fewer rows
+                    # than the CSV file, all current timestamps are newer than
+                    # anything on disk and should ALL be written (start_idx=0).
+                    # Guard: only apply when the first current timestamp is
+                    # strictly newer than the last on-disk timestamp so we never
+                    # re-append data already persisted.
+                    if (
+                        existing_row_count > 0
+                        and len(timestamps) > 0
+                        and last_file_ts
+                        and timestamps[0] > last_file_ts
+                    ):
+                        # Store was cleared after the last write — all current
+                        # timestamps are new; write from index 0.
+                        start_idx = 0
+                    elif existing_row_count >= len(timestamps):
+                        # Nothing new to write (common after flush-before-clear).
+                        start_idx = len(timestamps)
+                    else:
+                        start_idx = existing_row_count
 
                     new_params = [
                         p for p in params if p not in existing_params]
@@ -1312,8 +1376,7 @@ def write_csv(
                                     old_row + [""] * len(new_params))
 
                     # Append only rows not yet written
-                    rows_to_write = timestamps[existing_row_count:]
-                    start_idx = existing_row_count
+                    rows_to_write = timestamps[start_idx:]
                     with open(filename, "a" if append else "w", newline="", encoding="utf-8") as fh:
                         writer = csv.writer(fh)
                         for i, ts in enumerate(rows_to_write):
@@ -1366,6 +1429,9 @@ def write_xlsx(
     try:
         import openpyxl
         from openpyxl.chart import LineChart, Reference
+        from openpyxl.chart.series import SeriesLabel
+        from openpyxl.chart.data_source import StrRef
+        from openpyxl.utils import get_column_letter
         from openpyxl.styles import Font, PatternFill, Alignment
     except ImportError as exc:
         logger.error("openpyxl not available — XLSX output skipped: %s", exc)
@@ -1484,9 +1550,11 @@ def write_xlsx(
                     # Data rows start at row 3 (row 1 = header, row 2 = units).
                     # Reference only the data rows so neither the header text
                     # nor the "(units)" string is included in chart values.
-                    # Series titles are taken from row 1 (header) separately
-                    # via a second single-row Reference — this is the correct
-                    # openpyxl pattern when header and data are not contiguous.
+                    # Series titles use the openpyxl SeriesLabel/StrRef API:
+                    # chart.series[-1].tx = SeriesLabel(strRef=StrRef(f=addr))
+                    # Assigning a bare Reference to .title raises TypeError and
+                    # is silently swallowed by the except block, leaving all
+                    # series untitled.  The .tx attribute is the correct target.
                     for nc in numeric_cols[:12]:
                         data_ref = Reference(
                             ws,
@@ -1494,10 +1562,14 @@ def write_xlsx(
                             min_row=3, max_row=n_data_rows + 2,
                         )
                         chart.add_data(data_ref, titles_from_data=False)
-                        # Apply header cell (row 1) as the series title
-                        title_ref = Reference(ws, min_col=nc, max_col=nc,
-                                              min_row=1, max_row=1)
-                        chart.series[-1].title = title_ref
+                        # Build a cell-reference series title pointing to the
+                        # header row (row 1) so the legend shows the param name.
+                        # Format: 'SheetTitle'!$COL$1 (absolute reference).
+                        col_ltr = get_column_letter(nc)
+                        title_addr = f"'{ws.title}'!${col_ltr}$1"
+                        chart.series[-1].tx = SeriesLabel(
+                            strRef=StrRef(f=title_addr)
+                        )
 
                     # x-axis categories = Timestamp_Local column, data rows only
                     cat_ref = Reference(
@@ -1602,15 +1674,42 @@ def write_log_text(
             # If HEADER_LINES were wrong, appended rows would duplicate or gap.
             HEADER_LINES = 3   # heading + table header row + separator row
             existing_rows = 0
+            last_md_ts: str = ""
             is_new = not os.path.exists(filename)
             if not is_new:
                 try:
                     with open(filename, "r", encoding="utf-8") as fh:
                         all_lines = [l for l in fh if l.strip()]
                     existing_rows = max(0, len(all_lines) - HEADER_LINES)
+                    # Read last data timestamp for post-flush reset detection.
+                    # Data lines are pipe-table rows that don't contain "---".
+                    for _line in reversed(all_lines):
+                        stripped = _line.strip()
+                        if stripped.startswith("|") and "---" not in stripped:
+                            _cells = [c.strip() for c in stripped.strip("|").split("|")]
+                            if _cells and _cells[0] and not _cells[0].startswith("Timestamp"):
+                                last_md_ts = _cells[0]
+                            break
                 except Exception:
                     existing_rows = 0
                     is_new = True
+
+            # Post-flush reset detection (mirrors write_csv logic):
+            # If TIME_SERIES_STORE was cleared after the last write, the
+            # current timestamps list restarts from index 0 with NEW data.
+            # existing_rows may be larger than len(timestamps) in that case,
+            # causing range(existing_rows, len(timestamps)) to produce no rows.
+            # Detect by comparing timestamps[0] to the last line written.
+            if (
+                not is_new
+                and existing_rows > 0
+                and len(timestamps) > 0
+                and last_md_ts
+                and timestamps[0] > last_md_ts
+            ):
+                # All current timestamps are newer than the last on-disk row;
+                # write all of them (post-flush re-accumulation from index 0).
+                existing_rows = 0
 
             # Build column header labels: "Param (unit)" or just "Param"
             col_labels = ["Timestamp_Local"] + [
@@ -4021,7 +4120,7 @@ def launch_gui(
                 "stores data in named Python dicts, and\n"
                 "exports to FITS, CSV, XLSX, Veusz, and logs.\n\n"
                 "Author: W. Wallace\n"
-                "Version: 1.4.10\n"
+                "Version: 1.4.11\n"
                 "Python: 3.8+\n"
                 "Qt backend: PySide6 (via QtPy)",
             )
