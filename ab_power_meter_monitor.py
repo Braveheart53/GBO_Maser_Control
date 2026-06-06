@@ -27,7 +27,7 @@ Phone  : +1 (304) 456-2216
 Email  : wwallace@nrao.edu
 Email2 : naval.antennas@gmail.com 
 Python : 3.8+
-Version: 1.4.9
+Version: 1.4.10
 Deps   : PySide6, matplotlib, requests, beautifulsoup4, lxml,
          astropy, openpyxl, veusz  (pip install each)
 
@@ -871,7 +871,10 @@ def should_flush(cfg: Dict[str, Any]) -> bool:
 # %% Dict raw data update
 
 
-def update_named_dicts(all_data: Dict[str, Dict[str, Any]]) -> None:
+def update_named_dicts(
+    all_data: Dict[str, Dict[str, Any]],
+    ip_list: Optional[List[str]] = None,
+) -> None:
     """
     Update module-level named dicts from the raw all_data poll result.
 
@@ -881,6 +884,12 @@ def update_named_dicts(all_data: Dict[str, Dict[str, Any]]) -> None:
     ----------
     all_data : Dict[str, Dict[str, Any]]
         Output of poll_all_devices() with ``__poll_meta__`` already popped.
+    ip_list : list of str, optional
+        The runtime IP list to use when padding missing-device entries.
+        Defaults to the module-level ``IP_LIST`` when not provided.  Callers
+        that obtain their IP list from a config dict or GUI spinbox should
+        pass it explicitly so that stale module-level IPs are not injected
+        into ALL_DEVICE_DATA during a run with a different IP set.
     """
     global Device_Configuration_Table, Communications_Configuration_Table
     global Voltage_Current_Table, Real_Time_Power_Table, Cumulative_Power_Table
@@ -906,7 +915,11 @@ def update_named_dicts(all_data: Dict[str, Dict[str, Any]]) -> None:
     # timestamps_local and the column lists in TIME_SERIES_STORE.
     # Inserting an empty dict for the missing IP lets accumulate_poll() skip it
     # gracefully (no numeric series → no append) rather than causing misalignment.
-    for expected_ip in IP_LIST:
+    # Use the caller-supplied ip_list (runtime config) rather than the module-level
+    # IP_LIST so that a GUI or headless run with a different device set does not
+    # inject stale module-startup IPs into ALL_DEVICE_DATA.
+    _eff_ips = ip_list if ip_list is not None else IP_LIST
+    for expected_ip in _eff_ips:
         clean = expected_ip.strip()
         if clean and clean not in ALL_DEVICE_DATA:
             ALL_DEVICE_DATA[clean] = {}
@@ -2936,7 +2949,7 @@ def launch_gui(
                             self.log_message.emit(
                                 f"Connectivity restored after {_consec_fails} failure(s).")
                         _consec_fails = 0
-                        update_named_dicts(data)
+                        update_named_dicts(data, ip_list=self.config.get("ip_list", IP_LIST))
                         self.data_ready.emit(data)
                         self.log_message.emit(
                             f"[{datetime.datetime.now().strftime('%H:%M:%S')}] "
@@ -3504,7 +3517,7 @@ def launch_gui(
                 # error entries, corrupting the time-series accumulator.
             else:
                 # populates ALL_DEVICE_DATA and appends to TIME_SERIES_STORE
-                update_named_dicts(data)
+                update_named_dicts(data, ip_list=cfg.get("ip_list", IP_LIST))
                 self._process_outputs(ALL_DEVICE_DATA, cfg)
             png_specs = build_preview_pngs()          # memory-safe PNG pipeline
             self._populate_plot_tabs(png_specs)
@@ -3616,15 +3629,19 @@ def launch_gui(
             self._status_bar.showMessage(f"Error — {msg[:60]}")
 
         def _on_consec_limit(self, count: int) -> None:
-            """Slot: PollThread hit the consecutive-failure limit — auto-stop."""
+            """Slot: PollThread hit the consecutive-failure limit — auto-stop.
+
+            Delegates to _do_stop() so that the final Veusz file (and any other
+            cleanup) is written consistently regardless of whether the user
+            clicked Stop or the limit was reached automatically.
+            """
             limit = int(self._spin_max_fails.value())
             self._append_log(
                 f"[Auto-Stop] {count} consecutive all-device failure(s) reached "
                 f"the limit ({limit}). Polling stopped.")
-            self._status_bar.showMessage(
-                f"Auto-stopped after {count} consecutive failure(s).")
-            self._btn_start.setEnabled(True)
-            self._btn_stop.setEnabled(False)
+            # _do_stop() updates button states, waits for the thread, and writes
+            # the final Veusz file — call it instead of duplicating that logic here.
+            self._do_stop()
 
         def _open_interactive_for_plot(
             self,
@@ -4004,7 +4021,7 @@ def launch_gui(
                 "stores data in named Python dicts, and\n"
                 "exports to FITS, CSV, XLSX, Veusz, and logs.\n\n"
                 "Author: W. Wallace\n"
-                "Version: 1.4.9\n"
+                "Version: 1.4.10\n"
                 "Python: 3.8+\n"
                 "Qt backend: PySide6 (via QtPy)",
             )
@@ -4481,7 +4498,7 @@ def run_headless(cfg: Dict[str, Any]) -> None:
                     logger.info("Cycle %d: connectivity restored after %d fail(s).",
                                 cycle, _consec_fails)
                 _consec_fails = 0
-                update_named_dicts(data)  # also calls accumulate_poll()
+                update_named_dicts(data, ip_list=cfg.get("ip_list", IP_LIST))  # also calls accumulate_poll()
 
             poll_elapsed = time.monotonic() - t_poll_start
             _ram_pct   = system_ram_used_pct()
@@ -4562,86 +4579,93 @@ def run_headless(cfg: Dict[str, Any]) -> None:
         if print_cumulative:
             _print_cumulative_store(cycle, reason="KeyboardInterrupt")
 
-    # ── Final flush: wait for any in-flight background flush ──────────────────
-    if flush_future is not None and not flush_future.done():
-        if not dicts_only:
-            logger.info("Waiting for background flush to complete…")
-        try:
-            flush_future.result(timeout=60)
-        except Exception as exc:
-            if not dicts_only:
-                logger.error("Background flush error on exit: %s", exc)
-
-    if not dicts_only:
-        logger.info(
-            "Headless loop ended after %d cycle(s). Writing final outputs…", cycle)
-
-    # Final full write of all enabled formats (including Veusz with all samples).
-    # Honour cfg['append_files'] consistently across every writer here.
-    fits_dir  = cfg.get("fits_dir",  FITS_DIR)
-    csv_dir   = cfg.get("csv_dir",   CSV_DIR)
-    xlsx_dir  = cfg.get("xlsx_dir",  XLSX_DIR)
-    log_dir   = cfg.get("log_dir",   LOG_DIR)
-    _app_f    = bool(cfg.get("append_files", APPEND_OUTPUT_FILES))
-
-    if cfg.get("enable_fits"):
-        write_fits(ALL_DEVICE_DATA, fits_dir, append=_app_f)
-    if cfg.get("enable_csv"):
-        write_csv(ALL_DEVICE_DATA, csv_dir, append=_app_f)
-    if cfg.get("enable_xlsx"):
-        write_xlsx(ALL_DEVICE_DATA, xlsx_dir, append=_app_f)
-    if cfg.get("enable_log_append"):
-        write_log_text(ALL_DEVICE_DATA, log_dir, append=_app_f)
-    if cfg.get("enable_veusz"):
-        logger.info(
-            "Building Veusz project with all %d accumulated sample(s)…", cycle)
-        write_veusz(ALL_DEVICE_DATA, veusz_dir, append=_app_f)
-
-    if not dicts_only:
-        if _any_output_enabled(cfg):
-            logger.info("All outputs written. Output directory: %s",
-                        cfg.get("output_base_dir", OUTPUT_BASE_DIR))
-        else:
-            logger.info("No File Output Selected, Nothing Generated")
-
-    # Clean up any leftover stop-signal file so the next run does not exit
-    # immediately (handles the case where the file was created externally but
-    # the loop had already exited via a different path before detecting it).
+    # ── Post-loop cleanup (try/finally ensures stdout/stderr always restored) ──
+    # Any exception in the final-write block must NOT leave sys.stdout/stderr
+    # permanently redirected to /dev/null.  The finally clause guarantees
+    # restoration even if write_xlsx, write_veusz, or any other writer raises.
     try:
-        if os.path.exists(STOP_SIGNAL_FILE):
-            os.remove(STOP_SIGNAL_FILE)
-            logger.debug("Removed residual stop-signal file on clean exit.")
-    except OSError:
-        pass
-
-    # ── End-of-loop console output ──────────────────────────────────────────────
-    # Print the final snapshot dicts only when NOT in silent mode.
-    # Previously this fired unconditionally, wasting CPU emitting output
-    # into /dev/null and confusing callers expecting total silence.
-    if not silent and not dicts_only:
-        _print_named_dicts(cycle, label="final snapshot")
-
-    # Print cumulative store at end-of-loop when switch 3 is enabled
-    # (unless it was already printed by a stop/flush trigger earlier).
-    if print_cumulative:
-        _print_cumulative_store(cycle, reason="end of loop")
-
-    # Restore stdout / stderr if they were redirected for silent mode.
-    # This ensures the interpreter is left in a clean state when main()
-    # returns to a caller that imported the module.
-    if silent:
-        sys.stdout = sys.__stdout__
-        sys.stderr = sys.__stderr__
-        if _devnull_stdout is not None:
+        # ── Final flush: wait for any in-flight background flush ────────────────
+        if flush_future is not None and not flush_future.done():
+            if not dicts_only:
+                logger.info("Waiting for background flush to complete…")
             try:
-                _devnull_stdout.close()
-            except OSError:
-                pass
-        if _devnull_stderr is not None:
-            try:
-                _devnull_stderr.close()
-            except OSError:
-                pass
+                flush_future.result(timeout=60)
+            except Exception as exc:
+                if not dicts_only:
+                    logger.error("Background flush error on exit: %s", exc)
+
+        if not dicts_only:
+            logger.info(
+                "Headless loop ended after %d cycle(s). Writing final outputs…", cycle)
+
+        # Final full write of all enabled formats (including Veusz with all samples).
+        # Honour cfg['append_files'] consistently across every writer here.
+        fits_dir  = cfg.get("fits_dir",  FITS_DIR)
+        csv_dir   = cfg.get("csv_dir",   CSV_DIR)
+        xlsx_dir  = cfg.get("xlsx_dir",  XLSX_DIR)
+        log_dir   = cfg.get("log_dir",   LOG_DIR)
+        _app_f    = bool(cfg.get("append_files", APPEND_OUTPUT_FILES))
+
+        if cfg.get("enable_fits"):
+            write_fits(ALL_DEVICE_DATA, fits_dir, append=_app_f)
+        if cfg.get("enable_csv"):
+            write_csv(ALL_DEVICE_DATA, csv_dir, append=_app_f)
+        if cfg.get("enable_xlsx"):
+            write_xlsx(ALL_DEVICE_DATA, xlsx_dir, append=_app_f)
+        if cfg.get("enable_log_append"):
+            write_log_text(ALL_DEVICE_DATA, log_dir, append=_app_f)
+        if cfg.get("enable_veusz"):
+            logger.info(
+                "Building Veusz project with all %d accumulated sample(s)…", cycle)
+            write_veusz(ALL_DEVICE_DATA, veusz_dir, append=_app_f)
+
+        if not dicts_only:
+            if _any_output_enabled(cfg):
+                logger.info("All outputs written. Output directory: %s",
+                            cfg.get("output_base_dir", OUTPUT_BASE_DIR))
+            else:
+                logger.info("No File Output Selected, Nothing Generated")
+
+        # Clean up any leftover stop-signal file so the next run does not exit
+        # immediately (handles the case where the file was created externally but
+        # the loop had already exited via a different path before detecting it).
+        try:
+            if os.path.exists(STOP_SIGNAL_FILE):
+                os.remove(STOP_SIGNAL_FILE)
+                logger.debug("Removed residual stop-signal file on clean exit.")
+        except OSError:
+            pass
+
+        # ── End-of-loop console output ──────────────────────────────────────────
+        # Print the final snapshot dicts only when NOT in silent mode.
+        # Previously this fired unconditionally, wasting CPU emitting output
+        # into /dev/null and confusing callers expecting total silence.
+        if not silent and not dicts_only:
+            _print_named_dicts(cycle, label="final snapshot")
+
+        # Print cumulative store at end-of-loop when switch 3 is enabled
+        # (unless it was already printed by a stop/flush trigger earlier).
+        if print_cumulative:
+            _print_cumulative_store(cycle, reason="end of loop")
+
+    finally:
+        # Restore stdout / stderr if they were redirected for silent mode.
+        # Placed in finally so that any exception during final writes still
+        # leaves the interpreter in a clean state when control returns to
+        # a caller that imported the module.
+        if silent:
+            sys.stdout = sys.__stdout__
+            sys.stderr = sys.__stderr__
+            if _devnull_stdout is not None:
+                try:
+                    _devnull_stdout.close()
+                except OSError:
+                    pass
+            if _devnull_stderr is not None:
+                try:
+                    _devnull_stderr.close()
+                except OSError:
+                    pass
 
     # Release large in-memory structures accumulated over the run so that
     # callers who import and invoke main() do not retain MBs of stale data
@@ -4770,6 +4794,11 @@ def main() -> Dict[str, Dict[str, Dict]]:
         initial_figs: List[Any] = []
         try:
             launch_gui(initial_switches=cfg, initial_figures=initial_figs)
+        except SystemExit:
+            # launch_gui ends with sys.exit(app.exec()) — catch SystemExit so
+            # control returns here and TIME_SERIES_STORE can be returned to
+            # any caller that imported and called main() directly.
+            pass
         except Exception as exc:
             logger.critical("GUI launch failed: %s\n%s",
                             exc, traceback.format_exc())
