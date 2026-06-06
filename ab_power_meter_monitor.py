@@ -27,7 +27,7 @@ Phone  : +1 (304) 456-2216
 Email  : wwallace@nrao.edu
 Email2 : naval.antennas@gmail.com 
 Python : 3.8+
-Version: 1.4.15
+Version: 1.4.16
 Deps   : PySide6, matplotlib, requests, beautifulsoup4, lxml,
          astropy, openpyxl, veusz  (pip install each)
 
@@ -65,6 +65,7 @@ Table map (page index → human name):
 # ===========================================================================
 # %% STANDARD-LIBRARY IMPORTS
 # ===========================================================================
+import copy
 import os
 import sys
 import csv
@@ -1875,6 +1876,7 @@ def write_veusz(
     show_window: bool = False,
     append: bool = True,
     timestamp_suffix: Optional[str] = None,
+    ts_snapshot: Optional[Dict[str, Any]] = None,
 ) -> None:
     """
     Build and save Veusz HDF5 project files (.vszh5) — one per device.
@@ -1930,6 +1932,13 @@ def write_veusz(
         If provided, appended to the filename before the extension so each
         RAM-flush write produces a distinct file.  Format: ``YYYYMMDD_HHMMSS``.
         When None the fixed canonical filename is used (end-of-run write).
+    ts_snapshot : dict or None, optional
+        A pre-taken deep-copy of ``TIME_SERIES_STORE`` to use as the data
+        source instead of reading the live store.  Pass this when the store
+        has already been cleared before calling ``write_veusz`` (e.g. after a
+        RAM flush) so the subprocess is launched against already-freed memory
+        rather than peak-usage memory.  When None (default), the live
+        ``TIME_SERIES_STORE`` is read directly.
 
     Raises
     ------
@@ -1961,24 +1970,27 @@ def write_veusz(
 
     now_utc = datetime.datetime.utcnow().isoformat(timespec="seconds") + "Z"
 
-    # Use TIME_SERIES_STORE as the authoritative IP source so that every
-    # device with accumulated data is written, even if the most recent poll
-    # failed for that IP and it is absent from all_device_data.
-    with _TS_LOCK:
-        ts_ips = list(TIME_SERIES_STORE.keys())
+    # Use ts_snapshot (if supplied by caller) or live TIME_SERIES_STORE as the
+    # authoritative IP + data source.  When a RAM flush has already cleared the
+    # store, ts_snapshot carries the data so write_veusz still has full access
+    # without needing the live store to be populated.
+    _ts_src: Dict[str, Any] = ts_snapshot if ts_snapshot is not None else {}
+    if ts_snapshot is None:
+        with _TS_LOCK:
+            _ts_src = dict(TIME_SERIES_STORE)   # shallow copy of top-level keys
+    ts_ips = list(_ts_src.keys())
     if not ts_ips:
-        logger.warning("write_veusz: TIME_SERIES_STORE is empty — nothing to write.")
+        logger.warning("write_veusz: data source is empty — nothing to write.")
         return
 
     for ip in ts_ips:
         # Build a minimal tables dict for this IP from the latest snapshot.
-        # write_veusz reads TIME_SERIES_STORE internally for data; this dict
-        # is only used for extract_numeric_series() on the latest values.
+        # Only used for extract_numeric_series() on latest-value hints;
+        # full time-series data always comes from _ts_src.
         tables = all_device_data.get(ip, {})
-        # Fallback: if IP has no current snapshot, derive table names from store
+        # Fallback: derive table names from _ts_src when snapshot is empty.
         if not tables:
-            with _TS_LOCK:
-                store_tnames = list(TIME_SERIES_STORE.get(ip, {}).keys())
+            store_tnames = list(_ts_src.get(ip, {}).keys())
             tables = {tn: {} for tn in store_tnames}
         safe_ip = ip.replace(".", "_")
         # Timestamped filename for mid-run flush writes (one file per flush
@@ -2019,11 +2031,9 @@ def write_veusz(
                     all_series[tname] = series
                     continue
                 # Fallback: tdict may be an empty stub (e.g. the IP failed on
-                # the last poll but has accumulated data in TIME_SERIES_STORE).
-                # Derive parameter names and units directly from the store so
-                # the device is not silently skipped.
-                with _TS_LOCK:
-                    tstore_fb = TIME_SERIES_STORE.get(ip, {}).get(tname, {})
+                # the last poll but has accumulated data in the data source).
+                # Use _ts_src so the snapshot path works after store clear.
+                tstore_fb = _ts_src.get(ip, {}).get(tname, {})
                 fb_cols  = tstore_fb.get("columns", {})
                 fb_units = tstore_fb.get("units",   {})
                 if fb_cols:
@@ -2051,13 +2061,12 @@ def write_veusz(
                 continue
 
             # ---------------------------------------------------------------
-            # Load ALL accumulated time-series data from TIME_SERIES_STORE.
-            # Each dataset is a list of all values across every poll cycle.
-            # The x-axis dataset is the sample index (0, 1, 2, …) so that
-            # Veusz plots each parameter as a line over time.
+            # Load ALL accumulated time-series data from _ts_src.
+            # When ts_snapshot was provided (post-flush call) _ts_src is the
+            # deep-copied snapshot taken before the store was cleared, so all
+            # data is still available even though TIME_SERIES_STORE is empty.
             # ---------------------------------------------------------------
-            with _TS_LOCK:
-                ts_ip = TIME_SERIES_STORE.get(ip, {})
+            ts_ip = _ts_src.get(ip, {})
 
             # ---------------------------------------------------------------
             # Veusz datetime epoch: days since 1900-01-01 00:00:00 (local).
@@ -3752,25 +3761,14 @@ def launch_gui(
                 # Assign the returned future so the flush guard at _process_outputs
                 # knows this flush is in-flight and won't launch a concurrent write.
                 self._flush_future = flush_outputs_parallel(cfg)
-                if cfg.get("enable_veusz") and cfg.get("veusz_write_on_flush") and ALL_DEVICE_DATA:
-                    try:
-                        # Timestamped filename so each flush window is preserved
-                        # as a separate file.  The Veusz embed API cannot append
-                        # to an existing .vszh5 — every Save() builds from scratch.
-                        _vts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-                        _vdir = cfg.get("veusz_dir", VEUSZ_DIR)
-                        write_veusz(ALL_DEVICE_DATA, _vdir,
-                                    show_window=False, append=True,
-                                    timestamp_suffix=_vts)
-                        self._append_log(
-                            f"[Veusz flush] Saved flush window to {_vdir} "
-                            f"(suffix {_vts}).")
-                    except Exception as _ve:
-                        logger.error("Veusz RAM-flush: %s", _ve)
-                else:
-                    logger.debug(
-                        "Veusz skipped during RAM flush (veusz_write_on_flush=0). "
-                        "Will write at Stop/loop-end.")
+                # Snapshot the store under the lock BEFORE clearing it.
+                # write_veusz (if enabled) will use this snapshot so it runs
+                # against freed memory instead of peak-pressure memory,
+                # preventing a second RAM-flush trigger from the Veusz subprocess.
+                _vz_snapshot: Optional[Dict[str, Any]] = None
+                if cfg.get("enable_veusz") and cfg.get("veusz_write_on_flush"):
+                    with _TS_LOCK:
+                        _vz_snapshot = copy.deepcopy(dict(TIME_SERIES_STORE))
                 # Wait for the background flush to finish BEFORE clearing the
                 # store — avoids a race where flush threads read TIME_SERIES_STORE
                 # concurrently with _clear_time_series_store().
@@ -3779,9 +3777,34 @@ def launch_gui(
                         self._flush_future.result(timeout=60)
                     except Exception as _fw:
                         logger.error("RAM flush wait before clear: %s", _fw)
+                # Clear the store NOW — before launching Veusz subprocess so
+                # the subprocess starts with system RAM already freed.
                 _clear_time_series_store()
                 self._flush_future = None
-                self._append_log(f"[RAM Flush] Complete. RAM now {system_ram_used_pct():.1f}%.")
+                self._append_log(f"[RAM Flush] Store cleared. RAM now {system_ram_used_pct():.1f}%.")
+                if _vz_snapshot and ALL_DEVICE_DATA:
+                    try:
+                        # Timestamped filename so each flush window is preserved
+                        # as a separate file.  The Veusz embed API cannot append
+                        # to an existing .vszh5 — every Save() builds from scratch.
+                        _vts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+                        _vdir = cfg.get("veusz_dir", VEUSZ_DIR)
+                        write_veusz(ALL_DEVICE_DATA, _vdir,
+                                    show_window=False, append=True,
+                                    timestamp_suffix=_vts,
+                                    ts_snapshot=_vz_snapshot)
+                        self._append_log(
+                            f"[Veusz flush] Saved flush window to {_vdir} "
+                            f"(suffix {_vts}).")
+                    except Exception as _ve:
+                        logger.error("Veusz RAM-flush: %s", _ve)
+                    finally:
+                        del _vz_snapshot   # release snapshot memory
+                        gc.collect()
+                else:
+                    logger.debug(
+                        "Veusz skipped during RAM flush (veusz_write_on_flush=0). "
+                        "Will write at Stop/loop-end.")
             self._process_outputs(ALL_DEVICE_DATA, cfg)
             # build_preview_pngs() renders directly via FigureCanvasAgg —
             # no pyplot, no Figure registry, no persistent Figure objects.
@@ -4192,7 +4215,7 @@ def launch_gui(
                 "stores data in named Python dicts, and\n"
                 "exports to FITS, CSV, XLSX, Veusz, and logs.\n\n"
                 "Author: W. Wallace\n"
-                "Version: 1.4.15\n"
+                "Version: 1.4.16\n"
                 "Python: 3.8+\n"
                 "Qt backend: PySide6 (via QtPy)",
             )
@@ -4682,24 +4705,14 @@ def run_headless(cfg: Dict[str, Any]) -> None:
                     except Exception as _fe:
                         logger.error("Flush wait: %s", _fe)
                 flush_future = flush_outputs_parallel(cfg)  # track in-flight flush
-                if cfg.get("enable_veusz") and cfg.get("veusz_write_on_flush") and ALL_DEVICE_DATA:
-                    try:
-                        # Timestamped filename so each flush window is preserved
-                        # as a separate file.  The Veusz embed API cannot append
-                        # to an existing .vszh5 — every Save() builds from scratch.
-                        _vts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-                        _vdir = cfg.get("veusz_dir", VEUSZ_DIR)
-                        write_veusz(ALL_DEVICE_DATA, _vdir,
-                                    show_window=False, append=True,
-                                    timestamp_suffix=_vts)
-                        logger.info("[Veusz flush] Saved flush window: %s (suffix %s)",
-                                    _vdir, _vts)
-                    except Exception as _ve:
-                        logger.error("Veusz RAM-flush: %s", _ve)
-                else:
-                    logger.debug(
-                        "Veusz skipped during RAM flush (VEUSZ_WRITE_ON_FLUSH=0). "
-                        "Will write at loop end.")
+                # Snapshot the store under the lock BEFORE clearing it.
+                # write_veusz will use this snapshot so the subprocess starts
+                # with system RAM already freed, preventing a second RAM-flush
+                # trigger from the Veusz subprocess memory spike.
+                _vz_snapshot: Optional[Dict[str, Any]] = None
+                if cfg.get("enable_veusz") and cfg.get("veusz_write_on_flush"):
+                    with _TS_LOCK:
+                        _vz_snapshot = copy.deepcopy(dict(TIME_SERIES_STORE))
                 # Wait for the background flush to finish BEFORE clearing the
                 # store — avoids a race where flush threads read TIME_SERIES_STORE
                 # concurrently with _clear_time_series_store().
@@ -4709,8 +4722,33 @@ def run_headless(cfg: Dict[str, Any]) -> None:
                     except Exception as _fw:
                         logger.error("RAM flush wait before clear: %s", _fw)
                     flush_future = None
+                # Clear the store NOW — before launching Veusz subprocess so
+                # the subprocess starts with system RAM already freed.
                 _clear_time_series_store()
-                logger.info("[RAM Flush] Complete. RAM now %.1f%%. Sampling continues.", system_ram_used_pct())
+                logger.info("[RAM Flush] Store cleared. RAM now %.1f%%. Sampling continues.",
+                            system_ram_used_pct())
+                if _vz_snapshot and ALL_DEVICE_DATA:
+                    try:
+                        # Timestamped filename so each flush window is preserved
+                        # as a separate file.  The Veusz embed API cannot append
+                        # to an existing .vszh5 — every Save() builds from scratch.
+                        _vts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+                        _vdir = cfg.get("veusz_dir", VEUSZ_DIR)
+                        write_veusz(ALL_DEVICE_DATA, _vdir,
+                                    show_window=False, append=True,
+                                    timestamp_suffix=_vts,
+                                    ts_snapshot=_vz_snapshot)
+                        logger.info("[Veusz flush] Saved flush window: %s (suffix %s)",
+                                    _vdir, _vts)
+                    except Exception as _ve:
+                        logger.error("Veusz RAM-flush: %s", _ve)
+                    finally:
+                        del _vz_snapshot   # release snapshot memory
+                        gc.collect()
+                else:
+                    logger.debug(
+                        "Veusz skipped during RAM flush (VEUSZ_WRITE_ON_FLUSH=0). "
+                        "Will write at loop end.")
 
             if not dicts_only:
                 logger.info("Cycle %d poll complete in %.2f s — store %.1f MB, free RAM %.0f MB",
