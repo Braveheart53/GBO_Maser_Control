@@ -27,7 +27,7 @@ Phone  : +1 (304) 456-2216
 Email  : wwallace@nrao.edu
 Email2 : naval.antennas@gmail.com 
 Python : 3.8+
-Version: 1.4.19
+Version: 1.4.20
 Deps   : PySide6, matplotlib, requests, beautifulsoup4, lxml,
          astropy, openpyxl, veusz  (pip install each)
 
@@ -505,7 +505,7 @@ def parse_html_table(html: str, table_name: str, ip: str, page: int) -> Dict[str
         - '_meta'  : dict  — source info, timestamp, table name
         - '#N_name': str   — parameter name (key = index string)
         - '#N_value': Any  — parsed numeric or string value
-        - '#N_unit' : str  — inferred SI unit or ''
+        - '#N_unit' : str  — inferred SI unit or ''.
     """
 
     result: Dict[str, Any] = {
@@ -2597,10 +2597,13 @@ def build_preview_pngs(
         return png
 
     def _new_fig() -> "_MplFigure":
-        """Create a Figure with Agg canvas that is NOT registered with pyplot."""
-        fig = _MplFigure(figsize=(10, 4))
-        _AggCanvas(fig)   # attach Agg renderer — not tracked by pyplot
-        return fig
+        """Create a Figure with Agg canvas that is NOT registered with pyplot.
+
+        The canvas is intentionally NOT pre-attached here; _render_to_png()
+        attaches its own FigureCanvasAgg when it renders the figure, so a
+        preliminary attach would only create an orphaned canvas object.
+        """
+        return _MplFigure(figsize=(10, 4))
 
     def _apply_time_ticks(ax: Any, x: list, timestamps: list,
                           n_samples: int) -> None:
@@ -4105,7 +4108,7 @@ def launch_gui(
                 "stores data in named Python dicts, and\n"
                 "exports to FITS, CSV, XLSX, Veusz, and logs.\n\n"
                 "Author: W. Wallace\n"
-                "Version: 1.4.19\n"
+                "Version: 1.4.20\n"
                 "Python: 3.8+\n"
                 "Qt backend: PySide6 (via QtPy)",
             )
@@ -4489,12 +4492,16 @@ def run_headless(cfg: Dict[str, Any]) -> None:
         # then redirect stdout/stderr to /dev/null.
         # Order matters: handlers are compared against sys.__stdout__ and
         # sys.__stderr__ before redirection so the match is reliable.
+        # Both the root logger AND the named 'ABMonitor' logger have their
+        # own independent handler lists; removing from root_log alone leaves
+        # the ABMonitor StreamHandler intact and console output leaks.
         root_log = logging.getLogger()
-        for h in list(root_log.handlers):
-            if isinstance(h, logging.StreamHandler) and getattr(
-                h, "stream", None
-            ) in (sys.__stdout__, sys.__stderr__):
-                root_log.removeHandler(h)
+        for _log_target in (root_log, logging.getLogger("ABMonitor")):
+            for h in list(_log_target.handlers):
+                if isinstance(h, logging.StreamHandler) and getattr(
+                    h, "stream", None
+                ) in (sys.__stdout__, sys.__stderr__):
+                    _log_target.removeHandler(h)
         root_log.addHandler(logging.NullHandler())
         # Now redirect the actual streams.
         _devnull_stdout = open(os.devnull, "w", encoding="utf-8")  # noqa: WPS515
@@ -4505,12 +4512,15 @@ def run_headless(cfg: Dict[str, Any]) -> None:
     elif dicts_only:
         # Dicts-only: strip console StreamHandlers but leave stdout open
         # for print() calls in the caller.
+        # Must remove from both the root logger and the named ABMonitor logger
+        # since each maintains its own handler list.
         root_log = logging.getLogger()
-        for h in list(root_log.handlers):
-            if isinstance(h, logging.StreamHandler) and getattr(
-                h, "stream", None
-            ) in (sys.__stdout__, sys.__stderr__):
-                root_log.removeHandler(h)
+        for _log_target in (root_log, logging.getLogger("ABMonitor")):
+            for h in list(_log_target.handlers):
+                if isinstance(h, logging.StreamHandler) and getattr(
+                    h, "stream", None
+                ) in (sys.__stdout__, sys.__stderr__):
+                    _log_target.removeHandler(h)
         root_log.addHandler(logging.NullHandler())
 
     if not dicts_only:
