@@ -27,7 +27,7 @@ Phone  : +1 (304) 456-2216
 Email  : wwallace@nrao.edu
 Email2 : naval.antennas@gmail.com 
 Python : 3.8+
-Version: 1.4.20
+Version: 1.4.24
 Deps   : PySide6, matplotlib, requests, beautifulsoup4, lxml,
          astropy, openpyxl, veusz  (pip install each)
 
@@ -1051,13 +1051,7 @@ def write_fits(
     append: bool = True,
 ) -> None:
     """
-    Write NRAO-compliant FITS files — one persistent file per device,
-    overwritten on every call so it always contains the FULL accumulated
-    time-series from TIME_SERIES_STORE.
-
-    Filename is fixed per device (no timestamp in the name) so successive
-    flushes in both GUI and headless modes append to the same file on disk
-    rather than creating a new file per sample.
+    Write NRAO-compliant FITS files — one persistent file per device.
 
     Layout (each BinTableHDU)
     -------------------------
@@ -1073,11 +1067,24 @@ def write_fits(
       - DATE-END in ISO-8601 format (last sample timestamp)
       - NSAMP keyword: number of accumulated poll cycles
       - DATE-WRT: UTC timestamp of this particular write
-      - BUNIT keyword on each column where units are known
       - All string header values are 7-bit ASCII (NOST 100-2.0 sect. 4.4.2)
 
-    Data is drawn from TIME_SERIES_STORE (full accumulated history), NOT
-    from the single-snapshot all_device_data dict.
+    Append / merge behaviour
+    ------------------------
+    On every call the function attempts to read the existing canonical file
+    ``ABMeter_<ip>.fits``.  If that file cannot be opened (locked, corrupt,
+    or mid-write), the new data is saved to a timestamped fallback file
+    ``ABMeter_<ip>_YYYYMMDD_HHMMSS_rescue.fits`` rather than overwriting
+    or silently discarding data.
+
+    On subsequent calls the function also scans for any ``*_rescue.fits``
+    companions of the canonical file.  If it can open both the canonical
+    file and a rescue file, their rows are merged together with the current
+    store window (de-duplicating on ``TIMESTAMP_LOCAL``) and the merged
+    result is written to the canonical file.  The rescue file is then
+    deleted.  If the canonical file still cannot be read, a fresh rescue
+    file is created for this window.  This guarantees no data is ever
+    silently lost due to a transient file-access failure.
 
     Parameters
     ----------
@@ -1094,16 +1101,88 @@ def write_fits(
         logger.error("astropy not available — FITS output skipped: %s", exc)
         return
 
+    import glob as _glob
     os.makedirs(fits_dir, exist_ok=True)
     if not append:
-        import glob as _glob
-        for _f in _glob.glob(os.path.join(fits_dir, "*.fits")):
+        for _f in _glob.glob(os.path.join(fits_dir, "ABMeter_*.fits")):
             try:
                 os.remove(_f)
             except OSError:
                 pass
 
     now_utc = datetime.datetime.utcnow()
+    _rescue_suffix = now_utc.strftime("%Y%m%d_%H%M%S") + "_rescue"
+
+    # ------------------------------------------------------------------
+    # Helper: read one FITS file into the same disk_hdus dict format used
+    # by the merge logic.  Returns {} and logs a warning on any failure.
+    # ------------------------------------------------------------------
+    def _read_fits_to_dict(
+        path: str,
+    ) -> Dict[str, Dict[str, Any]]:
+        """Read BinTableHDUs from *path* into a merge-ready dict."""
+        result: Dict[str, Dict[str, Any]] = {}
+        try:
+            with astrofits.open(path, memmap=False) as hdul_r:
+                for hdu_r in hdul_r[1:]:
+                    try:
+                        ext = (
+                            hdu_r.header.get("EXTNAME", "") or ""
+                        ).strip().lower()
+                        if not ext:
+                            continue
+                        data_r = hdu_r.data
+                        if data_r is None or len(data_r) == 0:
+                            continue
+                        col_names = data_r.names
+                        ts_col = "TIMESTAMP_LOCAL"
+                        if ts_col not in col_names:
+                            continue
+                        old_ts = [str(v).strip() for v in data_r[ts_col]]
+                        old_cols: Dict[str, List[Any]] = {}
+                        old_units_d: Dict[str, str] = {}
+                        for cname in col_names:
+                            if cname == ts_col:
+                                continue
+                            old_cols[cname] = list(data_r[cname])
+                            ci = col_names.index(cname) + 1
+                            old_units_d[cname] = (
+                                hdu_r.header.get(f"TUNIT{ci}", "") or ""
+                            ).strip()
+                        # Merge into result: if ext already present
+                        # (from the canonical file read before rescue),
+                        # append the rescue rows to it.
+                        if ext in result:
+                            # Capture pre-extend length BEFORE modifying
+                            # timestamps so padding is always correct.
+                            n_pre_extend = len(result[ext]["timestamps"])
+                            result[ext]["timestamps"].extend(old_ts)
+                            for p, vals in old_cols.items():
+                                if p in result[ext]["columns"]:
+                                    result[ext]["columns"][p].extend(vals)
+                                else:
+                                    # New column appeared in rescue file —
+                                    # pad existing rows with NaN then extend.
+                                    result[ext]["columns"][p] = (
+                                        [float("nan")] * n_pre_extend + vals
+                                    )
+                                    result[ext]["units"][p] = old_units_d.get(
+                                        p, "")
+                        else:
+                            result[ext] = {
+                                "timestamps": old_ts,
+                                "columns":    old_cols,
+                                "units":      old_units_d,
+                            }
+                    except Exception as _he:
+                        logger.warning(
+                            "FITS: could not read HDU '%s' from '%s': %s",
+                            hdu_r.header.get("EXTNAME", "?"), path, _he)
+        except Exception as _fe:
+            logger.warning(
+                "FITS: could not open '%s' for merge: %s", path, _fe)
+            return {}
+        return result
 
     # Take a thread-safe snapshot of the full accumulated store.
     with _TS_LOCK:
@@ -1111,8 +1190,11 @@ def write_fits(
             ip: {
                 tname: {
                     "timestamps_local": list(tdata["timestamps_local"]),
-                    "columns": {p: list(v) for p, v in tdata["columns"].items()},
-                    "units":   dict(tdata["units"]),
+                    "columns": {
+                        p: list(v)
+                        for p, v in tdata["columns"].items()
+                    },
+                    "units": dict(tdata["units"]),
                 }
                 for tname, tdata in tables.items()
             }
@@ -1120,144 +1202,280 @@ def write_fits(
         }
 
     for ip in all_device_data:
-        safe_ip = ip.replace(".", "_")
-        # Fixed filename per device — no timestamp so every write overwrites
-        # the same file, keeping a single up-to-date file with all samples.
-        filename = os.path.join(
-            fits_dir,
-            f"ABMeter_{safe_ip}.fits",
-        )
+        safe_ip       = ip.replace(".", "_")
+        filename      = os.path.join(fits_dir, f"ABMeter_{safe_ip}.fits")
 
+        # ── Step 1: read canonical file ────────────────────────────────
+        # Track whether the canonical file was readable so we know whether
+        # to write to it or produce a rescue file instead.
+        main_readable = False
+        disk_hdus: Dict[str, Dict[str, Any]] = {}
+
+        if append and os.path.isfile(filename):
+            disk_hdus = _read_fits_to_dict(filename)
+            # Determine readability via a minimal open probe.
+            # _read_fits_to_dict returns {} on both total failure AND on a
+            # valid-but-empty file, so we cannot rely on bool(disk_hdus).
+            # The probe below is authoritative; main_readable stays False
+            # until it succeeds.
+            try:
+                with astrofits.open(filename, memmap=False):
+                    pass
+                main_readable = True
+            except Exception:
+                main_readable = False
+                disk_hdus = {}
+
+        elif not os.path.isfile(filename):
+            # File does not exist yet — first write, no merge needed.
+            main_readable = True   # will create it fresh
+
+        # ── Step 2: merge any rescue files ────────────────────────────
+        # Look for ABMeter_<safe_ip>_*_rescue.fits companions.
+        rescue_pattern = os.path.join(
+            fits_dir, f"ABMeter_{safe_ip}_*_rescue.fits")
+        rescue_files = sorted(_glob.glob(rescue_pattern))
+
+        merged_rescue_ok: List[str] = []   # paths successfully merged
+        if main_readable and rescue_files:
+            for rpath in rescue_files:
+                r_hdus = _read_fits_to_dict(rpath)
+                if r_hdus:
+                    # Merge rescue rows into disk_hdus
+                    for ext_key, rdata in r_hdus.items():
+                        if ext_key in disk_hdus:
+                            # Capture pre-extend length BEFORE modifying
+                            # timestamps so NaN padding is always correct.
+                            n_ex_pre = len(disk_hdus[ext_key]["timestamps"])
+                            disk_hdus[ext_key]["timestamps"].extend(
+                                rdata["timestamps"])
+                            for p, vals in rdata["columns"].items():
+                                if p in disk_hdus[ext_key]["columns"]:
+                                    disk_hdus[ext_key]["columns"][p].extend(vals)
+                                else:
+                                    disk_hdus[ext_key]["columns"][p] = (
+                                        [float("nan")] * n_ex_pre + vals
+                                    )
+                                    disk_hdus[ext_key]["units"][p] = (
+                                        rdata["units"].get(p, ""))
+                            # Dedup timestamps after merging this rescue file
+                            # (canonical and rescue windows may overlap).
+                            seen_ts: set = set()
+                            keep_idx = [
+                                i for i, ts in enumerate(
+                                    disk_hdus[ext_key]["timestamps"])
+                                if ts not in seen_ts and not seen_ts.add(ts)  # type: ignore[func-returns-value]
+                            ]
+                            if len(keep_idx) < len(disk_hdus[ext_key]["timestamps"]):
+                                disk_hdus[ext_key]["timestamps"] = [
+                                    disk_hdus[ext_key]["timestamps"][i]
+                                    for i in keep_idx
+                                ]
+                                for p in disk_hdus[ext_key]["columns"]:
+                                    disk_hdus[ext_key]["columns"][p] = [
+                                        disk_hdus[ext_key]["columns"][p][i]
+                                        for i in keep_idx
+                                    ]
+                        else:
+                            disk_hdus[ext_key] = rdata
+                    merged_rescue_ok.append(rpath)
+                else:
+                    logger.warning(
+                        "FITS: rescue file could not be read — leaving "
+                        "on disk: %s", rpath)
+
+        # Decide output filename: canonical if readable, rescue otherwise.
+        if main_readable:
+            out_filename = filename
+        else:
+            out_filename = os.path.join(
+                fits_dir,
+                f"ABMeter_{safe_ip}_{_rescue_suffix}.fits",
+            )
+            logger.warning(
+                "FITS: canonical file not readable — writing rescue file: %s",
+                out_filename)
+
+        # ── Step 3: build the new HDU list ────────────────────────────
         hdu_list = [astrofits.PrimaryHDU()]
         primary_hdr = hdu_list[0].header
 
-        # --- NRAO / standard FITS primary header keywords ---
-        primary_hdr["TELESCOP"] = (_fits_ascii(
-            "GBT"),          _fits_ascii("Green Bank Telescope facility"))
-        primary_hdr["INSTRUME"] = (_fits_ascii(
-            "ABPowerMeter"), _fits_ascii("Allen-Bradley 1403 Site Power Meter"))
-        primary_hdr["ORIGIN"] = (_fits_ascii(
-            "NRAO-GBO"),     _fits_ascii("National Radio Astronomy Observatory"))
-        primary_hdr["OBSERVER"] = (_fits_ascii("WWallace"), _fits_ascii("W. Wallace"))
-        # DATE-OBS is set below from the actual first sample timestamp.
-        # DATE-WRT records the UTC time of this specific write operation.
+        primary_hdr["TELESCOP"] = (
+            _fits_ascii("GBT"),
+            _fits_ascii("Green Bank Telescope facility"))
+        primary_hdr["INSTRUME"] = (
+            _fits_ascii("ABPowerMeter"),
+            _fits_ascii("Allen-Bradley 1403 Site Power Meter"))
+        primary_hdr["ORIGIN"] = (
+            _fits_ascii("NRAO-GBO"),
+            _fits_ascii("National Radio Astronomy Observatory"))
+        primary_hdr["OBSERVER"] = (
+            _fits_ascii("WWallace"),
+            _fits_ascii("W. Wallace"))
         primary_hdr["DATE-WRT"] = (
             _fits_ascii(now_utc.isoformat(timespec="seconds") + "Z"),
-            _fits_ascii("UTC timestamp of this write operation"),
-        )
-        primary_hdr["FILENAME"] = (_fits_ascii(
-            os.path.basename(filename)), _fits_ascii("FITS file name"))
-        primary_hdr["DEVIP"] = (_fits_ascii(ip), _fits_ascii("Source device IP address"))
+            _fits_ascii("UTC timestamp of this write operation"))
+        primary_hdr["FILENAME"] = (
+            _fits_ascii(os.path.basename(out_filename)),
+            _fits_ascii("FITS file name"))
+        primary_hdr["DEVIP"] = (
+            _fits_ascii(ip),
+            _fits_ascii("Source device IP address"))
         primary_hdr["COMMENT"] = _fits_ascii(
             "Allen-Bradley power meter telemetry - NRAO GBO site infrastructure",
-            comment=True,
-        )
+            comment=True)
         primary_hdr["HISTORY"] = _fits_ascii(
             f"Generated by ab_power_meter_monitor.py on {now_utc.date()}",
-            comment=True,
-        )
+            comment=True)
 
         ip_tables = ts_snapshot.get(ip, {})
 
-        # Determine the true first and last sample timestamps across all
-        # tables for this device so DATE-OBS reflects the data, not the
-        # write time.
-        all_timestamps = [
+        all_timestamps_range = [
             ts
             for tdata in ip_tables.values()
             for ts in tdata.get("timestamps_local", [])
         ]
-        if all_timestamps:
-            first_ts = min(all_timestamps).replace(" ", "T")
-            last_ts = max(all_timestamps).replace(" ", "T")
-            primary_hdr["DATE-OBS"] = (_fits_ascii(first_ts),
-                                       _fits_ascii("Local time of first accumulated sample"))
-            primary_hdr["DATE-END"] = (_fits_ascii(last_ts),
-                                       _fits_ascii("Local time of last accumulated sample"))
+        for dh in disk_hdus.values():
+            all_timestamps_range.extend(dh.get("timestamps", []))
+
+        if all_timestamps_range:
+            first_ts = min(all_timestamps_range).replace(" ", "T")
+            last_ts  = max(all_timestamps_range).replace(" ", "T")
+            primary_hdr["DATE-OBS"] = (
+                _fits_ascii(first_ts),
+                _fits_ascii("Local time of first accumulated sample"))
+            primary_hdr["DATE-END"] = (
+                _fits_ascii(last_ts),
+                _fits_ascii("Local time of last accumulated sample"))
             primary_hdr["NSAMP"] = (
-                max(len(td.get("timestamps_local", []))
-                    for td in ip_tables.values()),
-                _fits_ascii("Max accumulated poll cycles across all tables"),
-            )
+                max(
+                    len(td.get("timestamps_local", []))
+                    for td in ip_tables.values()
+                ) if ip_tables else 0,
+                _fits_ascii("Max accumulated poll cycles across all tables"))
 
         for tname, tdata in ip_tables.items():
-            timestamps = tdata["timestamps_local"]
-            columns = tdata["columns"]
-            units_map = tdata["units"]
-            params = list(columns.keys())
-            n_samples = len(timestamps)
+            new_timestamps = tdata["timestamps_local"]
+            new_columns    = tdata["columns"]
+            units_map      = tdata["units"]
+            new_params     = list(new_columns.keys())
 
-            if not timestamps:
+            if not new_timestamps:
                 logger.debug(
-                    "FITS: no accumulated samples for '%s' — skipping HDU", tname)
+                    "FITS: no accumulated samples for '%s' — skipping HDU",
+                    tname)
                 continue
 
-            # ----------------------------------------------------------------
-            # Column 0: TIMESTAMP_LOCAL — 19-char ASCII strings
-            # FITS format 'A19' = fixed-width 19-char ASCII
-            # ----------------------------------------------------------------
+            ext_name = tname[:8].strip()
+            ext_key  = ext_name.lower()
+
+            od             = disk_hdus.get(ext_key, {})
+            old_timestamps = od.get("timestamps", [])
+            old_cols       = od.get("columns",    {})
+            old_units_map  = od.get("units",      {})
+
+            all_params: List[str] = list(old_cols.keys())
+            for p in new_params:
+                if p not in all_params:
+                    all_params.append(p)
+
+            on_disk_ts: set = set(old_timestamps)
+
+            merged_units: Dict[str, str] = dict(old_units_map)
+            for p in new_params:
+                if p not in merged_units:
+                    merged_units[p] = (
+                        units_map.get(p, "dimensionless") or "dimensionless")
+
+            new_indices = [
+                i for i, ts in enumerate(new_timestamps)
+                if str(ts) not in on_disk_ts
+            ]
+
+            merged_ts:   List[str]            = list(old_timestamps)
+            merged_cols: Dict[str, List[Any]] = {
+                p: list(old_cols.get(p, [None] * len(old_timestamps)))
+                for p in all_params
+            }
+            for p in all_params:
+                col = merged_cols[p]
+                if len(col) < len(old_timestamps):
+                    col.extend([None] * (len(old_timestamps) - len(col)))
+
+            for i in new_indices:
+                merged_ts.append(new_timestamps[i])
+                for p in all_params:
+                    val = (
+                        new_columns[p][i]
+                        if p in new_columns and i < len(new_columns[p])
+                        else None
+                    )
+                    merged_cols[p].append(val)
+
+            n_samples = len(merged_ts)
+
             fits_cols = [
                 astrofits.Column(
                     name=_fits_ascii("TIMESTAMP_LOCAL"),
                     format="A19",
                     unit=_fits_ascii("local time"),
-                    array=np.array(timestamps, dtype="U19"),
+                    array=np.array(merged_ts, dtype="U19"),
                 )
             ]
-
-            # ----------------------------------------------------------------
-            # Columns 1+: one 'D' (float64) column per numeric parameter.
-            # None values in the accumulated list are replaced with NaN so
-            # the array is densely packed and FITS-compatible.
-            # ----------------------------------------------------------------
-            for param in params:
-                raw_vals = columns[param]
+            for param in all_params:
                 arr = np.array(
                     [float(v) if v is not None else float("nan")
-                     for v in raw_vals],
+                     for v in merged_cols[param]],
                     dtype=np.float64,
                 )
-                col_name = _fits_ascii(param[:68])
-                unit_str = _fits_ascii(units_map.get(
-                    param, "dimensionless") or "dimensionless")
                 fits_cols.append(
                     astrofits.Column(
-                        name=col_name,
+                        name=_fits_ascii(param[:68]),
                         format="D",
-                        unit=unit_str,
+                        unit=_fits_ascii(
+                            merged_units.get(param, "dimensionless")
+                            or "dimensionless"),
                         array=arr,
-                    )
-                )
+                    ))
 
             hdu = astrofits.BinTableHDU.from_columns(fits_cols)
-            ext_name = tname[:8]   # EXTNAME strict 8-char limit
             hdu.header["EXTNAME"] = _fits_ascii(ext_name)
             hdu.header["TBLNAME"] = _fits_ascii(tname)
-            hdu.header["SRCIP"] = _fits_ascii(ip)
-            hdu.header["NSAMP"] = (
-                n_samples, _fits_ascii("Number of accumulated poll cycles"))
+            hdu.header["SRCIP"]   = _fits_ascii(ip)
+            hdu.header["NSAMP"]   = (
+                n_samples,
+                _fits_ascii("Number of accumulated poll cycles"))
             hdu.header["DATE-OBS"] = _fits_ascii(
-                timestamps[0].replace(" ", "T") if timestamps else ""
-            )
+                merged_ts[0].replace(" ", "T") if merged_ts else "")
             hdu.header["DATE-END"] = _fits_ascii(
-                timestamps[-1].replace(" ", "T") if timestamps else ""
-            )
+                merged_ts[-1].replace(" ", "T") if merged_ts else "")
             hdu.header["COMMENT"] = _fits_ascii(
                 f"AB meter table: {tname}", comment=True)
             hdu.header["COMMENT"] = _fits_ascii(
-                f"{n_samples} sample(s), columnar time-series, TIMESTAMP_LOCAL col 1",
-                comment=True,
-            )
+                f"{n_samples} sample(s), columnar time-series, "
+                f"TIMESTAMP_LOCAL col 1",
+                comment=True)
             hdu_list.append(hdu)
 
+        # ── Step 4: write the output file ─────────────────────────────
         try:
             hdul = astrofits.HDUList(hdu_list)
-            hdul.writeto(filename, overwrite=True)
+            hdul.writeto(out_filename, overwrite=True)
             logger.info("FITS written (%d table HDUs, %s): %s",
-                        len(hdu_list) - 1, ip, filename)
+                        len(hdu_list) - 1, ip, out_filename)
+            # Delete rescue files only after a successful canonical write.
+            if main_readable and merged_rescue_ok:
+                for rpath in merged_rescue_ok:
+                    try:
+                        os.remove(rpath)
+                        logger.info(
+                            "FITS: rescue file merged and removed: %s", rpath)
+                    except OSError as _re:
+                        logger.warning(
+                            "FITS: could not remove rescue file %s: %s",
+                            rpath, _re)
         except Exception as exc:
             logger.error("FITS write failed for %s: %s", ip, exc)
-
 
 # ===========================================================================
 # %%% OUTPUT MODULE 2 — CSV
@@ -1433,14 +1651,27 @@ def write_xlsx(
     --------------------------------
     Row 1   : Header  — Timestamp_Local | <param1> | <param2> | ...
     Row 2   : Units   — (units)         | <unit1>  | <unit2>  | ...
-    Rows 3+ : Data    — local timestamp + values (one row per poll cycle).
+    Rows 3+ : Data    — one row per poll cycle.
 
     An openpyxl LineChart is appended to each sheet showing all numeric
-    parameters as overlaid lines vs. sample index (robust to any N samples).
+    parameters as overlaid lines vs. Timestamp_Local.
 
-    The workbook is overwritten each time (XLSX does not support true row
-    append without reloading the full file anyway).  All accumulated samples
-    from TIME_SERIES_STORE are written.
+    Append / merge behaviour
+    ------------------------
+    On every call the function attempts to read the existing canonical file
+    ``ABMeter_<ip>.xlsx``.  If that file cannot be opened (locked, corrupt,
+    or mid-write), the new data is saved to a timestamped rescue file
+    ``ABMeter_<ip>_YYYYMMDD_HHMMSS_rescue.xlsx`` rather than overwriting
+    or silently discarding data.
+
+    On subsequent calls the function also scans for any ``*_rescue.xlsx``
+    companions of the canonical file.  If it can open both the canonical
+    file and a rescue file, their rows are merged together with the current
+    store window (de-duplicating on ``Timestamp_Local``) and the merged
+    result is written to the canonical file.  The rescue file is then
+    deleted.  If the canonical file still cannot be read, a fresh rescue
+    file is created for this window.  This guarantees no data is ever
+    silently lost due to a transient file-access failure.
 
     Parameters
     ----------
@@ -1461,15 +1692,16 @@ def write_xlsx(
         logger.error("openpyxl not available — XLSX output skipped: %s", exc)
         return
 
+    import glob as _glob
     os.makedirs(xlsx_dir, exist_ok=True)
     if not append:
-        import glob as _glob
-        for _f in _glob.glob(os.path.join(xlsx_dir, "*.xlsx")):
+        for _f in _glob.glob(os.path.join(xlsx_dir, "ABMeter_*.xlsx")):
             try:
                 os.remove(_f)
             except OSError:
                 pass
 
+    _rescue_suffix = datetime.datetime.utcnow().strftime("%Y%m%d_%H%M%S") + "_rescue"
 
     with _TS_LOCK:
         snapshot = {
@@ -1484,65 +1716,242 @@ def write_xlsx(
             for ip, tables in TIME_SERIES_STORE.items()
         }
 
+    # ------------------------------------------------------------------
+    # Helper: read one XLSX file into the same disk_data dict format.
+    # Returns {} and logs a warning on any failure.
+    # ------------------------------------------------------------------
+    def _read_xlsx_to_dict(
+        path: str,
+    ) -> Dict[str, Dict[str, Any]]:
+        """Read sheets from *path* into a merge-ready dict."""
+        result: Dict[str, Dict[str, Any]] = {}
+        try:
+            wb_r = openpyxl.load_workbook(
+                path, read_only=True, data_only=True)
+            for sheet_name in wb_r.sheetnames:
+                ws_r = wb_r[sheet_name]
+                rows_iter = ws_r.iter_rows(values_only=True)
+                try:
+                    hdr_r   = next(rows_iter)
+                    units_r = next(rows_iter)
+                except StopIteration:
+                    continue
+                r_params = [
+                    str(h) for h in hdr_r[1:] if h is not None
+                ]
+                r_units  = [
+                    str(u) if u is not None else ""
+                    for u in units_r[1:len(r_params) + 1]
+                ]
+                r_rows: List[tuple] = []
+                for row in rows_iter:
+                    if row[0] is not None:
+                        r_rows.append(
+                            tuple(row[:len(r_params) + 1]))
+                if sheet_name in result:
+                    # Merging a rescue file: extend existing rows.
+                    ex = result[sheet_name]
+                    new_p = [p for p in r_params if p not in ex["params"]]
+                    ex["params"].extend(new_p)
+                    # Extend units list for new params.
+                    for p in new_p:
+                        idx = r_params.index(p)
+                        ex["units"].append(
+                            r_units[idx] if idx < len(r_units) else "")
+                    ex["rows"].extend(r_rows)
+                else:
+                    result[sheet_name] = {
+                        "params": r_params,
+                        "units":  r_units,
+                        "rows":   r_rows,
+                    }
+            wb_r.close()
+        except Exception as _re:
+            logger.warning(
+                "XLSX: could not open '%s' for merge: %s", path, _re)
+            return {}
+        return result
+
     for ip, tables in snapshot.items():
-        safe_ip = ip.replace(".", "_")
+        safe_ip  = ip.replace(".", "_")
         filename = os.path.join(xlsx_dir, f"ABMeter_{safe_ip}.xlsx")
 
-        wb = openpyxl.Workbook()
-        wb.remove(wb.active)   # remove default blank sheet
+        # ── Step 1: read canonical file ────────────────────────────────
+        main_readable = False
+        disk_data: Dict[str, Dict[str, Any]] = {}
 
-        header_font = Font(name="Calibri", bold=True, color="FFFFFF")
-        header_fill = PatternFill(fill_type="solid", fgColor="1F4E79")
-        units_fill = PatternFill(fill_type="solid", fgColor="2E75B6")
-        units_font = Font(name="Calibri", bold=False,
-                          color="FFFFFF", italic=True)
+        if append and os.path.isfile(filename):
+            disk_data = _read_xlsx_to_dict(filename)
+            # Confirm file is actually openable (empty dict could mean
+            # valid-but-empty vs corrupted).
+            try:
+                wb_probe = openpyxl.load_workbook(
+                    filename, read_only=True, data_only=True)
+                wb_probe.close()
+                main_readable = True
+            except Exception:
+                main_readable = False
+                disk_data = {}
+        elif not os.path.isfile(filename):
+            main_readable = True   # first write — will create fresh
+
+        # ── Step 2: merge any rescue files ────────────────────────────
+        rescue_pattern = os.path.join(
+            xlsx_dir, f"ABMeter_{safe_ip}_*_rescue.xlsx")
+        rescue_files = sorted(_glob.glob(rescue_pattern))
+
+        merged_rescue_ok: List[str] = []
+        if main_readable and rescue_files:
+            for rpath in rescue_files:
+                r_data = _read_xlsx_to_dict(rpath)
+                if r_data:
+                    for sheet_name, rsd in r_data.items():
+                        if sheet_name in disk_data:
+                            ex = disk_data[sheet_name]
+                            new_p = [
+                                p for p in rsd["params"]
+                                if p not in ex["params"]
+                            ]
+                            ex["params"].extend(new_p)
+                            for p in new_p:
+                                idx = rsd["params"].index(p)
+                                ex["units"].append(
+                                    rsd["units"][idx]
+                                    if idx < len(rsd["units"]) else "")
+                            ex["rows"].extend(rsd["rows"])
+                            # Dedup rows after merging this rescue file
+                            # (canonical and rescue windows may overlap).
+                            seen_xlsx_ts: set = set()
+                            deduped_rows = []
+                            for row in ex["rows"]:
+                                key = str(row[0]) if row[0] is not None else ""
+                                if key not in seen_xlsx_ts:
+                                    seen_xlsx_ts.add(key)
+                                    deduped_rows.append(row)
+                            ex["rows"] = deduped_rows
+                        else:
+                            disk_data[sheet_name] = rsd
+                    merged_rescue_ok.append(rpath)
+                else:
+                    logger.warning(
+                        "XLSX: rescue file could not be read — leaving "
+                        "on disk: %s", rpath)
+
+        # Decide output filename.
+        if main_readable:
+            out_filename = filename
+        else:
+            out_filename = os.path.join(
+                xlsx_dir,
+                f"ABMeter_{safe_ip}_{_rescue_suffix}.xlsx",
+            )
+            logger.warning(
+                "XLSX: canonical file not readable — writing rescue "
+                "file: %s", out_filename)
+
+        # ── Step 3: build the merged workbook ─────────────────────────
+        wb = openpyxl.Workbook()
+        wb.remove(wb.active)
+
+        header_font  = Font(name="Calibri", bold=True,  color="FFFFFF")
+        header_fill  = PatternFill(fill_type="solid",   fgColor="1F4E79")
+        units_fill   = PatternFill(fill_type="solid",   fgColor="2E75B6")
+        units_font   = Font(name="Calibri", bold=False, color="FFFFFF",
+                            italic=True)
         header_align = Alignment(horizontal="center")
 
         for tname, tdata in tables.items():
-            timestamps = tdata["timestamps_local"]
-            columns = tdata["columns"]
-            units_map = tdata["units"]
-            params = list(columns.keys())
+            new_timestamps = tdata["timestamps_local"]
+            new_columns    = tdata["columns"]
+            units_map      = tdata["units"]
+            new_params     = list(new_columns.keys())
 
-            if not timestamps:
+            if not new_timestamps:
                 continue
 
             safe_name = tname[:31].replace(
                 "/", "_").replace("\\", "_").replace("*", "_")
+
+            od            = disk_data.get(safe_name, {})
+            old_params    = od.get("params",  [])
+            old_rows      = od.get("rows",    [])
+            old_units_lst = od.get("units",   [])
+
+            all_params: List[str] = list(old_params)
+            for p in new_params:
+                if p not in all_params:
+                    all_params.append(p)
+
+            on_disk_ts: set = {
+                str(r[0]) for r in old_rows if r[0] is not None
+            }
+
+            merged_units: Dict[str, str] = {}
+            for i, p in enumerate(old_params):
+                merged_units[p] = (
+                    old_units_lst[i] if i < len(old_units_lst)
+                    else units_map.get(p, "")
+                )
+            for p in new_params:
+                if p not in merged_units:
+                    merged_units[p] = units_map.get(p, "")
+
+            new_rows_to_add: List[tuple] = []
+            for i, ts in enumerate(new_timestamps):
+                if str(ts) not in on_disk_ts:
+                    row_vals = [ts] + [
+                        (new_columns[p][i]
+                         if p in new_columns and i < len(new_columns[p])
+                         else None)
+                        for p in all_params
+                    ]
+                    new_rows_to_add.append(tuple(row_vals))
+
+            n_all = len(all_params)
+            padded_old: List[tuple] = []
+            for r in old_rows:
+                old_vals = list(r[1:n_all + 1]) if len(r) > 1 else []
+                padded   = old_vals + [None] * (n_all - len(old_vals))
+                padded_old.append((r[0],) + tuple(padded))
+
+            merged_rows = padded_old + new_rows_to_add
+            n_data_rows = len(merged_rows)
+
             ws = wb.create_sheet(title=safe_name)
 
-            # ── Row 1: Headers ──
-            header_row = ["Timestamp_Local"] + params
+            # Row 1: Headers
+            header_row = ["Timestamp_Local"] + all_params
             for col_idx, hdr in enumerate(header_row, start=1):
                 cell = ws.cell(row=1, column=col_idx, value=hdr)
                 cell.font = header_font
                 cell.fill = header_fill
                 cell.alignment = header_align
 
-            # ── Row 2: Units ──
-            units_row = ["(units)"] + [units_map.get(p, "") for p in params]
-            for col_idx, u in enumerate(units_row, start=1):
+            # Row 2: Units
+            units_row_out = ["(units)"] + [
+                merged_units.get(p, "") for p in all_params
+            ]
+            for col_idx, u in enumerate(units_row_out, start=1):
                 cell = ws.cell(row=2, column=col_idx, value=u)
                 cell.font = units_font
                 cell.fill = units_fill
                 cell.alignment = header_align
 
-            # ── Rows 3+: Data (one row per poll cycle) ──
-            for i, ts in enumerate(timestamps):
-                data_row_idx = i + 3
-                ws.cell(row=data_row_idx, column=1, value=ts)
-                for col_idx, param in enumerate(params, start=2):
-                    val = columns[param][i] if i < len(
-                        columns[param]) else None
-                    cell = ws.cell(row=data_row_idx, column=col_idx, value=val)
+            # Rows 3+: merged data
+            for row_i, row_data in enumerate(merged_rows):
+                data_row_idx = row_i + 3
+                ws.cell(row=data_row_idx, column=1, value=row_data[0])
+                for col_idx, param in enumerate(all_params, start=2):
+                    val = (row_data[col_idx - 1]
+                           if (col_idx - 1) < len(row_data) else None)
+                    cell = ws.cell(
+                        row=data_row_idx, column=col_idx, value=val)
                     if isinstance(val, (int, float)):
                         cell.number_format = "0.000000"
 
-            n_data_rows = len(timestamps)
-
-            # ── Auto-size columns ──
+            # Auto-size columns
             for col in ws.columns:
-                max_len = 0
+                max_len    = 0
                 col_letter = col[0].column_letter
                 for cell in col:
                     try:
@@ -1551,34 +1960,29 @@ def write_xlsx(
                         pass
                 ws.column_dimensions[col_letter].width = min(max_len + 4, 40)
 
-            # ── Freeze header + units rows ──
             ws.freeze_panes = "A3"
 
-            # ── Line chart — numeric params vs sample index ──
+            # Line chart
             numeric_cols = [
                 col_idx
-                for col_idx, p in enumerate(params, start=2)
-                if any(isinstance(v, (int, float)) for v in columns[p] if v is not None)
+                for col_idx, p in enumerate(all_params, start=2)
+                if any(
+                    isinstance(r[col_idx - 1], (int, float))
+                    for r in merged_rows
+                    if (col_idx - 1) < len(r) and r[col_idx - 1] is not None
+                )
             ]
 
             if n_data_rows >= 2 and numeric_cols:
                 try:
                     chart = LineChart()
-                    chart.title = f"{tname} — {ip}"
-                    chart.style = 10
+                    chart.title  = f"{tname} — {ip}"
+                    chart.style  = 10
                     chart.y_axis.title = "Value"
                     chart.x_axis.title = "Sample (poll cycle)"
-                    chart.width = 24
+                    chart.width  = 24
                     chart.height = 14
 
-                    # Data rows start at row 3 (row 1 = header, row 2 = units).
-                    # Reference only the data rows so neither the header text
-                    # nor the "(units)" string is included in chart values.
-                    # Series titles use the openpyxl SeriesLabel/StrRef API:
-                    # chart.series[-1].tx = SeriesLabel(strRef=StrRef(f=addr))
-                    # Assigning a bare Reference to .title raises TypeError and
-                    # is silently swallowed by the except block, leaving all
-                    # series untitled.  The .tx attribute is the correct target.
                     for nc in numeric_cols[:12]:
                         data_ref = Reference(
                             ws,
@@ -1586,30 +1990,37 @@ def write_xlsx(
                             min_row=3, max_row=n_data_rows + 2,
                         )
                         chart.add_data(data_ref, titles_from_data=False)
-                        # Build a cell-reference series title pointing to the
-                        # header row (row 1) so the legend shows the param name.
-                        # Format: 'SheetTitle'!$COL$1 (absolute reference).
-                        col_ltr = get_column_letter(nc)
+                        col_ltr    = get_column_letter(nc)
                         title_addr = f"'{ws.title}'!${col_ltr}$1"
                         chart.series[-1].tx = SeriesLabel(
-                            strRef=StrRef(f=title_addr)
-                        )
+                            strRef=StrRef(f=title_addr))
 
-                    # x-axis categories = Timestamp_Local column, data rows only
                     cat_ref = Reference(
                         ws, min_col=1, min_row=3, max_row=n_data_rows + 2)
                     chart.set_categories(cat_ref)
                     ws.add_chart(chart, f"A{n_data_rows + 5}")
-                except Exception as exc:
+                except Exception as _exc:
                     logger.warning(
-                        "Chart creation failed for sheet '%s': %s", safe_name, exc)
+                        "Chart creation failed for sheet '%s': %s",
+                        safe_name, _exc)
 
+        # ── Step 4: save and clean up rescue files ─────────────────────
         try:
-            wb.save(filename)
-            logger.info("XLSX written (columnar): %s", filename)
+            wb.save(out_filename)
+            logger.info("XLSX written (columnar): %s", out_filename)
+            if main_readable and merged_rescue_ok:
+                for rpath in merged_rescue_ok:
+                    try:
+                        os.remove(rpath)
+                        logger.info(
+                            "XLSX: rescue file merged and removed: %s",
+                            rpath)
+                    except OSError as _re:
+                        logger.warning(
+                            "XLSX: could not remove rescue file %s: %s",
+                            rpath, _re)
         except Exception as exc:
             logger.error("XLSX save failed for %s: %s", ip, exc)
-
 
 # ===========================================================================
 # %%% OUTPUT MODULE 4 — TEXT LOG APPEND
@@ -2002,6 +2413,13 @@ def write_veusz(
             store_tnames = list(_ts_src.get(ip, {}).keys())
             tables = {tn: {} for tn in store_tnames}
         safe_ip = ip.replace(".", "_")
+        # Last octet of the IP address (e.g. '54' from '10.16.130.54').
+        # Used as a short, human-readable prefix on every dataset name so the
+        # Veusz data browser clearly identifies which device each dataset
+        # belongs to (e.g. '54_Real_Time_Power_Table_L1_Watt').
+        # This also prevents name collisions if documents from multiple devices
+        # are ever merged inside Veusz.
+        last_octet: str = ip.rsplit(".", 1)[-1]
         # Timestamped filename for mid-run flush writes (one file per flush
         # window so no data from prior flush periods is overwritten).
         # Fixed canonical filename for the final end-of-run write.
@@ -2078,23 +2496,27 @@ def write_veusz(
             ts_ip = _ts_src.get(ip, {})
 
             # ---------------------------------------------------------------
-            # Veusz datetime epoch: days since 1900-01-01 00:00:00 (local).
-            # Veusz stores datetimes internally as float days since its own
-            # epoch of 1900-01-01.  Setting axis.mode.val = 'datetime' causes
-            # Veusz to interpret the x-dataset as these epoch-float values,
-            # enabling true datetime axis scaling, zooming, and data picking
-            # with proper time-based grid lines and labels.
+            # Veusz datetime epoch: seconds since 2009-01-01 00:00:00 (local).
+            # Per the Veusz 4.1 documentation (Reading data § Dates):
+            #   "Dates are stored within Veusz as a number which is the
+            #    number of seconds since the start of January 1st 2009."
+            # Setting axis.mode.val = 'datetime' tells Veusz to interpret the
+            # x-dataset as these epoch-second floats, enabling true datetime
+            # axis scaling, zooming, and data-point picking with time-based
+            # grid lines and labels.
             # ---------------------------------------------------------------
-            _VZ_EPOCH = datetime.datetime(1900, 1, 1)
+            _VZ_EPOCH = datetime.datetime(2009, 1, 1)
 
             def _ts_to_veusz_epoch(ts_str: str) -> float:
-                """Convert 'YYYY-MM-DD HH:MM:SS' local string to Veusz epoch days."""
+                """Convert 'YYYY-MM-DD HH:MM:SS' local string to Veusz epoch seconds.
+
+                Veusz stores datetimes as float seconds since 2009-01-01 00:00:00.
+                """
                 try:
                     dt = datetime.datetime.strptime(ts_str, "%Y-%m-%d %H:%M:%S")
                 except ValueError:
                     return float("nan")
-                delta = dt - _VZ_EPOCH
-                return delta.days + delta.seconds / 86400.0
+                return (dt - _VZ_EPOCH).total_seconds()
 
             n_datasets = 0
             # _ts_ds_map: {tname: datetime_ds_name} — built during dataset loading
@@ -2108,15 +2530,18 @@ def write_veusz(
 
                 # ----------------------------------------------------------------
                 # Datetime float dataset — one per table.
-                # Named:  dt_<tname_safe>   e.g. dt_Real_Time_Power_Table
-                # Contains float days-since-Veusz-epoch (1900-01-01) for each
+                # Named:  <octet>_dt_<tname_safe>
+                #   e.g.  54_dt_Real_Time_Power_Table
+                # Contains float seconds-since-Veusz-epoch (2009-01-01) for each
                 # sample.  This is the x-dataset for all graphs in this table's
                 # page.  axis.mode = 'datetime' interprets these as real times.
-                # A companion text dataset ts_<tname_safe> is also loaded so that
-                # tickLabels can fall back to string labels on older Veusz builds.
+                # A companion text dataset <octet>_ts_<tname_safe> is also loaded
+                # so that tickLabels can fall back to string labels on older builds.
+                # All dataset names are prefixed with the IP's last octet so the
+                # Veusz data browser always shows which device the data came from.
                 # ----------------------------------------------------------------
-                dt_ds_name  = _veusz_safe(f"dt_{tname}")    # numeric datetime x-axis
-                ts_ds_name  = _veusz_safe(f"ts_{tname}")    # text fallback labels
+                dt_ds_name  = _veusz_safe(f"{last_octet}_dt_{tname}")    # numeric datetime x-axis
+                ts_ds_name  = _veusz_safe(f"{last_octet}_ts_{tname}")    # text fallback labels
 
                 if timestamps:
                     dt_vals = [_ts_to_veusz_epoch(t) for t in timestamps]
@@ -2130,9 +2555,9 @@ def write_veusz(
                     _ts_ds_map[tname] = None
 
                 for param in series:
-                    ds_name  = _veusz_safe(f"{tname}_{param}")
+                    ds_name  = _veusz_safe(f"{last_octet}_{tname}_{param}")
                     # Keep idx dataset for backward-compat; datetime ds is primary x.
-                    idx_name = _veusz_safe(f"idx_{tname}_{param}")
+                    idx_name = _veusz_safe(f"{last_octet}_idx_{tname}_{param}")
 
                     if param in ts_columns and ts_columns[param]:
                         raw  = ts_columns[param]
@@ -2208,8 +2633,8 @@ def write_veusz(
                 grid.columns.val = 2
 
                 for p_idx, (param, (val, unit)) in enumerate(series.items()):
-                    ds_name  = _veusz_safe(f"{tname}_{param}")
-                    idx_name = _veusz_safe(f"idx_{tname}_{param}")
+                    ds_name  = _veusz_safe(f"{last_octet}_{tname}_{param}")
+                    idx_name = _veusz_safe(f"{last_octet}_idx_{tname}_{param}")
                     gname    = _veusz_safe(f"g_{param}")
                     colour   = _colour(p_idx)
                     # Y-axis label: human-readable param + unit, no underscores
@@ -2224,10 +2649,17 @@ def write_veusz(
                     ax.direction.val = "horizontal"
                     if dt_ds:
                         # mode='datetime' tells Veusz to interpret the x-dataset
-                        # as days since 1900-01-01, enabling true datetime scaling,
-                        # zooming, data-point picking with time-based grid lines.
+                        # as seconds since 2009-01-01, enabling true datetime
+                        # scaling, zooming, and data-point picking with
+                        # time-based grid lines.
+                        # TickLabels.format uses Veusz %VDX specifiers (NOT
+                        # strftime); %VDY=year, %VDm=month, %VDd=day,
+                        # %VDH=hour, %VDM=minute, %VDS=second.
                         try:
                             ax.mode.val = "datetime"
+                            ax.TickLabels.format.val = (
+                                "%VDY-%VDm-%VDd %VDH:%VDM:%VDS"
+                            )
                         except Exception:
                             pass  # graceful: very old Veusz without mode setting
                     else:
@@ -2268,13 +2700,15 @@ def write_veusz(
             # ---------------------------------------------------------------
             for group_label, substrings in VEUSZ_OVERLAY_GROUPS.items():
 
-                # Collect (ds_name, idx_name, param, unit) tuples
+                # Collect (ds_name, idx_name, param, unit) tuples.
+                # Dataset names must match exactly what was loaded in Step 1,
+                # including the last_octet prefix.
                 overlay: List[Tuple[str, str, str, str]] = []
                 for tname, series in all_series.items():
                     for param, (val, unit) in series.items():
                         if any(sub in param.lower() for sub in substrings):
-                            ds_name = _veusz_safe(f"{tname}_{param}")
-                            idx_name = _veusz_safe(f"idx_{tname}_{param}")
+                            ds_name = _veusz_safe(f"{last_octet}_{tname}_{param}")
+                            idx_name = _veusz_safe(f"{last_octet}_idx_{tname}_{param}")
                             overlay.append((ds_name, idx_name, param, unit))
 
                 if not overlay:
@@ -2309,6 +2743,9 @@ def write_veusz(
                 if ov_dt_ds:
                     try:
                         ox.mode.val = "datetime"
+                        ox.TickLabels.format.val = (
+                            "%VDY-%VDm-%VDd %VDH:%VDM:%VDS"
+                        )
                     except Exception:
                         pass   # older Veusz without datetime mode
                 else:
@@ -3689,6 +4126,11 @@ def launch_gui(
                         del _vz_snapshot   # release snapshot memory
                         gc.collect()
                 else:
+                    # Release snapshot even when skipped (e.g. ALL_DEVICE_DATA
+                    # empty after a failed poll at flush threshold).
+                    if _vz_snapshot is not None:
+                        del _vz_snapshot
+                        gc.collect()
                     logger.debug(
                         "Veusz skipped during RAM flush (veusz_write_on_flush=0). "
                         "Will write at Stop/loop-end.")
@@ -4108,7 +4550,7 @@ def launch_gui(
                 "stores data in named Python dicts, and\n"
                 "exports to FITS, CSV, XLSX, Veusz, and logs.\n\n"
                 "Author: W. Wallace\n"
-                "Version: 1.4.20\n"
+                "Version: 1.4.24\n"
                 "Python: 3.8+\n"
                 "Qt backend: PySide6 (via QtPy)",
             )
@@ -4649,9 +5091,16 @@ def run_headless(cfg: Dict[str, Any]) -> None:
                         del _vz_snapshot   # release snapshot memory
                         gc.collect()
                 else:
+                    # Release the snapshot even when write was skipped
+                    # (ALL_DEVICE_DATA empty after failed poll) so the
+                    # deepcopy does not linger at the RAM flush threshold.
+                    if _vz_snapshot is not None:
+                        del _vz_snapshot
+                        gc.collect()
                     logger.debug(
                         "Veusz skipped during RAM flush (VEUSZ_WRITE_ON_FLUSH=0). "
                         "Will write at loop end.")
+                flush_future = None   # mark consumed — prevents spurious re-flush
 
             if not dicts_only:
                 logger.info("Cycle %d poll complete in %.2f s — store %.1f MB, free RAM %.0f MB",
