@@ -28,4 +28,11 @@ As of 2025-06-05 this is the only maser with scripts in the repository (repo).
 
 ## 3.2 Microsemi / Michrochip Maser
 
+# AB Power Meter Monitoring
+- ab_power_meter_monitor.py is ready for release testing in version 1.5.0
+- This pulls all data from all entered IP addresses and returns a nested Dict thereof
+- There is a GUI option, but on network, with power and sleep control, this can be problematic for long logs.
+- Headless version current set for a single pass, must be externally called for each sample
+
+  
 # 4 Other Timing Related Scripts and Repos
