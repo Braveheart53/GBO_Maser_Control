@@ -115,14 +115,14 @@ except ImportError:
 # ---------------------------------------------------------------------------
 # %% Feature / output enable switches  (0 = off, 1 = on)
 # ---------------------------------------------------------------------------
-ENABLE_GUI = 1   # Show PyQt/PySide6 main window
-ENABLE_FITS = 1   # Write NRAO-compliant FITS files
-ENABLE_CSV = 1   # Write per-table CSV files
-ENABLE_XLSX = 1   # Write Excel workbook with charts
+ENABLE_GUI = 0   # Show PyQt/PySide6 main window
+ENABLE_FITS = 0   # Write NRAO-compliant FITS files
+ENABLE_CSV = 0   # Write per-table CSV files
+ENABLE_XLSX = 0   # Write Excel workbook with charts
 ENABLE_LOG_APPEND = 1   # Write per-device Markdown (.md) data log tables
-ENABLE_LOG_FILE = 1   # Write ab_monitor.log (Python logging file handler)
+ENABLE_LOG_FILE = 0   # Write ab_monitor.log (Python logging file handler)
 # Set to 0 to keep logging console-only (no file created)
-ENABLE_VEUSZ = 1   # Write Veusz HDF5 project file(s) (.vszh5)
+ENABLE_VEUSZ = 0   # Write Veusz HDF5 project file(s) (.vszh5)
 VEUSZ_WRITE_ON_FLUSH = 0  # 1 = also save a timestamped Veusz snapshot on each RAM flush
                           # 0 = write Veusz only at loop end / Stop (default)
                           # Store is cleared BEFORE the Veusz subprocess is launched
@@ -190,12 +190,12 @@ IP_LIST: List[str] = [
 # %% Polling / timing
 # ---------------------------------------------------------------------------
 SAMPLE_PERIOD_SEC = 30    # Seconds between successive polls of all devices
-HTTP_TIMEOUT_SEC          = 5    # Per-request response timeout (sec) — NOT a port
-HTTP_RETRY_COUNT          = 3    # Total fetch attempts per (ip,page); 1 = no retry
+HTTP_TIMEOUT_SEC          = 10    # Per-request response timeout (sec) — NOT a port
+HTTP_RETRY_COUNT          = 2    # Total fetch attempts per (ip,page); 1 = no retry
 HTTP_RETRY_DELAY_SEC      = 2.0  # Seconds between retry attempts
-HEADLESS_MAX_CONSEC_FAILS = 5    # Consecutive all-device failures before clean exit
+HEADLESS_MAX_CONSEC_FAILS = 3    # Consecutive all-device failures before clean exit
                                  #   0 = never exit on failures
-MEM_RAM_PCT_LIMIT         = 70   # Flush+clear store when system RAM reaches this %
+MEM_RAM_PCT_LIMIT         = 60   # Flush+clear store when system RAM reaches this %
 APPEND_OUTPUT_FILES       = 1    # 1=append all output files, 0=overwrite each run
 
 # ---------------------------------------------------------------------------
