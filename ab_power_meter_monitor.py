@@ -22,12 +22,12 @@ Device range   : last octet 50 – 53  (configurable below)
 
 # %%% AUthor Info
 @Author: W. Wallace — NRAO / Green Bank Observatory
-Date   : 2026-05-13
+Date   : 2026-06-09
 Phone  : +1 (304) 456-2216
 Email  : wwallace@nrao.edu
 Email2 : naval.antennas@gmail.com 
 Python : 3.8+
-Version: 1.4.24
+Version: 1.5.0
 Deps   : PySide6, matplotlib, requests, beautifulsoup4, lxml,
          astropy, openpyxl, veusz  (pip install each)
 
@@ -4550,7 +4550,7 @@ def launch_gui(
                 "stores data in named Python dicts, and\n"
                 "exports to FITS, CSV, XLSX, Veusz, and logs.\n\n"
                 "Author: W. Wallace\n"
-                "Version: 1.4.24\n"
+                "Version: 1.5.0\n"
                 "Python: 3.8+\n"
                 "Qt backend: PySide6 (via QtPy)",
             )
