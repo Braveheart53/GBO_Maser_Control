@@ -119,14 +119,14 @@ ENABLE_GUI = 0   # Show PyQt/PySide6 main window
 ENABLE_FITS = 0   # Write NRAO-compliant FITS files
 ENABLE_CSV = 0   # Write per-table CSV files
 ENABLE_XLSX = 0   # Write Excel workbook with charts
-ENABLE_LOG_APPEND = 1   # Write per-device Markdown (.md) data log tables
+ENABLE_LOG_APPEND = 0   # Write per-device Markdown (.md) data log tables
 ENABLE_LOG_FILE = 0   # Write ab_monitor.log (Python logging file handler)
 # Set to 0 to keep logging console-only (no file created)
 ENABLE_VEUSZ = 0   # Write Veusz HDF5 project file(s) (.vszh5)
 VEUSZ_WRITE_ON_FLUSH = 0  # 1 = also save a timestamped Veusz snapshot on each RAM flush
-                          # 0 = write Veusz only at loop end / Stop (default)
-                          # Store is cleared BEFORE the Veusz subprocess is launched
-                          # so RAM impact is minimal regardless of this setting.
+# 0 = write Veusz only at loop end / Stop (default)
+# Store is cleared BEFORE the Veusz subprocess is launched
+# so RAM impact is minimal regardless of this setting.
 
 # ---------------------------------------------------------------------------
 # %% Headless loop control
@@ -190,13 +190,13 @@ IP_LIST: List[str] = [
 # %% Polling / timing
 # ---------------------------------------------------------------------------
 SAMPLE_PERIOD_SEC = 30    # Seconds between successive polls of all devices
-HTTP_TIMEOUT_SEC          = 10    # Per-request response timeout (sec) — NOT a port
-HTTP_RETRY_COUNT          = 2    # Total fetch attempts per (ip,page); 1 = no retry
-HTTP_RETRY_DELAY_SEC      = 2.0  # Seconds between retry attempts
+HTTP_TIMEOUT_SEC = 8    # Per-request response timeout (sec) — NOT a port
+HTTP_RETRY_COUNT = 2    # Total fetch attempts per (ip,page); 1 = no retry
+HTTP_RETRY_DELAY_SEC = 2.0  # Seconds between retry attempts
 HEADLESS_MAX_CONSEC_FAILS = 3    # Consecutive all-device failures before clean exit
-                                 #   0 = never exit on failures
-MEM_RAM_PCT_LIMIT         = 60   # Flush+clear store when system RAM reaches this %
-APPEND_OUTPUT_FILES       = 1    # 1=append all output files, 0=overwrite each run
+#   0 = never exit on failures
+MEM_RAM_PCT_LIMIT = 60   # Flush+clear store when system RAM reaches this %
+APPEND_OUTPUT_FILES = 1    # 1=append all output files, 0=overwrite each run
 
 # ---------------------------------------------------------------------------
 # %% Output paths
@@ -466,7 +466,8 @@ def fetch_table_html(
             resp = _get(url, timeout=timeout)
             resp.raise_for_status()
             if attempt > 1:
-                logger.info("Fetched %s on attempt %d/%d.", url, attempt, max_attempts)
+                logger.info("Fetched %s on attempt %d/%d.",
+                            url, attempt, max_attempts)
             else:
                 logger.debug("Fetched %s — %d bytes", url, len(resp.text))
             return resp.text
@@ -479,6 +480,7 @@ def fetch_table_html(
                 logger.warning("Fetch failed %s — all %d attempt(s) exhausted: %s",
                                url, max_attempts, exc)
     return None
+
 
 def parse_html_table(html: str, table_name: str, ip: str, page: int) -> Dict[str, Any]:
     """
@@ -701,7 +703,6 @@ def poll_all_devices(
     return all_data
 
 
-
 # ===========================================================================
 # %% NAMED TABLE DICTS  (always populated; used by all output modules)
 #
@@ -709,7 +710,6 @@ def poll_all_devices(
 #  They are populated by update_named_dicts() after each poll.
 #  Consumer code should reference these dicts directly.
 # ===========================================================================
-
 # --- Device 1 (last octet = 50, placeholder; populated at runtime) ---
 Device_Configuration_Table:            Dict[str, Any] = {}
 Communications_Configuration_Table:    Dict[str, Any] = {}
@@ -1202,8 +1202,8 @@ def write_fits(
         }
 
     for ip in all_device_data:
-        safe_ip       = ip.replace(".", "_")
-        filename      = os.path.join(fits_dir, f"ABMeter_{safe_ip}.fits")
+        safe_ip = ip.replace(".", "_")
+        filename = os.path.join(fits_dir, f"ABMeter_{safe_ip}.fits")
 
         # ── Step 1: read canonical file ────────────────────────────────
         # Track whether the canonical file was readable so we know whether
@@ -1251,7 +1251,8 @@ def write_fits(
                                 rdata["timestamps"])
                             for p, vals in rdata["columns"].items():
                                 if p in disk_hdus[ext_key]["columns"]:
-                                    disk_hdus[ext_key]["columns"][p].extend(vals)
+                                    disk_hdus[ext_key]["columns"][p].extend(
+                                        vals)
                                 else:
                                     disk_hdus[ext_key]["columns"][p] = (
                                         [float("nan")] * n_ex_pre + vals
@@ -1264,7 +1265,8 @@ def write_fits(
                             keep_idx = [
                                 i for i, ts in enumerate(
                                     disk_hdus[ext_key]["timestamps"])
-                                if ts not in seen_ts and not seen_ts.add(ts)  # type: ignore[func-returns-value]
+                                # type: ignore[func-returns-value]
+                                if ts not in seen_ts and not seen_ts.add(ts)
                             ]
                             if len(keep_idx) < len(disk_hdus[ext_key]["timestamps"]):
                                 disk_hdus[ext_key]["timestamps"] = [
@@ -1340,7 +1342,7 @@ def write_fits(
 
         if all_timestamps_range:
             first_ts = min(all_timestamps_range).replace(" ", "T")
-            last_ts  = max(all_timestamps_range).replace(" ", "T")
+            last_ts = max(all_timestamps_range).replace(" ", "T")
             primary_hdr["DATE-OBS"] = (
                 _fits_ascii(first_ts),
                 _fits_ascii("Local time of first accumulated sample"))
@@ -1356,9 +1358,9 @@ def write_fits(
 
         for tname, tdata in ip_tables.items():
             new_timestamps = tdata["timestamps_local"]
-            new_columns    = tdata["columns"]
-            units_map      = tdata["units"]
-            new_params     = list(new_columns.keys())
+            new_columns = tdata["columns"]
+            units_map = tdata["units"]
+            new_params = list(new_columns.keys())
 
             if not new_timestamps:
                 logger.debug(
@@ -1367,12 +1369,12 @@ def write_fits(
                 continue
 
             ext_name = tname[:8].strip()
-            ext_key  = ext_name.lower()
+            ext_key = ext_name.lower()
 
-            od             = disk_hdus.get(ext_key, {})
+            od = disk_hdus.get(ext_key, {})
             old_timestamps = od.get("timestamps", [])
-            old_cols       = od.get("columns",    {})
-            old_units_map  = od.get("units",      {})
+            old_cols = od.get("columns",    {})
+            old_units_map = od.get("units",      {})
 
             all_params: List[str] = list(old_cols.keys())
             for p in new_params:
@@ -1392,7 +1394,7 @@ def write_fits(
                 if str(ts) not in on_disk_ts
             ]
 
-            merged_ts:   List[str]            = list(old_timestamps)
+            merged_ts:   List[str] = list(old_timestamps)
             merged_cols: Dict[str, List[Any]] = {
                 p: list(old_cols.get(p, [None] * len(old_timestamps)))
                 for p in all_params
@@ -1441,8 +1443,8 @@ def write_fits(
             hdu = astrofits.BinTableHDU.from_columns(fits_cols)
             hdu.header["EXTNAME"] = _fits_ascii(ext_name)
             hdu.header["TBLNAME"] = _fits_ascii(tname)
-            hdu.header["SRCIP"]   = _fits_ascii(ip)
-            hdu.header["NSAMP"]   = (
+            hdu.header["SRCIP"] = _fits_ascii(ip)
+            hdu.header["NSAMP"] = (
                 n_samples,
                 _fits_ascii("Number of accumulated poll cycles"))
             hdu.header["DATE-OBS"] = _fits_ascii(
@@ -1480,6 +1482,8 @@ def write_fits(
 # ===========================================================================
 # %%% OUTPUT MODULE 2 — CSV
 # ===========================================================================
+
+
 def write_csv(
     all_device_data: Dict[str, Dict[str, Dict[str, Any]]],
     csv_dir: str,
@@ -1732,14 +1736,14 @@ def write_xlsx(
                 ws_r = wb_r[sheet_name]
                 rows_iter = ws_r.iter_rows(values_only=True)
                 try:
-                    hdr_r   = next(rows_iter)
+                    hdr_r = next(rows_iter)
                     units_r = next(rows_iter)
                 except StopIteration:
                     continue
                 r_params = [
                     str(h) for h in hdr_r[1:] if h is not None
                 ]
-                r_units  = [
+                r_units = [
                     str(u) if u is not None else ""
                     for u in units_r[1:len(r_params) + 1]
                 ]
@@ -1773,7 +1777,7 @@ def write_xlsx(
         return result
 
     for ip, tables in snapshot.items():
-        safe_ip  = ip.replace(".", "_")
+        safe_ip = ip.replace(".", "_")
         filename = os.path.join(xlsx_dir, f"ABMeter_{safe_ip}.xlsx")
 
         # ── Step 1: read canonical file ────────────────────────────────
@@ -1853,18 +1857,18 @@ def write_xlsx(
         wb = openpyxl.Workbook()
         wb.remove(wb.active)
 
-        header_font  = Font(name="Calibri", bold=True,  color="FFFFFF")
-        header_fill  = PatternFill(fill_type="solid",   fgColor="1F4E79")
-        units_fill   = PatternFill(fill_type="solid",   fgColor="2E75B6")
-        units_font   = Font(name="Calibri", bold=False, color="FFFFFF",
-                            italic=True)
+        header_font = Font(name="Calibri", bold=True,  color="FFFFFF")
+        header_fill = PatternFill(fill_type="solid",   fgColor="1F4E79")
+        units_fill = PatternFill(fill_type="solid",   fgColor="2E75B6")
+        units_font = Font(name="Calibri", bold=False, color="FFFFFF",
+                          italic=True)
         header_align = Alignment(horizontal="center")
 
         for tname, tdata in tables.items():
             new_timestamps = tdata["timestamps_local"]
-            new_columns    = tdata["columns"]
-            units_map      = tdata["units"]
-            new_params     = list(new_columns.keys())
+            new_columns = tdata["columns"]
+            units_map = tdata["units"]
+            new_params = list(new_columns.keys())
 
             if not new_timestamps:
                 continue
@@ -1872,9 +1876,9 @@ def write_xlsx(
             safe_name = tname[:31].replace(
                 "/", "_").replace("\\", "_").replace("*", "_")
 
-            od            = disk_data.get(safe_name, {})
-            old_params    = od.get("params",  [])
-            old_rows      = od.get("rows",    [])
+            od = disk_data.get(safe_name, {})
+            old_params = od.get("params",  [])
+            old_rows = od.get("rows",    [])
             old_units_lst = od.get("units",   [])
 
             all_params: List[str] = list(old_params)
@@ -1911,7 +1915,7 @@ def write_xlsx(
             padded_old: List[tuple] = []
             for r in old_rows:
                 old_vals = list(r[1:n_all + 1]) if len(r) > 1 else []
-                padded   = old_vals + [None] * (n_all - len(old_vals))
+                padded = old_vals + [None] * (n_all - len(old_vals))
                 padded_old.append((r[0],) + tuple(padded))
 
             merged_rows = padded_old + new_rows_to_add
@@ -1951,7 +1955,7 @@ def write_xlsx(
 
             # Auto-size columns
             for col in ws.columns:
-                max_len    = 0
+                max_len = 0
                 col_letter = col[0].column_letter
                 for cell in col:
                     try:
@@ -1976,11 +1980,11 @@ def write_xlsx(
             if n_data_rows >= 2 and numeric_cols:
                 try:
                     chart = LineChart()
-                    chart.title  = f"{tname} — {ip}"
-                    chart.style  = 10
+                    chart.title = f"{tname} — {ip}"
+                    chart.style = 10
                     chart.y_axis.title = "Value"
                     chart.x_axis.title = "Sample (poll cycle)"
-                    chart.width  = 24
+                    chart.width = 24
                     chart.height = 14
 
                     for nc in numeric_cols[:12]:
@@ -1990,7 +1994,7 @@ def write_xlsx(
                             min_row=3, max_row=n_data_rows + 2,
                         )
                         chart.add_data(data_ref, titles_from_data=False)
-                        col_ltr    = get_column_letter(nc)
+                        col_ltr = get_column_letter(nc)
                         title_addr = f"'{ws.title}'!${col_ltr}$1"
                         chart.series[-1].tx = SeriesLabel(
                             strRef=StrRef(f=title_addr))
@@ -2025,6 +2029,8 @@ def write_xlsx(
 # ===========================================================================
 # %%% OUTPUT MODULE 4 — TEXT LOG APPEND
 # ===========================================================================
+
+
 def write_log_text(
     all_device_data: Dict[str, Dict[str, Dict[str, Any]]],
     log_dir: str,
@@ -2121,7 +2127,8 @@ def write_log_text(
                     for _line in reversed(all_lines):
                         stripped = _line.strip()
                         if stripped.startswith("|") and "---" not in stripped:
-                            _cells = [c.strip() for c in stripped.strip("|").split("|")]
+                            _cells = [c.strip()
+                                      for c in stripped.strip("|").split("|")]
                             if _cells and _cells[0] and not _cells[0].startswith("Timestamp"):
                                 last_md_ts = _cells[0]
                             break
@@ -2169,10 +2176,12 @@ def write_log_text(
                             stripped = _line.strip()
                             if stripped.startswith("|") and "---" not in stripped:
                                 # First pipe row is the header
-                                _cells = [c.strip() for c in stripped.strip("|").split("|")]
+                                _cells = [c.strip()
+                                          for c in stripped.strip("|").split("|")]
                                 for _ci, _cell in enumerate(_cells):
                                     if _ci < len(col_widths):
-                                        col_widths[_ci] = max(col_widths[_ci], len(_cell))
+                                        col_widths[_ci] = max(
+                                            col_widths[_ci], len(_cell))
                                 break
                 except Exception:
                     pass
@@ -2397,7 +2406,8 @@ def write_veusz(
     _ts_src: Dict[str, Any] = ts_snapshot if ts_snapshot is not None else {}
     if ts_snapshot is None:
         with _TS_LOCK:
-            _ts_src = dict(TIME_SERIES_STORE)   # shallow copy of top-level keys
+            # shallow copy of top-level keys
+            _ts_src = dict(TIME_SERIES_STORE)
     ts_ips = list(_ts_src.keys())
     if not ts_ips:
         logger.warning("write_veusz: data source is empty — nothing to write.")
@@ -2461,7 +2471,7 @@ def write_veusz(
                 # the last poll but has accumulated data in the data source).
                 # Use _ts_src so the snapshot path works after store clear.
                 tstore_fb = _ts_src.get(ip, {}).get(tname, {})
-                fb_cols  = tstore_fb.get("columns", {})
+                fb_cols = tstore_fb.get("columns", {})
                 fb_units = tstore_fb.get("units",   {})
                 if fb_cols:
                     # Build a minimal series dict: {param: (last_val_or_0, unit)}
@@ -2471,7 +2481,8 @@ def write_veusz(
                             (v for v in reversed(col_vals) if v is not None),
                             0.0
                         )
-                        fb_series[param] = (float(last_v), fb_units.get(param, ""))
+                        fb_series[param] = (
+                            float(last_v), fb_units.get(param, ""))
                     if fb_series:
                         all_series[tname] = fb_series
                         logger.debug(
@@ -2513,7 +2524,8 @@ def write_veusz(
                 Veusz stores datetimes as float seconds since 2009-01-01 00:00:00.
                 """
                 try:
-                    dt = datetime.datetime.strptime(ts_str, "%Y-%m-%d %H:%M:%S")
+                    dt = datetime.datetime.strptime(
+                        ts_str, "%Y-%m-%d %H:%M:%S")
                 except ValueError:
                     return float("nan")
                 return (dt - _VZ_EPOCH).total_seconds()
@@ -2540,8 +2552,10 @@ def write_veusz(
                 # All dataset names are prefixed with the IP's last octet so the
                 # Veusz data browser always shows which device the data came from.
                 # ----------------------------------------------------------------
-                dt_ds_name  = _veusz_safe(f"{last_octet}_dt_{tname}")    # numeric datetime x-axis
-                ts_ds_name  = _veusz_safe(f"{last_octet}_ts_{tname}")    # text fallback labels
+                # numeric datetime x-axis
+                dt_ds_name = _veusz_safe(f"{last_octet}_dt_{tname}")
+                # text fallback labels
+                ts_ds_name = _veusz_safe(f"{last_octet}_ts_{tname}")
 
                 if timestamps:
                     dt_vals = [_ts_to_veusz_epoch(t) for t in timestamps]
@@ -2555,12 +2569,12 @@ def write_veusz(
                     _ts_ds_map[tname] = None
 
                 for param in series:
-                    ds_name  = _veusz_safe(f"{last_octet}_{tname}_{param}")
+                    ds_name = _veusz_safe(f"{last_octet}_{tname}_{param}")
                     # Keep idx dataset for backward-compat; datetime ds is primary x.
                     idx_name = _veusz_safe(f"{last_octet}_idx_{tname}_{param}")
 
                     if param in ts_columns and ts_columns[param]:
-                        raw  = ts_columns[param]
+                        raw = ts_columns[param]
                         vals = [float(v) if v is not None else float("nan")
                                 for v in raw]
                         idxs = [float(k) for k in range(len(vals))]
@@ -2621,7 +2635,8 @@ def write_veusz(
                 # Retrieve the datetime x-axis dataset name from _ts_ds_map.
                 # This avoids the __ts_ds pop() bug where the first loop consumed
                 # the stored name before the overlay loop could read it.
-                dt_ds = _ts_ds_map.get(tname)   # numeric datetime float dataset
+                # numeric datetime float dataset
+                dt_ds = _ts_ds_map.get(tname)
 
                 # --- Page — human-readable name (spaces, no underscores) ---
                 page_wname = _veusz_safe(f"{tname}_page")
@@ -2633,12 +2648,13 @@ def write_veusz(
                 grid.columns.val = 2
 
                 for p_idx, (param, (val, unit)) in enumerate(series.items()):
-                    ds_name  = _veusz_safe(f"{last_octet}_{tname}_{param}")
+                    ds_name = _veusz_safe(f"{last_octet}_{tname}_{param}")
                     idx_name = _veusz_safe(f"{last_octet}_idx_{tname}_{param}")
-                    gname    = _veusz_safe(f"g_{param}")
-                    colour   = _colour(p_idx)
+                    gname = _veusz_safe(f"g_{param}")
+                    colour = _colour(p_idx)
                     # Y-axis label: human-readable param + unit, no underscores
-                    axis_label = f"{_human(param)} [{unit}]" if unit else _human(param)
+                    axis_label = f"{_human(param)} [{unit}]" if unit else _human(
+                        param)
 
                     # --- Graph ---
                     graph = grid.Add("graph", name=gname, autoadd=False)
@@ -2707,8 +2723,10 @@ def write_veusz(
                 for tname, series in all_series.items():
                     for param, (val, unit) in series.items():
                         if any(sub in param.lower() for sub in substrings):
-                            ds_name = _veusz_safe(f"{last_octet}_{tname}_{param}")
-                            idx_name = _veusz_safe(f"{last_octet}_idx_{tname}_{param}")
+                            ds_name = _veusz_safe(
+                                f"{last_octet}_{tname}_{param}")
+                            idx_name = _veusz_safe(
+                                f"{last_octet}_idx_{tname}_{param}")
                             overlay.append((ds_name, idx_name, param, unit))
 
                 if not overlay:
@@ -2879,7 +2897,7 @@ def flush_outputs_parallel(cfg: Dict[str, Any]) -> "concurrent.futures.Future":
             return
 
         fits_dir = cfg.get("fits_dir",  FITS_DIR)
-        _append  = bool(cfg.get("append_files", APPEND_OUTPUT_FILES))
+        _append = bool(cfg.get("append_files", APPEND_OUTPUT_FILES))
         csv_dir = cfg.get("csv_dir",   CSV_DIR)
         xlsx_dir = cfg.get("xlsx_dir",  XLSX_DIR)
         log_dir = cfg.get("log_dir",   LOG_DIR)
@@ -2909,7 +2927,7 @@ def flush_outputs_parallel(cfg: Dict[str, Any]) -> "concurrent.futures.Future":
                 ("XLSX", lambda _a=_append, _d=_ts_snap: write_xlsx(_d, xlsx_dir, append=_a)))
         if cfg.get("enable_log_append"):
             tasks.append(
-                ("LOG",  lambda _a=_append, _d=_ts_snap: write_log_text(_d, log_dir, append=_a)))
+                ("LOG", lambda _a=_append, _d=_ts_snap: write_log_text(_d, log_dir, append=_a)))
 
         with concurrent.futures.ThreadPoolExecutor(
             max_workers=min(4, len(tasks)) if tasks else 1,
@@ -3055,9 +3073,9 @@ def build_preview_pngs(
 
         # ── Per-table plots ───────────────────────────────────────────────
         for tname, tdata in tables.items():
-            columns    = tdata["columns"]
+            columns = tdata["columns"]
             timestamps = tdata["timestamps_local"]
-            n_samples  = len(timestamps)
+            n_samples = len(timestamps)
 
             if not columns or n_samples == 0:
                 continue
@@ -3065,12 +3083,12 @@ def build_preview_pngs(
             x = list(range(n_samples))
 
             fig = _new_fig()
-            ax  = fig.add_subplot(111)
+            ax = fig.add_subplot(111)
 
             for c_idx, (param, values) in enumerate(columns.items()):
                 if len(values) != n_samples:
                     continue
-                unit  = tdata["units"].get(param, "")
+                unit = tdata["units"].get(param, "")
                 label = f"{param} ({unit})" if unit else param
                 ax.plot(x, values,
                         label=label,
@@ -3103,17 +3121,17 @@ def build_preview_pngs(
             group_series: List[tuple] = []
 
             for tname_ov, tdata_ov in tables.items():
-                cols_ov    = tdata_ov["columns"]
-                ts_ov      = tdata_ov["timestamps_local"]
-                n_ov       = len(ts_ov)
+                cols_ov = tdata_ov["columns"]
+                ts_ov = tdata_ov["timestamps_local"]
+                n_ov = len(ts_ov)
 
                 for param, values in cols_ov.items():
                     if not any(s in param.lower() for s in substrings):
                         continue
                     if len(values) != n_ov or n_ov == 0:
                         continue
-                    unit  = tdata_ov["units"].get(param, "")
-                    lbl   = f"{tname_ov[:10]}/{param}"
+                    unit = tdata_ov["units"].get(param, "")
+                    lbl = f"{tname_ov[:10]}/{param}"
                     if unit:
                         lbl += f" ({unit})"
                     group_series.append((lbl, list(range(n_ov)), values))
@@ -3122,7 +3140,7 @@ def build_preview_pngs(
                 continue
 
             fig = _new_fig()
-            ax  = fig.add_subplot(111)
+            ax = fig.add_subplot(111)
 
             for c_idx, (lbl, x, values) in enumerate(group_series):
                 ax.plot(x, values,
@@ -3151,7 +3169,6 @@ def build_preview_pngs(
             })
 
     return results
-
 
 
 def build_preview_figures(
@@ -3342,10 +3359,11 @@ def launch_gui(
     class PollThread(QThread):
         """Worker thread that polls devices on a configurable interval."""
 
-        data_ready    = Signal(dict)   # emits all_device_data dict each cycle
-        error_occur   = Signal(str)    # emits error description string
-        log_message   = Signal(str)    # emits log text for status console
-        consec_limit  = Signal(int)    # emits fail count when limit reached → auto-stop
+        data_ready = Signal(dict)   # emits all_device_data dict each cycle
+        error_occur = Signal(str)    # emits error description string
+        log_message = Signal(str)    # emits log text for status console
+        # emits fail count when limit reached → auto-stop
+        consec_limit = Signal(int)
 
         def __init__(self, config: Dict[str, Any], parent=None):
             super().__init__(parent)
@@ -3369,8 +3387,10 @@ def launch_gui(
                     data = poll_all_devices(
                         ip_list=self.config["ip_list"],
                         table_names=TABLE_NAMES,
-                        retries=int(self.config.get("http_retry_count", HTTP_RETRY_COUNT)),
-                        retry_delay=float(self.config.get("http_retry_delay_sec", HTTP_RETRY_DELAY_SEC)),
+                        retries=int(self.config.get(
+                            "http_retry_count", HTTP_RETRY_COUNT)),
+                        retry_delay=float(self.config.get(
+                            "http_retry_delay_sec", HTTP_RETRY_DELAY_SEC)),
                     )
                     _meta = data.pop("__poll_meta__", {})
                     if _meta.get("all_failed", False):
@@ -3388,7 +3408,8 @@ def launch_gui(
                             self.log_message.emit(
                                 f"Connectivity restored after {_consec_fails} failure(s).")
                         _consec_fails = 0
-                        update_named_dicts(data, ip_list=self.config.get("ip_list", IP_LIST))
+                        update_named_dicts(
+                            data, ip_list=self.config.get("ip_list", IP_LIST))
                         self.data_ready.emit(data)
                         self.log_message.emit(
                             f"[{datetime.datetime.now().strftime('%H:%M:%S')}] "
@@ -3735,12 +3756,13 @@ def launch_gui(
 
             grp.setLayout(layout)
             adv = QGroupBox("Reliability & Memory")
-            al  = QGridLayout()
+            al = QGridLayout()
             al.addWidget(QLabel("HTTP Retries:"), 0, 0)
             self._spin_http_retries = QSpinBox()
             self._spin_http_retries.setRange(1, 10)
             self._spin_http_retries.setValue(int(HTTP_RETRY_COUNT))
-            self._spin_http_retries.setToolTip("Total fetch attempts per page. 1=no retry.")
+            self._spin_http_retries.setToolTip(
+                "Total fetch attempts per page. 1=no retry.")
             al.addWidget(self._spin_http_retries, 0, 1)
             al.addWidget(QLabel("Retry Delay (s):"), 0, 2)
             self._spin_retry_delay = QDoubleSpinBox()
@@ -3753,18 +3775,22 @@ def launch_gui(
             self._spin_max_fails = QSpinBox()
             self._spin_max_fails.setRange(0, 100)
             self._spin_max_fails.setValue(int(HEADLESS_MAX_CONSEC_FAILS))
-            self._spin_max_fails.setToolTip("Headless: exit after N consecutive all-device failures. 0=never.")
+            self._spin_max_fails.setToolTip(
+                "Headless: exit after N consecutive all-device failures. 0=never.")
             al.addWidget(self._spin_max_fails, 1, 1)
             al.addWidget(QLabel("RAM Flush Limit (%):"), 1, 2)
             self._spin_ram_pct = QSpinBox()
             self._spin_ram_pct.setRange(10, 95)
             self._spin_ram_pct.setSuffix(" %")
             self._spin_ram_pct.setValue(int(MEM_RAM_PCT_LIMIT))
-            self._spin_ram_pct.setToolTip("Flush all outputs and clear store when system RAM reaches this %.")
+            self._spin_ram_pct.setToolTip(
+                "Flush all outputs and clear store when system RAM reaches this %.")
             al.addWidget(self._spin_ram_pct, 1, 3)
-            self._cb_append = QCheckBox("Append output files (otherwise overwrite)")
+            self._cb_append = QCheckBox(
+                "Append output files (otherwise overwrite)")
             self._cb_append.setChecked(bool(APPEND_OUTPUT_FILES))
-            self._cb_append.setToolTip("Checked=append to existing files. Unchecked=overwrite at run start.")
+            self._cb_append.setToolTip(
+                "Checked=append to existing files. Unchecked=overwrite at run start.")
             al.addWidget(self._cb_append, 2, 0, 1, 4)
             adv.setLayout(al)
             layout.addWidget(adv)
@@ -3776,10 +3802,10 @@ def launch_gui(
             widget = QWidget()
             layout = QHBoxLayout(widget)
 
-            self._btn_poll   = QPushButton("Poll Now")
-            self._btn_start  = QPushButton("Start Auto")
-            self._btn_stop   = QPushButton("Stop")
-            self._btn_veusz  = QPushButton("Open in Veusz")
+            self._btn_poll = QPushButton("Poll Now")
+            self._btn_start = QPushButton("Start Auto")
+            self._btn_stop = QPushButton("Stop")
+            self._btn_veusz = QPushButton("Open in Veusz")
             self._btn_stop.setEnabled(False)
             self._btn_veusz.setToolTip(
                 "Build plots in the live Veusz window and save as .vszh5 (HDF5)"
@@ -3837,18 +3863,19 @@ def launch_gui(
             self._tab_widget.clear()
 
             if not png_specs:
-                placeholder = QLabel("No data yet — click 'Poll Now' to fetch.")
+                placeholder = QLabel(
+                    "No data yet — click 'Poll Now' to fetch.")
                 placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
                 self._tab_widget.addTab(placeholder, "Waiting …")
                 return
 
             for spec in png_specs:
                 png_bytes = spec["png_bytes"]
-                title     = spec.get("title", "Plot")
-                fig_ip    = spec.get("ip")
+                title = spec.get("title", "Plot")
+                fig_ip = spec.get("ip")
                 fig_tname = spec.get("tname")
                 fig_group = spec.get("group")
-                plot_key  = (fig_ip, fig_tname, fig_group)
+                plot_key = (fig_ip, fig_tname, fig_group)
 
                 # Load PNG bytes directly into QPixmap — no Figure object ever made
                 pixmap = QtGui.QPixmap()
@@ -3891,15 +3918,15 @@ def launch_gui(
                 # Default-argument capture avoids late-binding closure bug
                 iplot_btn.clicked.connect(
                     lambda _c=False,
-                           _k=plot_key,
-                           _i=fig_ip,
-                           _t=fig_tname,
-                           _g=fig_group,
-                           _ti=title:
+                    _k=plot_key,
+                    _i=fig_ip,
+                    _t=fig_tname,
+                    _g=fig_group,
+                    _ti=title:
                     self._open_interactive_for_plot(_k, _i, _t, _g, _ti)
                 )
 
-                tab_w   = QWidget()
+                tab_w = QWidget()
                 tab_lay = QVBoxLayout(tab_w)
                 tab_lay.setContentsMargins(0, 0, 0, 0)
                 tab_lay.setSpacing(0)
@@ -3962,7 +3989,7 @@ def launch_gui(
                 "log_dir":                  log,
                 "http_retry_count":         int(self._spin_http_retries.value()),
                 "http_retry_delay_sec":     float(self._spin_retry_delay.value()),
-                "headless_max_consec_fails":int(self._spin_max_fails.value()),
+                "headless_max_consec_fails": int(self._spin_max_fails.value()),
                 "mem_ram_pct_limit":        float(self._spin_ram_pct.value()),
                 "append_files":             int(self._cb_append.isChecked()),
             }
@@ -3980,11 +4007,13 @@ def launch_gui(
                 ip_list=cfg["ip_list"],
                 table_names=TABLE_NAMES,
                 retries=int(cfg.get("http_retry_count", HTTP_RETRY_COUNT)),
-                retry_delay=float(cfg.get("http_retry_delay_sec", HTTP_RETRY_DELAY_SEC)),
+                retry_delay=float(
+                    cfg.get("http_retry_delay_sec", HTTP_RETRY_DELAY_SEC)),
             )
             _meta = data.pop("__poll_meta__", {})
             if _meta.get("all_failed", False):
-                self._append_log("WARNING: All IPs failed — check network/device.")
+                self._append_log(
+                    "WARNING: All IPs failed — check network/device.")
                 # Do not call update_named_dicts or _process_outputs when every
                 # device failed — ALL_DEVICE_DATA would be rebuilt with only
                 # error entries, corrupting the time-series accumulator.
@@ -4070,7 +4099,7 @@ def launch_gui(
         def _on_data_ready(self, data: Dict) -> None:
             """Slot: called each poll cycle. Handles RAM flush then updates plots."""
             cfg = self._get_runtime_config()
-            _ram_pct   = system_ram_used_pct()
+            _ram_pct = system_ram_used_pct()
             _ram_limit = float(cfg.get("mem_ram_pct_limit", MEM_RAM_PCT_LIMIT))
             if _ram_pct >= _ram_limit:
                 self._append_log(
@@ -4105,7 +4134,8 @@ def launch_gui(
                 global _VEUSZ_FLUSH_COUNT
                 _VEUSZ_FLUSH_COUNT += 1
                 self._flush_future = None
-                self._append_log(f"[RAM Flush] Store cleared. RAM now {system_ram_used_pct():.1f}%.")
+                self._append_log(
+                    f"[RAM Flush] Store cleared. RAM now {system_ram_used_pct():.1f}%.")
                 if _vz_snapshot and ALL_DEVICE_DATA:
                     try:
                         # Timestamped filename so each flush window is preserved
@@ -4248,7 +4278,8 @@ def launch_gui(
                             }
                         }
                     else:
-                        self._append_log("Cannot resolve plot key — no data snapshot.")
+                        self._append_log(
+                            "Cannot resolve plot key — no data snapshot.")
                         return
                 else:
                     self._append_log(f"IP {ip!r} not found in store.")
@@ -4280,7 +4311,6 @@ def launch_gui(
                 "frozen_store": frozen_store,
                 "n_samples":    n_samples,
             })
-
 
         def _show_iplot_dialog(self, payload: dict) -> None:
             """Build and show a non-modal QDialog with a full matplotlib
@@ -4319,11 +4349,11 @@ def launch_gui(
                         self._iplot_open_set.discard(plot_key)
                     return
 
-            plot_key     = payload["plot_key"]
-            ip           = payload["ip"]
-            tname        = payload["tname"]
-            group        = payload["group"]
-            title        = payload["title"]
+            plot_key = payload["plot_key"]
+            ip = payload["ip"]
+            tname = payload["tname"]
+            group = payload["group"]
+            title = payload["title"]
             frozen_store = payload["frozen_store"]
             # n_samples from payload is used for logging in _open_interactive_for_plot;
             # inside this dialog we compute lengths locally from the frozen data.
@@ -4335,20 +4365,20 @@ def launch_gui(
             ]
 
             fig = MplFigure(figsize=(13, 5))
-            ax  = fig.add_subplot(111)
+            ax = fig.add_subplot(111)
             any_data = False
 
             if tname:
                 tdata = frozen_store.get(ip, {}).get(tname, {})
-                cols  = tdata.get("columns", {})
-                tss   = tdata.get("timestamps_local", [])
-                n     = len(tss)
-                x     = list(range(n))
+                cols = tdata.get("columns", {})
+                tss = tdata.get("timestamps_local", [])
+                n = len(tss)
+                x = list(range(n))
                 for c_idx, (param, values) in enumerate(cols.items()):
                     if len(values) != n or n == 0:
                         continue
                     unit = tdata.get("units", {}).get(param, "")
-                    lbl  = f"{param} ({unit})" if unit else param
+                    lbl = f"{param} ({unit})" if unit else param
                     ax.plot(x, values, label=lbl,
                             color=prop_colors[c_idx % len(prop_colors)],
                             linewidth=1.4, marker="o", markersize=3, picker=5)
@@ -4364,12 +4394,12 @@ def launch_gui(
                     f"{tname}\n{ip}  [Frozen snapshot \u2014 {n} sample(s)]",
                     fontsize=9)
             else:
-                c_idx  = 0
+                c_idx = 0
                 all_ts: list = []
                 for tn, tdata in frozen_store.get(ip, {}).items():
                     cols = tdata.get("columns", {})
-                    tss  = tdata.get("timestamps_local", [])
-                    n    = len(tss)
+                    tss = tdata.get("timestamps_local", [])
+                    n = len(tss)
                     subs = VEUSZ_OVERLAY_GROUPS.get(group, [])
                     for param, values in cols.items():
                         if not any(s in param.lower() for s in subs):
@@ -4377,18 +4407,18 @@ def launch_gui(
                         if len(values) != n or n == 0:
                             continue
                         unit = tdata.get("units", {}).get(param, "")
-                        lbl  = f"{tn[:10]}/{param}"
+                        lbl = f"{tn[:10]}/{param}"
                         if unit:
                             lbl += f" ({unit})"
                         ax.plot(list(range(n)), values, label=lbl,
                                 color=prop_colors[c_idx % len(prop_colors)],
                                 linewidth=1.4, marker="o", markersize=3, picker=5)
-                        c_idx   += 1
+                        c_idx += 1
                         any_data = True
                         if len(tss) > len(all_ts):
                             all_ts = tss
                 if all_ts:
-                    nn   = len(all_ts)
+                    nn = len(all_ts)
                     step = max(1, nn // 10)
                     ax.set_xticks(list(range(0, nn, step)))
                     ax.set_xticklabels(
@@ -4418,7 +4448,7 @@ def launch_gui(
                 # PySide2 / older PyQt5 use the short form
                 dlg.setAttribute(Qt.WA_DeleteOnClose, True)
 
-            canvas  = FigureCanvas(fig)
+            canvas = FigureCanvas(fig)
             toolbar = NavToolbar(canvas, dlg)
 
             lay = QVBoxLayout(dlg)
@@ -4912,8 +4942,7 @@ def run_headless(cfg: Dict[str, Any]) -> None:
     flush_future: Optional["concurrent.futures.Future"] = None
     _consec_fails: int = 0
     _max_fails:    int = int(cfg.get("headless_max_consec_fails",
-                                      HEADLESS_MAX_CONSEC_FAILS))
-
+                                     HEADLESS_MAX_CONSEC_FAILS))
 
     # Read console-output switches directly from module globals so that
     # caller assignments (e.g. abm.HEADLESS_SILENT = 1) are always honoured.
@@ -5021,8 +5050,8 @@ def run_headless(cfg: Dict[str, Any]) -> None:
                 _consec_fails += 1
                 if not dicts_only:
                     logger.warning("Cycle %d: ALL IPs failed (consec: %d/%s).",
-                        cycle, _consec_fails,
-                        str(_max_fails) if _max_fails > 0 else "unlimited")
+                                   cycle, _consec_fails,
+                                   str(_max_fails) if _max_fails > 0 else "unlimited")
                 if _max_fails > 0 and _consec_fails >= _max_fails:
                     logger.error("[headless] Consec failure limit %d — exiting.",
                                  _max_fails)
@@ -5036,19 +5065,22 @@ def run_headless(cfg: Dict[str, Any]) -> None:
                     logger.info("Cycle %d: connectivity restored after %d fail(s).",
                                 cycle, _consec_fails)
                 _consec_fails = 0
-                update_named_dicts(data, ip_list=cfg.get("ip_list", IP_LIST))  # also calls accumulate_poll()
+                # also calls accumulate_poll()
+                update_named_dicts(data, ip_list=cfg.get("ip_list", IP_LIST))
 
             poll_elapsed = time.monotonic() - t_poll_start
-            _ram_pct   = system_ram_used_pct()
+            _ram_pct = system_ram_used_pct()
             _ram_limit = float(cfg.get("mem_ram_pct_limit", MEM_RAM_PCT_LIMIT))
             if _ram_pct >= _ram_limit:
-                logger.warning("[RAM Flush] RAM %.1f%% >= %.0f%%. Flushing...", _ram_pct, _ram_limit)
+                logger.warning(
+                    "[RAM Flush] RAM %.1f%% >= %.0f%%. Flushing...", _ram_pct, _ram_limit)
                 if flush_future is not None and not flush_future.done():
                     try:
                         flush_future.result(timeout=60)
                     except Exception as _fe:
                         logger.error("Flush wait: %s", _fe)
-                flush_future = flush_outputs_parallel(cfg)  # track in-flight flush
+                flush_future = flush_outputs_parallel(
+                    cfg)  # track in-flight flush
                 # Snapshot the store under the lock BEFORE clearing it.
                 # write_veusz will use this snapshot so the subprocess starts
                 # with system RAM already freed, preventing a second RAM-flush
@@ -5172,11 +5204,11 @@ def run_headless(cfg: Dict[str, Any]) -> None:
 
         # Final full write of all enabled formats (including Veusz with all samples).
         # Honour cfg['append_files'] consistently across every writer here.
-        fits_dir  = cfg.get("fits_dir",  FITS_DIR)
-        csv_dir   = cfg.get("csv_dir",   CSV_DIR)
-        xlsx_dir  = cfg.get("xlsx_dir",  XLSX_DIR)
-        log_dir   = cfg.get("log_dir",   LOG_DIR)
-        _app_f    = bool(cfg.get("append_files", APPEND_OUTPUT_FILES))
+        fits_dir = cfg.get("fits_dir",  FITS_DIR)
+        csv_dir = cfg.get("csv_dir",   CSV_DIR)
+        xlsx_dir = cfg.get("xlsx_dir",  XLSX_DIR)
+        log_dir = cfg.get("log_dir",   LOG_DIR)
+        _app_f = bool(cfg.get("append_files", APPEND_OUTPUT_FILES))
 
         if cfg.get("enable_fits"):
             write_fits(ALL_DEVICE_DATA, fits_dir, append=_app_f)
@@ -5212,7 +5244,8 @@ def run_headless(cfg: Dict[str, Any]) -> None:
         try:
             if os.path.exists(STOP_SIGNAL_FILE):
                 os.remove(STOP_SIGNAL_FILE)
-                logger.debug("Removed residual stop-signal file on clean exit.")
+                logger.debug(
+                    "Removed residual stop-signal file on clean exit.")
         except OSError:
             pass
 
@@ -5328,7 +5361,7 @@ def main() -> Dict[str, Dict[str, Dict]]:
         "log_dir":                  LOG_DIR,
         "http_retry_count":         HTTP_RETRY_COUNT,
         "http_retry_delay_sec":     HTTP_RETRY_DELAY_SEC,
-        "headless_max_consec_fails":HEADLESS_MAX_CONSEC_FAILS,
+        "headless_max_consec_fails": HEADLESS_MAX_CONSEC_FAILS,
         "mem_ram_pct_limit":        MEM_RAM_PCT_LIMIT,
         "append_files":             APPEND_OUTPUT_FILES,
     }
