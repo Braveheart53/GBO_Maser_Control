@@ -24,12 +24,12 @@ data["10.16.130.50"]["Real_Time_Power_Table"]["columns"]["Total Real Power"]
 data["10.16.130.50"]["Real_Time_Power_Table"]["timestamps_local"]
 # → ["2026-05-13 12:00:00", "2026-05-13 12:00:20"]
 
-# L1 Voltage for the same device
-data["10.16.130.50"]["Real_Time_Power_Table"]["columns"]["L1 Voltage"]
+# L1 Real Power for the same device
+data["10.16.130.50"]["Real_Time_Power_Table"]["columns"]["L1 Real Power"]
 
 # Iterate all devices and tables
 for ip, tables in data.items():
     for tname, tdata in tables.items():
-        n    = len(tdata["timestamps_local"])
+        n = len(tdata["timestamps_local"])
         cols = list(tdata["columns"].keys())
         print(f"{ip} / {tname}: {n} sample(s), {len(cols)} column(s)")
