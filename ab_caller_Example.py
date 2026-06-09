@@ -12,7 +12,7 @@ import ab_meter_caller as abc
 # ── Single run: 2 samples, 20 s apart ────────────────────────────────────
 # run() returns abm.TIME_SERIES_STORE — the full accumulated time-series.
 # With count=2 the store contains exactly 2 samples per device per table.
-data = abc.run(count=2, interval=20)
+data = abc.run(count=1, interval=30)
 
 # ── Access examples ───────────────────────────────────────────────────────
 
