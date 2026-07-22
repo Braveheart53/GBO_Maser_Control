@@ -27,7 +27,7 @@ Phone  : +1 (304) 456-2216
 Email  : wwallace@nrao.edu
 Email2 : naval.antennas@gmail.com 
 Python : 3.8+
-Version: 1.5.0
+Version: 1.5.1
 Deps   : PySide6, matplotlib, requests, beautifulsoup4, lxml,
          astropy, openpyxl, veusz  (pip install each)
 
@@ -127,6 +127,20 @@ VEUSZ_WRITE_ON_FLUSH = 0  # 1 = also save a timestamped Veusz snapshot on each R
 # 0 = write Veusz only at loop end / Stop (default)
 # Store is cleared BEFORE the Veusz subprocess is launched
 # so RAM impact is minimal regardless of this setting.
+
+# Install process-wide SIGINT/SIGTERM handlers that convert Ctrl-C / kill
+# into a graceful stop (they set _HEADLESS_STOP instead of terminating).
+#   1 = ON  — correct for standalone / CLI use (default, preserves prior
+#             behaviour so nothing changes for existing headless runs).
+#   0 = OFF — REQUIRED when this module is embedded in a long-lived host
+#             process that owns its own signal handling (e.g. a Prometheus
+#             exporter, a WSGI/ASGI server, or any supervised service).
+#             If left ON in that case, the host's SIGTERM/SIGINT is swallowed
+#             into _HEADLESS_STOP, the caller loop breaks, main() returns, and
+#             the host process is torn down (a daemon-thread HTTP exporter dies
+#             with it).  Graceful stop when OFF: use ab_stop.py / touch the
+#             STOP_COLLECTION file, which run_headless() still honours.
+ENABLE_SIGNAL_HANDLERS = 1   # 0 = never register SIGINT/SIGTERM handlers
 
 # ---------------------------------------------------------------------------
 # %% Headless loop control
@@ -4926,7 +4940,13 @@ def run_headless(cfg: Dict[str, Any]) -> None:
     cfg : Dict[str, Any]
         Configuration dict built from module-level switch variables.
     """
-    _install_signal_handlers()
+    # Only seize the process-wide SIGINT/SIGTERM handlers when explicitly
+    # allowed.  When embedded in a host that owns its own signals (e.g. a
+    # Prometheus exporter) the caller sets ENABLE_SIGNAL_HANDLERS = 0 so the
+    # host's shutdown signals are NOT swallowed into _HEADLESS_STOP.
+    # See the ENABLE_SIGNAL_HANDLERS switch definition for the full rationale.
+    if ENABLE_SIGNAL_HANDLERS:
+        _install_signal_handlers()
     _HEADLESS_STOP.clear()   # ensure flag is clear for this run
     global _VEUSZ_FLUSH_COUNT
     _VEUSZ_FLUSH_COUNT = 0   # reset so end-of-run write knows if any flush fired

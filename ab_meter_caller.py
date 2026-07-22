@@ -76,18 +76,16 @@ from typing import Dict, Any, Optional
 # ---------------------------------------------------------------------------
 import ab_power_meter_monitor as abm
 
-# ---------------------------------------------------------------------------
-# Prevent the monitor from seizing the process-wide SIGINT/SIGTERM handlers,
-# which otherwise get converted into a loop-stop and kill the exporter.
-# This should fix the prometheus problem being seen by Kasey circa 2026-07-21.
-# ---------------------------------------------------------------------------
-abm._install_signal_handlers = lambda: None   # no-op override
-
 # %% Required Switches
 # ── Required overrides ──────────────────────────────────────────────────────
 abm.ENABLE_GUI = 0   # REQUIRED — GUI blocks forever
 abm.HEADLESS_LOOP_COUNT = 1     # REQUIRED — single poll per main() call
 abm.HEADLESS_SILENT = 1   # REQUIRED — zero module console output
+abm.ENABLE_SIGNAL_HANDLERS = 0  # REQUIRED under an exporter/host — do NOT let
+#   the monitor grab SIGINT/SIGTERM.  If left at 1, a host process (e.g. a
+#   Prometheus exporter) that receives SIGTERM would have that signal swallowed
+#   into abm._HEADLESS_STOP, breaking the caller loop and tearing the host down.
+#   Graceful stop path when 0: run ab_stop.py / touch the STOP_COLLECTION file.
 
 # Redundant with SILENT=1 but explicit is better than implicit.
 abm.HEADLESS_PRINT_EACH_SAMPLE = 0

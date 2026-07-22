@@ -79,7 +79,7 @@ import ab_power_meter_monitor as abm
 # ---------------------------------------------------------------------------
 # Prevent the monitor from seizing the process-wide SIGINT/SIGTERM handlers,
 # which otherwise get converted into a loop-stop and kill the exporter.
-# This should fix the promethus problem being seen by Kasey circa 2026-07-21.
+# This should fix the prometheus problem being seen by Kasey circa 2026-07-21.
 # ---------------------------------------------------------------------------
 abm._install_signal_handlers = lambda: None   # no-op override
 
