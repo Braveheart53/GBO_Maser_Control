@@ -186,8 +186,8 @@ HEADLESS_SILENT = 1   # 1 = suppress ALL stdout/stderr console output;
 # OR free system RAM drops below MEM_FREE_MIN_MB, an intermediate flush of
 # CSV / XLSX / log files is triggered mid-loop (parallel, non-blocking) so
 # memory is reclaimed without dropping sample points.
-MEM_FLUSH_THRESHOLD_MB = 256   # flush when store occupies more than N MB
-MEM_FREE_MIN_MB = 512   # flush when system free RAM falls below N MB
+MEM_FLUSH_THRESHOLD_MB = 4260   # flush when store occupies more than N MB
+MEM_FREE_MIN_MB = 100   # flush when system free RAM falls below N MB
 
 # ---------------------------------------------------------------------------
 # %% IP address configuration
@@ -209,7 +209,7 @@ HTTP_RETRY_COUNT = 2    # Total fetch attempts per (ip,page); 1 = no retry
 HTTP_RETRY_DELAY_SEC = 2.0  # Seconds between retry attempts
 HEADLESS_MAX_CONSEC_FAILS = 3    # Consecutive all-device failures before clean exit
 #   0 = never exit on failures
-MEM_RAM_PCT_LIMIT = 60   # Flush+clear store when system RAM reaches this %
+MEM_RAM_PCT_LIMIT = 80   # Flush+clear store when system RAM reaches this %
 APPEND_OUTPUT_FILES = 1    # 1=append all output files, 0=overwrite each run
 
 # ---------------------------------------------------------------------------

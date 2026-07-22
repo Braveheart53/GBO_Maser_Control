@@ -266,7 +266,7 @@ def run(count: int = 1, interval: float = 30.0, ram_pct: Optional[float] = None)
     abm.SAMPLE_PERIOD_SEC = interval
     # Apply caller-supplied RAM flush threshold (user value is dominant).
     if ram_pct is not None:
-        abm.MEM_RAM_PCT_LIMIT = max(10.0, min(95.0, float(ram_pct)))
+        abm.MEM_RAM_PCT_LIMIT = max(10.0, min(100.0, float(ram_pct)))
 
     print(f"ab_meter_caller starting — "
           f"{'infinite loop' if infinite else f'{count} iteration(s)'}, "
