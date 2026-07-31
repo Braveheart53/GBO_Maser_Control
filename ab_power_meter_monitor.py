@@ -26,8 +26,9 @@ Date   : 2026-06-09
 Phone  : +1 (304) 456-2216
 Email  : wwallace@nrao.edu
 Email2 : naval.antennas@gmail.com 
-Python : 3.8+
-Version: 1.5.1
+Python : 3.7.11+   (see Python-version compatibility note below;
+         pin deps to their last 3.7-capable releases on 3.7.x)
+Version: 1.5.2
 Deps   : PySide6, matplotlib, requests, beautifulsoup4, lxml,
          astropy, openpyxl, veusz  (pip install each)
 
@@ -98,6 +99,29 @@ try:
     matplotlib.use("Agg")
 except ImportError:
     pass   # matplotlib unavailable — GUI preview skipped gracefully
+
+# ===========================================================================
+# %% Python version compatibility check
+# ===========================================================================
+# This codebase is written to the Python 3.7 language level (verified: no
+# walrus operator, no 3.8+ syntax, no post-3.7 stdlib APIs), so 3.7.11 is the
+# supported floor.  IMPORTANT: on Python 3.7.x you MUST pin the third-party
+# dependencies to their last 3.7-capable releases — the newest releases require
+# 3.8+.  Verified 3.7 pins (cp37 wheels):
+#     numpy==1.21.6   astropy==4.3.1   matplotlib==3.5.3   PySide6==6.5.3
+#     prometheus_client==0.17.1   requests>=2.31   beautifulsoup4   lxml
+#     openpyxl>=3.1   psutil
+# The check below is advisory: it warns on an older interpreter but never
+# aborts, so a correctly-pinned 3.7.11 environment runs normally.
+MIN_PYTHON = (3, 7, 11)
+if sys.version_info < MIN_PYTHON:
+    sys.stderr.write(
+        "WARNING: ab_power_meter_monitor requires Python >= {0}; running {1}. "
+        "Behaviour below the minimum is unsupported.\n".format(
+            ".".join(map(str, MIN_PYTHON)),
+            ".".join(map(str, sys.version_info[:3])),
+        )
+    )
 
 # ===========================================================================
 # %% Switches
@@ -186,8 +210,24 @@ HEADLESS_SILENT = 1   # 1 = suppress ALL stdout/stderr console output;
 # OR free system RAM drops below MEM_FREE_MIN_MB, an intermediate flush of
 # CSV / XLSX / log files is triggered mid-loop (parallel, non-blocking) so
 # memory is reclaimed without dropping sample points.
-MEM_FLUSH_THRESHOLD_MB = 4260   # flush when store occupies more than N MB
-MEM_FREE_MIN_MB = 100   # flush when system free RAM falls below N MB
+MEM_FLUSH_THRESHOLD_MB = 256   # flush when store occupies more than N MB
+MEM_FREE_MIN_MB = 512   # flush when system free RAM falls below N MB
+
+# Master enable for ALL adaptive RAM/size flushing.  (0 = off, 1 = on)
+#   1 = ON (default) — preserves prior behaviour: when RAM usage crosses
+#       MEM_RAM_PCT_LIMIT, or the store/free-RAM thresholds above are hit,
+#       the loop flushes enabled file outputs and (for the RAM-% trigger)
+#       CLEARS the in-memory store to reclaim memory.
+#   0 = OFF — NO flush is ever auto-triggered and the store is NEVER cleared
+#       mid-run.  Use this when the caller wants a single, uninterrupted,
+#       fully-accumulated TIME_SERIES_STORE (e.g. it manages memory itself,
+#       needs complete history for every output, or is embedded in a host
+#       that owns memory management).  Set from a caller via:
+#           abm.ENABLE_RAM_FLUSH = 0
+#   Note: this gates only the AUTOMATIC flushes.  End-of-run / Stop writes
+#   and the GUI "Save Now" button are unaffected.  With flushing OFF, watch
+#   RAM on long runs — the store grows for the life of the run.
+ENABLE_RAM_FLUSH = 1
 
 # ---------------------------------------------------------------------------
 # %% IP address configuration
@@ -209,7 +249,7 @@ HTTP_RETRY_COUNT = 2    # Total fetch attempts per (ip,page); 1 = no retry
 HTTP_RETRY_DELAY_SEC = 2.0  # Seconds between retry attempts
 HEADLESS_MAX_CONSEC_FAILS = 3    # Consecutive all-device failures before clean exit
 #   0 = never exit on failures
-MEM_RAM_PCT_LIMIT = 80   # Flush+clear store when system RAM reaches this %
+MEM_RAM_PCT_LIMIT = 60   # Flush+clear store when system RAM reaches this %
 APPEND_OUTPUT_FILES = 1    # 1=append all output files, 0=overwrite each run
 
 # ---------------------------------------------------------------------------
@@ -4115,7 +4155,9 @@ def launch_gui(
             cfg = self._get_runtime_config()
             _ram_pct = system_ram_used_pct()
             _ram_limit = float(cfg.get("mem_ram_pct_limit", MEM_RAM_PCT_LIMIT))
-            if _ram_pct >= _ram_limit:
+            # Honour the ENABLE_RAM_FLUSH master switch here too, so disabling
+            # flushing behaves identically in GUI and headless modes.
+            if bool(ENABLE_RAM_FLUSH) and _ram_pct >= _ram_limit:
                 self._append_log(
                     f"[RAM Flush] RAM {_ram_pct:.1f}% >= {_ram_limit:.0f}%. Flushing...")
                 if self._flush_future is not None and not self._flush_future.done():
@@ -4971,6 +5013,15 @@ def run_headless(cfg: Dict[str, Any]) -> None:
     print_each = bool(HEADLESS_PRINT_EACH_SAMPLE) and not silent
     print_cumulative = bool(HEADLESS_PRINT_CUMULATIVE) and not silent
 
+    # Read the RAM-flush master switch directly from the module global so a
+    # caller override (abm.ENABLE_RAM_FLUSH = 0) is always honoured, exactly
+    # like the HEADLESS_* switches above.  When False, NO automatic flush is
+    # triggered and the store is never cleared mid-run.
+    ram_flush_enabled = bool(ENABLE_RAM_FLUSH)
+    if not ram_flush_enabled and not dicts_only:
+        logger.info("Automatic RAM flushing DISABLED (ENABLE_RAM_FLUSH=0) — "
+                    "store will accumulate for the full run.")
+
     # Redirect console streams when suppression is requested.
     # File handlers (log file on disk) are deliberately left intact in
     # both cases — only the terminal streams are affected.
@@ -5091,7 +5142,7 @@ def run_headless(cfg: Dict[str, Any]) -> None:
             poll_elapsed = time.monotonic() - t_poll_start
             _ram_pct = system_ram_used_pct()
             _ram_limit = float(cfg.get("mem_ram_pct_limit", MEM_RAM_PCT_LIMIT))
-            if _ram_pct >= _ram_limit:
+            if ram_flush_enabled and _ram_pct >= _ram_limit:
                 logger.warning(
                     "[RAM Flush] RAM %.1f%% >= %.0f%%. Flushing...", _ram_pct, _ram_limit)
                 if flush_future is not None and not flush_future.done():
@@ -5169,7 +5220,7 @@ def run_headless(cfg: Dict[str, Any]) -> None:
             # flush of CSV / XLSX / log (NOT Veusz — that waits for loop end).
             # Only launch a new flush if the previous one has completed.
             # Also print cumulative store (HEADLESS_PRINT_CUMULATIVE) on flush.
-            if should_flush(cfg):
+            if ram_flush_enabled and should_flush(cfg):
                 if flush_future is None or flush_future.done():
                     if not dicts_only:
                         logger.info(
@@ -5358,6 +5409,8 @@ def main() -> Dict[str, Dict[str, Dict]]:
         "headless_loop_count":          HEADLESS_LOOP_COUNT,
         "mem_flush_threshold_mb":        MEM_FLUSH_THRESHOLD_MB,
         "mem_free_min_mb":               MEM_FREE_MIN_MB,
+        "enable_ram_flush":              ENABLE_RAM_FLUSH,   # 0 = never auto-flush/clear
+
         "headless_console_dicts_only":   HEADLESS_CONSOLE_DICTS_ONLY,
         "headless_print_each_sample":    HEADLESS_PRINT_EACH_SAMPLE,
         "headless_print_cumulative":     HEADLESS_PRINT_CUMULATIVE,

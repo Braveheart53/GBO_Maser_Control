@@ -35,7 +35,7 @@ Phone  : +1 (304) 456-2216
 Email  : wwallace@nrao.edu
 Email2 : naval.antennas@gmail.com
 Python : 3.8+
-Version: 1.1.0
+Version: 1.1.1
 """
 import ab_meter_caller as abc
 
@@ -65,6 +65,13 @@ data = abc.run(count=3, interval=30)
 # Optional: raise the RAM-flush threshold for long runs (10–95 %).  The
 # caller value dominates the module default (MEM_RAM_PCT_LIMIT).
 #   data = abc.run(count=0, interval=30, ram_pct=80)
+
+# Optional: DISABLE automatic RAM flushing entirely (v1.2.9+).  The store is
+# never cleared mid-run, so you get one uninterrupted, fully-accumulated
+# time-series.  Watch RAM on long runs — nothing reclaims memory.
+#   data = abc.run(count=0, interval=30, enable_ram_flush=False)
+# Equivalent from the command line:
+#   python ab_meter_caller.py --count 0 --interval 30 --no-ram-flush
 
 
 # ===========================================================================
