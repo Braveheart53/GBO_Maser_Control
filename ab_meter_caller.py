@@ -60,8 +60,8 @@ Date   : 2026-05-13
 Phone  : +1 (304) 456-2216
 Email  : wwallace@nrao.edu
 Email2 : naval.antennas@gmail.com 
-Python : 3.8+
-Version: 1.2.8
+Python : 3.7.11+   (language level is 3.7-safe; pin deps to 3.7 releases)
+Version: 1.2.9
 """
 # %% Imorts
 import argparse
@@ -75,6 +75,21 @@ from typing import Dict, Any, Optional
 # %%% Import the monitor module and configure switches BEFORE calling main().
 # ---------------------------------------------------------------------------
 import ab_power_meter_monitor as abm
+
+# ---------------------------------------------------------------------------
+# %% Python version compatibility check (advisory; matches the monitor)
+# ---------------------------------------------------------------------------
+# Written to the Python 3.7 language level; 3.7.11 is the supported floor.
+# On 3.7.x, pin third-party deps to their last 3.7-capable releases (the
+# monitor header lists the verified pins).  Warns but never aborts.
+MIN_PYTHON = (3, 7, 11)
+if sys.version_info < MIN_PYTHON:
+    sys.stderr.write(
+        "WARNING: ab_meter_caller requires Python >= {0}; running {1}.\n".format(
+            ".".join(map(str, MIN_PYTHON)),
+            ".".join(map(str, sys.version_info[:3])),
+        )
+    )
 
 # %% Required Switches
 # ── Required overrides ──────────────────────────────────────────────────────
@@ -206,7 +221,8 @@ def summarise(iteration: int, total: int = 0) -> None:
 # %% Main loop
 # ---------------------------------------------------------------------------
 
-def run(count: int = 1, interval: float = 30.0, ram_pct: Optional[float] = None) -> Dict[str, Any]:
+def run(count: int = 1, interval: float = 30.0, ram_pct: Optional[float] = None,
+        enable_ram_flush: Optional[bool] = None) -> Dict[str, Any]:
     """
     Outer polling loop.
 
@@ -227,6 +243,18 @@ def run(count: int = 1, interval: float = 30.0, ram_pct: Optional[float] = None)
         Override the RAM flush threshold (10-95 %).  Dominates over
         the GUI spinbox and the module default (MEM_RAM_PCT_LIMIT=70).
         Pass None (default) to leave the current setting unchanged.
+        Ignored when enable_ram_flush is False (nothing flushes).
+
+    enable_ram_flush : bool, optional
+        Master control for the monitor's AUTOMATIC RAM/size flushing
+        (abm.ENABLE_RAM_FLUSH).
+          None  (default) — leave the module setting unchanged (flush ON).
+          True            — force automatic flushing ON.
+          False           — DISABLE all automatic flushing; the store is
+                            never cleared mid-run and accumulates for the
+                            full run.  Use when you want one uninterrupted,
+                            fully-accumulated TIME_SERIES_STORE.  Watch RAM
+                            on long runs — nothing reclaims memory.
     Returns
     -------
     dict
@@ -266,7 +294,11 @@ def run(count: int = 1, interval: float = 30.0, ram_pct: Optional[float] = None)
     abm.SAMPLE_PERIOD_SEC = interval
     # Apply caller-supplied RAM flush threshold (user value is dominant).
     if ram_pct is not None:
-        abm.MEM_RAM_PCT_LIMIT = max(10.0, min(100.0, float(ram_pct)))
+        abm.MEM_RAM_PCT_LIMIT = max(10.0, min(95.0, float(ram_pct)))
+    # Apply caller-supplied RAM-flush master switch (dominant when provided).
+    # None → leave abm.ENABLE_RAM_FLUSH as-is; True/False → force it.
+    if enable_ram_flush is not None:
+        abm.ENABLE_RAM_FLUSH = 1 if enable_ram_flush else 0
 
     print(f"ab_meter_caller starting — "
           f"{'infinite loop' if infinite else f'{count} iteration(s)'}, "
@@ -346,9 +378,18 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--ram-pct", "-r",
         type=float,
-        default=95,
+        default=None,
         dest="ram_pct",
-        help="RAM flush threshold %% (10-99). Overrides default of 95%%.",
+        help="RAM flush threshold %% (10-95). Overrides default of 70%%.",
+    )
+    # store_true (not argparse.BooleanOptionalAction) so this stays valid on
+    # Python 3.8; BooleanOptionalAction was only added in 3.9.
+    parser.add_argument(
+        "--no-ram-flush",
+        action="store_true",
+        dest="no_ram_flush",
+        help="Disable ALL automatic RAM/size flushing; the store is never "
+             "cleared mid-run and accumulates for the whole run.",
     )
     return parser.parse_args()
 
@@ -356,8 +397,12 @@ def _parse_args() -> argparse.Namespace:
 # %% Main
 if __name__ == "__main__":
     args = _parse_args()
+    # Translate the store_true flag into the tri-state run() argument:
+    #   flag absent  → None  (leave module default: flushing ON)
+    #   --no-ram-flush → False (force flushing OFF)
+    _enable_ram_flush = False if args.no_ram_flush else None
     result = run(count=args.count, interval=args.interval,
-                 ram_pct=args.ram_pct)
+                 ram_pct=args.ram_pct, enable_ram_flush=_enable_ram_flush)
 
     # result is abm.TIME_SERIES_STORE — same source as every output file.
     #
