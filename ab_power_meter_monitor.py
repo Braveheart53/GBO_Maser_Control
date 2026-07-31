@@ -28,7 +28,7 @@ Email  : wwallace@nrao.edu
 Email2 : naval.antennas@gmail.com 
 Python : 3.7.11+   (see Python-version compatibility note below;
          pin deps to their last 3.7-capable releases on 3.7.x)
-Version: 1.5.3
+Version: 1.5.4
 Deps   : PySide6, matplotlib, requests, beautifulsoup4, lxml,
          astropy, openpyxl, veusz  (pip install each)
 Install: pip install -r requirements.txt        (Python 3.8+)
@@ -5505,5 +5505,59 @@ def main() -> Dict[str, Dict[str, Dict]]:
     return TIME_SERIES_STORE
 
 
+def _parse_cli_and_apply() -> None:
+    """
+    Parse command-line overrides and apply them to the module-level switches
+    BEFORE main() runs.
+
+    This exists so the monitor can be launched directly as a service
+    (``python ab_power_meter_monitor.py --headless --count 0``) without editing
+    the file.  It runs ONLY under ``if __name__ == "__main__"`` — importing the
+    module (as the caller and the Prometheus exporter do) has NO argparse side
+    effects.  With no flags supplied, every override is None/False and the
+    module-level switches are left exactly as configured in the file, so prior
+    behaviour is unchanged.
+    """
+    import argparse
+    p = argparse.ArgumentParser(
+        description="Allen-Bradley site power-meter monitor.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    mode = p.add_mutually_exclusive_group()
+    mode.add_argument("--headless", action="store_true",
+                      help="Force headless mode (sets ENABLE_GUI=0).")
+    mode.add_argument("--gui", action="store_true",
+                      help="Force GUI mode (sets ENABLE_GUI=1).")
+    p.add_argument("--count", type=int, default=None,
+                   help="Headless poll cycles (0 = infinite).")
+    p.add_argument("--interval", type=float, default=None,
+                   help="Seconds between polls.")
+    p.add_argument("--ips", type=str, default=None,
+                   help="Comma-separated device IPs (overrides IP_LIST).")
+    p.add_argument("--ram-pct", type=float, default=None, dest="ram_pct",
+                   help="RAM flush threshold %% (10-95).")
+    p.add_argument("--no-ram-flush", action="store_true", dest="no_ram_flush",
+                   help="Disable automatic RAM/size flushing (ENABLE_RAM_FLUSH=0).")
+    args = p.parse_args()
+
+    global ENABLE_GUI, HEADLESS_LOOP_COUNT, SAMPLE_PERIOD_SEC, IP_LIST
+    global MEM_RAM_PCT_LIMIT, ENABLE_RAM_FLUSH
+    if args.headless:
+        ENABLE_GUI = 0
+    if args.gui:
+        ENABLE_GUI = 1
+    if args.count is not None:
+        HEADLESS_LOOP_COUNT = args.count
+    if args.interval is not None:
+        SAMPLE_PERIOD_SEC = args.interval
+    if args.ips:
+        IP_LIST = [s.strip() for s in args.ips.split(",") if s.strip()]
+    if args.ram_pct is not None:
+        MEM_RAM_PCT_LIMIT = max(10.0, min(95.0, float(args.ram_pct)))
+    if args.no_ram_flush:
+        ENABLE_RAM_FLUSH = 0
+
+
 if __name__ == "__main__":
+    _parse_cli_and_apply()
     main()

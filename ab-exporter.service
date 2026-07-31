@@ -1,0 +1,30 @@
+# ===========================================================================
+# ab-exporter.service — AB Power Meter Prometheus exporter (Mode B)
+# ---------------------------------------------------------------------------
+# Template: install.sh substitutes the __TOKENS__ below and installs this to
+#   system : /etc/systemd/system/ab-exporter.service
+#   user   : ~/.config/systemd/user/ab-exporter.service
+#
+# The exporter handles SIGTERM itself, so `systemctl stop ab-exporter` is a
+# clean shutdown.  It polls on --interval and serves /metrics on --port.
+# ===========================================================================
+[Unit]
+Description=AB Power Meter Prometheus exporter (NRAO/GBO)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# __USER_LINE__  (system mode sets "User=abmeter"; user mode omits it)
+__USER_LINE__
+WorkingDirectory=__INSTALL_DIR__
+ExecStart=__PYTHON__ __INSTALL_DIR__/ab_prometheus_exporter.py \
+          --ips __IPS__ --port __PORT__ --interval __INTERVAL__ --max-history __MAXHIST__
+
+Restart=on-failure
+RestartSec=15
+StartLimitBurst=5
+StartLimitIntervalSec=120
+
+[Install]
+WantedBy=__WANTED_BY__
