@@ -346,9 +346,9 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--ram-pct", "-r",
         type=float,
-        default=99,
+        default=95,
         dest="ram_pct",
-        help="RAM flush threshold %% (10-95). Overrides default of 70%%.",
+        help="RAM flush threshold %% (10-99). Overrides default of 95%%.",
     )
     return parser.parse_args()
 
