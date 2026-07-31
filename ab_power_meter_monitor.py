@@ -28,9 +28,11 @@ Email  : wwallace@nrao.edu
 Email2 : naval.antennas@gmail.com 
 Python : 3.7.11+   (see Python-version compatibility note below;
          pin deps to their last 3.7-capable releases on 3.7.x)
-Version: 1.5.2
+Version: 1.5.3
 Deps   : PySide6, matplotlib, requests, beautifulsoup4, lxml,
          astropy, openpyxl, veusz  (pip install each)
+Install: pip install -r requirements.txt        (Python 3.8+)
+         pip install -r requirements-py37.txt   (Python 3.7.x)
 
 # %%% Usage
 -----

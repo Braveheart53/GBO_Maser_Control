@@ -87,7 +87,8 @@ Email   : wwallace@nrao.edu
 Email2  : naval.antennas@gmail.com
 Python  : 3.7.11+   (on 3.7.x use prometheus_client==0.17.1; 0.18+ needs 3.8+)
 Requires: ab_power_meter_monitor.py v1.5.2+, prometheus_client
-Version : 0.0.2          # doc: ENABLE_RAM_FLUSH (v1.5.2) N/A here; 3.7 compat note
+Install : pip install -r requirements.txt (Py3.8+) | requirements-py37.txt (Py3.7.x)
+Version : 0.0.3          # add requirements files reference
 """
 
 # ===========================================================================
@@ -151,7 +152,7 @@ DEFAULT_MAX_HISTORY = 3          # keep only the last N samples per column
 #                                      exporter only needs the latest value,
 #                                      so a small N bounds RAM cleanly)
 METRIC_PREFIX = "ab_meter"   # all metric names share this prefix
-EXPORTER_VERSION = "0.0.2"
+EXPORTER_VERSION = "0.0.3"
 
 # ---------------------------------------------------------------------------
 # %% Module logger — the exporter's OWN log stream (separate from ABMonitor).

@@ -1,0 +1,22 @@
+# ===========================================================================
+# environment.yml — AB Power Meter toolset  (Python 3.8+)
+# ---------------------------------------------------------------------------
+# Mamba/conda creates the interpreter + pip; pip then installs the Python
+# dependencies from requirements.txt (PyPI).  This hybrid is the recommended
+# way to combine conda and pip: conda owns the interpreter, pip owns the
+# packages — avoiding conda-forge/PyPI name & version mismatches.
+#
+# Create:   mamba env create -f environment.yml
+# Update:   mamba env update -f environment.yml --prune
+# Activate: mamba activate abmeter
+#
+# NOTE: run from the directory that contains requirements.txt.
+# ===========================================================================
+name: abmeter
+channels:
+  - conda-forge
+dependencies:
+  - python>=3.8
+  - pip
+  - pip:
+      - -r requirements.txt

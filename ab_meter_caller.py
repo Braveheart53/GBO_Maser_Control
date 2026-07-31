@@ -61,7 +61,8 @@ Phone  : +1 (304) 456-2216
 Email  : wwallace@nrao.edu
 Email2 : naval.antennas@gmail.com 
 Python : 3.7.11+   (language level is 3.7-safe; pin deps to 3.7 releases)
-Version: 1.2.9
+Version: 1.2.10
+Install: pip install -r requirements.txt (Py3.8+) | requirements-py37.txt (Py3.7.x)
 """
 # %% Imorts
 import argparse

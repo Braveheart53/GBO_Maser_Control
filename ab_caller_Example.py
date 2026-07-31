@@ -34,8 +34,9 @@ Date   : 2026-07-22
 Phone  : +1 (304) 456-2216
 Email  : wwallace@nrao.edu
 Email2 : naval.antennas@gmail.com
-Python : 3.8+
-Version: 1.1.1
+Python : 3.7.11+   (language level is 3.7-safe; pin deps to 3.7 releases)
+Version: 1.1.2
+Install: pip install -r requirements.txt (Py3.8+) | requirements-py37.txt (Py3.7.x)
 """
 import ab_meter_caller as abc
 
