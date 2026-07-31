@@ -60,7 +60,7 @@ import ab_meter_caller as abc
 # count = number of poll cycles; interval = seconds between the START of each
 # poll (poll duration is subtracted, so the cadence stays on-interval).
 # Here: 3 samples, 30 s apart → ~60 s of wall-clock.
-data = abc.run(count=3, interval=30)
+data = abc.run(count=10, interval=60)
 
 # Optional: raise the RAM-flush threshold for long runs (10–95 %).  The
 # caller value dominates the module default (MEM_RAM_PCT_LIMIT).
@@ -110,7 +110,8 @@ series = (
         .get("Total Real Power")
 )
 if series:
-    print(f"{ip} Total Real Power — {len(series)} sample(s); latest = {series[-1]}")
+    print(
+        f"{ip} Total Real Power — {len(series)} sample(s); latest = {series[-1]}")
 else:
     print(f"{ip}: no 'Total Real Power' data (device unreachable or name differs).")
 
