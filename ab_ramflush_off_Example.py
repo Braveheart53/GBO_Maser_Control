@@ -41,11 +41,26 @@ How it is turned off in each path
 @Author: W. Wallace — NRAO / Green Bank Observatory
 Date   : 2026-07-22
 Python : 3.7.11+
-Version: 1.0.0
+Version: 1.0.1
 """
 import argparse
+import logging
 import sys
 import threading
+
+# The caller path calls abm.main() once per poll, which re-initialises the
+# monitor's logger and logs its full config at INFO on EVERY poll.  A plain
+# setLevel() would be undone by that re-init (it forces the level back to
+# DEBUG), so we attach a persistent FILTER instead: filters live on the logger
+# and survive handler/level re-initialisation, dropping INFO/DEBUG while still
+# letting WARNING/ERROR (e.g. failed fetches) through.
+class _WarnAndAbove(logging.Filter):
+    """Drop records below WARNING; survives the monitor's logger re-init."""
+    def filter(self, record: logging.LogRecord) -> bool:  # noqa: A003
+        return record.levelno >= logging.WARNING
+
+
+logging.getLogger("ABMonitor").addFilter(_WarnAndAbove())
 
 
 # ===========================================================================

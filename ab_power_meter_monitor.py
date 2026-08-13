@@ -28,7 +28,7 @@ Email  : wwallace@nrao.edu
 Email2 : naval.antennas@gmail.com 
 Python : 3.7.11+   (see Python-version compatibility note below;
          pin deps to their last 3.7-capable releases on 3.7.x)
-Version: 1.5.4
+Version: 1.5.5
 Deps   : PySide6, matplotlib, requests, beautifulsoup4, lxml,
          astropy, openpyxl, veusz  (pip install each)
 Install: pip install -r requirements.txt        (Python 3.8+)
@@ -5255,6 +5255,14 @@ def run_headless(cfg: Dict[str, Any]) -> None:
             logger.info("KeyboardInterrupt — stopping headless loop.")
         if print_cumulative:
             _print_cumulative_store(cycle, reason="KeyboardInterrupt")
+    except Exception as _loop_exc:   # noqa: BLE001  (intentional catch-all)
+        # Any OTHER exception escaping the loop must still fall through to the
+        # post-loop cleanup below, so that in silent mode sys.stdout/stderr are
+        # restored from /dev/null instead of being left redirected for the life
+        # of the process.  (poll_all_devices swallows its own per-device errors,
+        # but accumulate/flush/RAM helpers could still raise.)  Log and continue.
+        logger.error("Headless loop aborted by unexpected error: %s",
+                     _loop_exc, exc_info=True)
 
     # ── Post-loop cleanup (try/finally ensures stdout/stderr always restored) ──
     # Any exception in the final-write block must NOT leave sys.stdout/stderr

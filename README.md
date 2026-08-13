@@ -21,6 +21,7 @@ to Prometheus.
 - [Mode B — Prometheus exporter](#mode-b--prometheus-exporter)
 - [Mode C — driving the monitor from Python (the caller)](#mode-c--driving-the-monitor-from-python-the-caller)
 - [Graceful stop](#graceful-stop)
+- [Disabling RAM dumps](#disabling-ram-dumps-flush--clear)
 - [Python 3.7.11 compatibility](#python-3711-compatibility)
 - [Restart behaviour & log access](#restart-behaviour--log-access)
 - [Uninstall](#uninstall)
@@ -33,9 +34,10 @@ to Prometheus.
 
 | File | Version | Role |
 |---|---|---|
-| `ab_power_meter_monitor.py` | 1.5.4 | Main module — poller, accumulator, all output writers, optional GUI, CLI front‑end |
+| `ab_power_meter_monitor.py` | 1.5.5 | Main module — poller, accumulator, all output writers, optional GUI, CLI front‑end |
 | `ab_meter_caller.py` | 1.2.10 | Optional wrapper — drive the monitor one poll at a time from Python |
 | `ab_caller_Example.py` | 1.1.2 | Minimal usage examples for the caller |
+| `ab_ramflush_off_Example.py` | 1.0.1 | Example: caller + Prometheus with RAM dumps disabled |
 | `ab_prometheus_exporter.py` | 0.0.3 | Prometheus exporter (uses the monitor as a library) |
 | `ab_stop.py` | 1.0.0 | Graceful‑stop helper (writes the `STOP_COLLECTION` file) |
 | `install.sh` | 1.0.0 | systemd installer (monitor and/or exporter; system or user; venv/mamba) |
@@ -404,6 +406,41 @@ stops that too.
 
 ---
 
+## Disabling RAM dumps (flush / clear)
+
+The monitor's headless loop can, when system RAM crosses `MEM_RAM_PCT_LIMIT`
+(or the store/free‑RAM thresholds), **flush** enabled file outputs and then
+**clear** the in‑memory `TIME_SERIES_STORE` to reclaim memory. That clear is
+the "RAM dump". Turning it off gives one uninterrupted, fully‑accumulated
+store — at the cost of unbounded growth on long runs, so watch memory.
+
+How you turn it off depends on the path:
+
+| Path | Do RAM dumps happen? | How to disable |
+|---|---|---|
+| **Caller** (`ab_meter_caller.run`) | Yes — it drives the headless loop | `run(..., enable_ram_flush=False)` or CLI `--no-ram-flush` (sets `abm.ENABLE_RAM_FLUSH=0`) |
+| **Headless service / direct** | Yes | Set `ENABLE_RAM_FLUSH = 0` in the file, or launch with `--no-ram-flush` |
+| **Prometheus exporter** (`ab_prometheus_exporter.py`) | **No — never** (it never runs the headless loop) | Nothing to disable; bound memory with `--max-history` instead (`0` = keep full history) |
+
+Worked example — `ab_ramflush_off_Example.py` demonstrates both the caller and
+a caller‑driven Prometheus exporter with dumps disabled:
+
+```bash
+# Caller from Python — RAM dumps OFF (accumulates the full run)
+python ab_ramflush_off_Example.py caller --count 0 --interval 30
+
+# Caller-driven Prometheus exporter — RAM dumps OFF, memory bounded by trim
+python ab_ramflush_off_Example.py prometheus --port 9184 --interval 30 --max-history 3
+
+# Dedicated exporter — never dumps; keep full history with --max-history 0
+python ab_prometheus_exporter.py --ips 10.16.130.50,10.16.130.54 --max-history 0
+```
+
+> Trade‑off: with dumps off, `TIME_SERIES_STORE` grows for the life of the run.
+> The caller path accumulates unbounded (that's the point — one complete
+> series); the exporter paths use `--max-history` to bound memory *without*
+> dumping, which is what you usually want for a long‑lived `/metrics` endpoint.
+
 ## Python 3.7.11 compatibility
 
 The code is compatible with Python **3.7.11 through 3.12+** with no source
@@ -505,7 +542,9 @@ rm -rf ~/.local/share/abmeter         # optional: remove all data
 | monitor | 1.5.2 | Added `ENABLE_RAM_FLUSH` master switch gating all automatic RAM/size flushes (headless + GUI). |
 | monitor | 1.5.3 | Docs: requirements files, Python 3.7.11 support note + advisory version check. |
 | monitor | 1.5.4 | Added import‑safe CLI front‑end (`--headless`, `--count`, `--interval`, `--ips`, `--ram-pct`, `--no-ram-flush`) so the service can launch it directly. |
+| monitor | 1.5.5 | Robustness: restore `sys.stdout`/`stderr` even if the headless loop raises a non‑`KeyboardInterrupt` exception in silent mode (previously left redirected to `/dev/null`). |
 | kit | 1.0.0 | Added `install.sh`, `abmeter_wrapper.sh`, `abmeter.service`, `ab-exporter.service`, `abmeter_logrotate.conf`, `install-mamba.sh`, `environment-conda.yml`. |
+| example | 1.0.1 | Added `ab_ramflush_off_Example.py` (caller + Prometheus, RAM dumps off; quiets the monitor's per‑poll config logging via a persistent filter). |
 | caller | 1.2.8 | Sets `ENABLE_SIGNAL_HANDLERS = 0` on import (exporter‑safe). |
 | caller | 1.2.9 | `run(enable_ram_flush=…)` kwarg and `--no-ram-flush` CLI flag. |
 | caller | 1.2.10 | Docs / 3.7.11 note. |
