@@ -1,0 +1,51 @@
+# ===========================================================================
+# environment-conda.yml — AB Power Meter toolset  (PURE conda-forge, NO pip)
+# ---------------------------------------------------------------------------
+# Installs EVERY dependency from conda-forge — no pip step at all.
+#
+#   mamba env create -f environment-conda.yml
+#   mamba activate abmeter
+#
+# Notes
+# -----
+# • Targets modern Python (3.11): conda-forge has largely dropped Python 3.7
+#   builds, so a PURE-conda install is only practical on 3.8+.  For 3.7.11 use
+#   environment-py37.yml (mamba interpreter + pip packages) instead.
+# • conda-forge package names differ from PyPI in a few places:
+#       PyPI  PySide6      -> conda-forge  pyside6
+#       PyPI  matplotlib   -> conda-forge  matplotlib-base  (no GUI backend pull)
+#   prometheus_client keeps its underscore on conda-forge.
+# • Trim the optional lines (FITS / GUI / Veusz) if you only run the exporter
+#   or headless-file modes.
+# ===========================================================================
+name: abmeter
+channels:
+  - conda-forge
+dependencies:
+  # ── Interpreter ─────────────────────────────────────────────────────────
+  - python=3.11
+
+  # ── Core: HTTP fetch + HTML parsing (always required) ───────────────────
+  - requests
+  - beautifulsoup4
+  - lxml
+
+  # ── Recommended: memory monitoring (RAM-flush thresholds) ───────────────
+  - psutil
+
+  # ── Prometheus exporter ─────────────────────────────────────────────────
+  - prometheus_client
+
+  # ── Optional: FITS output (ENABLE_FITS=1) ───────────────────────────────
+  - numpy
+  - astropy
+
+  # ── Optional: Excel output (ENABLE_XLSX=1) ──────────────────────────────
+  - openpyxl
+
+  # ── Optional: GUI + live preview plots (ENABLE_GUI=1) ───────────────────
+  - pyside6
+  - matplotlib-base
+
+  # ── Optional: Veusz project output (ENABLE_VEUSZ=1) ─────────────────────
+  - veusz

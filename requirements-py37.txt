@@ -1,0 +1,45 @@
+# ===========================================================================
+# requirements-py37.txt — AB Power Meter toolset
+# Target: Python 3.7.x  (e.g. 3.7.11)
+# ---------------------------------------------------------------------------
+# These are the LAST releases of each dependency that still ship a Python 3.7
+# (cp37) wheel.  The newest releases require Python 3.8+, so on 3.7.x they are
+# pinned exactly.  Versions below were resolved directly from PyPI with:
+#     pip download <pkg> --python-version 3.7 --only-binary=:all:
+#
+# The application code itself is Python-3.7-compatible (no 3.8+ syntax/stdlib),
+# so ONLY the dependency versions differ from requirements.txt.
+#
+# Install everything:      pip install -r requirements-py37.txt
+# Trim to what you use:    delete the optional sections you don't need.
+# ===========================================================================
+
+# ── Core: HTTP fetch + HTML parsing (ALWAYS required) ──────────────────────
+requests==2.31.0
+beautifulsoup4==4.15.0
+lxml==5.4.0
+
+# ── Recommended: memory monitoring (enables the RAM-flush thresholds) ──────
+psutil==7.2.2
+
+# ── Prometheus exporter (ab_prometheus_exporter.py) ────────────────────────
+# 0.18+ dropped Python 3.7; 0.17.1 is the last 3.7-capable release.
+prometheus_client==0.17.1
+
+# ── Optional: FITS output (ENABLE_FITS=1) ──────────────────────────────────
+# numpy 1.22+ and astropy 5.0+ require Python 3.8+.
+numpy==1.21.6
+astropy==4.3.1
+
+# ── Optional: Excel workbook output (ENABLE_XLSX=1) ────────────────────────
+openpyxl==3.1.3
+
+# ── Optional: GUI + live preview plots (ENABLE_GUI=1) ──────────────────────
+# matplotlib 3.6+ and PySide6 6.6+ require Python 3.8+.
+PySide6==6.5.3
+matplotlib==3.5.3
+
+# ── Optional: Veusz project output (.vszh5) (ENABLE_VEUSZ=1) ───────────────
+# Veusz on 3.7 must match the pinned numpy (1.21.6) and a PyQt5/PySide build;
+# verify against your environment before enabling.  Left unpinned on purpose.
+# veusz

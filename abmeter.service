@@ -1,0 +1,36 @@
+# ===========================================================================
+# abmeter.service — headless AB Power Meter monitor (Mode A)
+# ---------------------------------------------------------------------------
+# Template: install.sh substitutes the __TOKENS__ below and installs this to
+#   system : /etc/systemd/system/abmeter.service
+#   user   : ~/.config/systemd/user/abmeter.service
+# You can also copy it by hand and edit the tokens yourself.
+# ===========================================================================
+[Unit]
+Description=AB Power Meter headless monitor (NRAO/GBO)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# __USER_LINE__  (system mode sets "User=abmeter"; user mode omits it)
+__USER_LINE__
+WorkingDirectory=__INSTALL_DIR__
+# systemd creates the runtime dir (/run/abmeter system, $XDG_RUNTIME_DIR/abmeter
+# user) with the right ownership; %t expands to the runtime root for both modes.
+RuntimeDirectory=abmeter
+Environment=INSTALL_DIR=__INSTALL_DIR__
+Environment=PYTHON=__PYTHON__
+Environment=RUN_DIR=%t/abmeter
+Environment=POLL_COUNT=0
+Environment=POLL_INTERVAL=30
+ExecStart=__INSTALL_DIR__/abmeter_wrapper.sh
+
+# Auto-restart on crash, but NOT on a clean stop (ab_stop.py exits 0).
+Restart=on-failure
+RestartSec=15
+StartLimitBurst=5
+StartLimitIntervalSec=120
+
+[Install]
+WantedBy=__WANTED_BY__

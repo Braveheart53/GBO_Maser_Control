@@ -1,0 +1,41 @@
+# ===========================================================================
+# requirements.txt — AB Power Meter toolset
+# Target: Python 3.8+  (modern dependency releases)
+# ---------------------------------------------------------------------------
+# pip resolves each line to the highest version compatible with the running
+# interpreter, so these lower bounds are safe on 3.8 through 3.12+ (e.g. on
+# Python 3.8 you get numpy 1.24.x; on 3.11 you get numpy 2.x — both are
+# API-compatible with this codebase, verified).
+#
+# For Python 3.7.x use requirements-py37.txt instead (pinned older releases).
+#
+# Install everything:      pip install -r requirements.txt
+# Trim to what you use:    delete the optional sections you don't need.
+# ===========================================================================
+
+# ── Core: HTTP fetch + HTML parsing (ALWAYS required) ──────────────────────
+requests>=2.31
+beautifulsoup4>=4.12
+lxml>=4.9
+
+# ── Recommended: memory monitoring (enables the RAM-flush thresholds) ──────
+# Without psutil the flush logic degrades gracefully (never triggers).
+psutil>=5.9
+
+# ── Prometheus exporter (ab_prometheus_exporter.py) ────────────────────────
+prometheus_client>=0.19
+
+# ── Optional: FITS output (ENABLE_FITS=1) ──────────────────────────────────
+numpy>=1.24
+astropy>=5.2
+
+# ── Optional: Excel workbook output (ENABLE_XLSX=1) ────────────────────────
+openpyxl>=3.1
+
+# ── Optional: GUI + live preview plots (ENABLE_GUI=1) ──────────────────────
+PySide6>=6.6
+matplotlib>=3.7
+
+# ── Optional: Veusz project output (.vszh5) (ENABLE_VEUSZ=1) ───────────────
+# Veusz pulls its own Qt/numpy build; install only if you use Veusz output.
+veusz>=3.5

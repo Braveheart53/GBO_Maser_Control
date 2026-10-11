@@ -1,0 +1,25 @@
+# ===========================================================================
+# environment-py37.yml — AB Power Meter toolset  (Python 3.7.x)
+# ---------------------------------------------------------------------------
+# Mamba/conda creates the 3.7 interpreter + pip; pip then installs the pinned
+# 3.7-capable dependencies from requirements-py37.txt (PyPI cp37 wheels).
+# Using pip for the packages is deliberate: conda-forge has largely dropped
+# Python 3.7 builds, so the pinned versions may not solve there — but they
+# install cleanly as PyPI cp37 wheels.
+#
+# Create:   mamba env create -f environment-py37.yml
+# Activate: mamba activate abmeter37
+#
+# NOTE: run from the directory that contains requirements-py37.txt.
+# If conda-forge cannot provide python 3.7.11 exactly, relax to  python=3.7
+# (the latest 3.7.x it offers still satisfies the >=3.7.11 support floor if
+#  it is 3.7.11 or newer; otherwise install 3.7.11 via pyenv + plain venv).
+# ===========================================================================
+name: abmeter37
+channels:
+  - conda-forge
+dependencies:
+  - python=3.7.11
+  - pip
+  - pip:
+      - -r requirements-py37.txt
