@@ -1,0 +1,32 @@
+*.exe
+*.pkg
+*build/
+*build/*
+*dist/
+*dist/*
+*Nuitka/
+*Nuitka/*
+Nuitka*/
+Nuitka*/*
+deployment/
+deployment/*
+__pycache__/*
+*__pycache__/*
+*__pycache__/
+.idea
+.idea/
+.idea/*
+.spyproject/
+.spyproject/*
+.spyproject
+ab_meter_output/
+ab_meter_output/*
+*ab_meter_output/*
+*ab_meter_output/"C:/Users/wwallace/OneDrive - National Radio Astronomy Observatory/Documents/GitHub/GBO_Maser_Control/ab_meter_output/logs/ab_monitor.log" 
+# Windows test kit: environments, results and outputs created on the test PC
+windows/env/
+windows/env_veusz/
+windows/results/
+windows/gui_output/
+windows/headless_output/
+test_results/

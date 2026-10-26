@@ -1,0 +1,42 @@
+# ===========================================================================
+# environment-conda.yml - AB Power Meter toolset, PURE conda-forge, Python 3.12
+# ---------------------------------------------------------------------------
+# Version : 1.6.0   Modified: 2026-10-26
+# Every dependency from conda-forge, no pip step:
+#   mamba env create -f environment-conda.yml
+#   mamba activate abmeter
+#
+# conda-forge names: PySide6 -> pyside6, matplotlib -> matplotlib-base;
+# prometheus_client keeps its underscore.
+# Trim the optional lines (FITS / XLSX / GUI) for exporter-only hosts.
+# Veusz is optional - only to VIEW the .vszh5 documents (the monitor writes
+# them natively with h5py through vszh5_writer.py).
+# ===========================================================================
+name: abmeter
+channels:
+  - conda-forge
+dependencies:
+  # -- Interpreter (primary target; tested) ---------------------------------
+  - python=3.12
+  # -- Core -------------------------------------------------------------------
+  - requests
+  - beautifulsoup4
+  - lxml
+  # -- Memory protection ---------------------------------------------------------
+  - psutil
+  # -- Prometheus exporter ---------------------------------------------------------
+  - prometheus_client
+  # -- Veusz .vszh5 output (native writer) -------------------------------------------
+  - numpy
+  - h5py
+  # -- FITS ---------------------------------------------------------------------------
+  - astropy
+  # -- Excel ----------------------------------------------------------------------------
+  - openpyxl
+  # -- GUI + previews ---------------------------------------------------------------------
+  - pyside6
+  - qtpy
+  - matplotlib-base
+  # -- Optional extras ----------------------------------------------------------------------
+  - pypdf            # PDF bookmarks when rendering documents with render_pages()
+  # - veusz          # viewer only (uncomment to open / render the .vszh5 files)
