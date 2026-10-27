@@ -1,0 +1,35 @@
+# =============================================================================
+#  prometheus.service - Prometheus server for the AB power meters (example)
+#  Version : 0.0.1   Created/Modified: 2026-10-27   Author: W. W. Wallace
+#  Only needed when no Prometheus exists yet. RHEL 9, official release:
+#    tar xzf prometheus-3.5.0.linux-amd64.tar.gz
+#    install -m 0755 prometheus-3.5.0.linux-amd64/{prometheus,promtool} /usr/local/bin/
+#    useradd --system --no-create-home --shell /usr/sbin/nologin prometheus
+#    install -d -o prometheus -g prometheus /etc/prometheus
+#    cp monitoring/prometheus/prometheus.yml /etc/prometheus/   # edit the targets
+#    promtool check config /etc/prometheus/prometheus.yml
+#    restorecon -Rv /usr/local/bin /etc/prometheus             # SELinux labels
+#    cp prometheus.service /etc/systemd/system/ && systemctl daemon-reload
+#    systemctl enable --now prometheus
+#    firewall-cmd --permanent --add-port=9090/tcp && firewall-cmd --reload   # only if
+#      Grafana runs on another host
+#  Reload the configuration without a restart: systemctl reload prometheus
+# =============================================================================
+[Unit]
+Description=Prometheus server (AB power meters)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=prometheus
+StateDirectory=prometheus
+ExecStart=/usr/local/bin/prometheus --config.file=/etc/prometheus/prometheus.yml \
+          --storage.tsdb.path=/var/lib/prometheus --storage.tsdb.retention.time=400d \
+          --web.listen-address=:9090
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

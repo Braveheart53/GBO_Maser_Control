@@ -1,0 +1,25 @@
+# =============================================================================
+#  ab_power_meters.yaml - Grafana dashboard provisioning (file provider)
+#  Version : 0.0.1   Created/Modified: 2026-10-27   Author: W. W. Wallace
+#  Copy to : <Grafana>/conf/provisioning/dashboards/   (Linux packages:
+#            /etc/grafana/provisioning/dashboards/) and restart Grafana.
+#  Then put the dashboard JSON (monitoring/grafana/dashboards/*.json, or one
+#  built by ab_grafana_dashboard.py) into the folder named under "path".
+#  Grafana re-reads the folder every updateIntervalSeconds, so a rebuilt
+#  dashboard appears without a restart.
+# =============================================================================
+apiVersion: 1
+
+providers:
+  - name: AB power meters
+    folder: AB Power Meters           # Grafana folder shown in Dashboards
+    type: file
+    disableDeletion: false
+    allowUiUpdates: true              # edits in the UI are allowed (the file wins on change)
+    updateIntervalSeconds: 60
+    options:
+      # Absolute path to the folder holding the dashboard JSON files.
+      # Linux:   /var/lib/grafana/dashboards/ab_power_meters
+      # Windows: C:/Program Files/GrafanaLabs/grafana/data/dashboards/ab_power_meters
+      path: /var/lib/grafana/dashboards/ab_power_meters
+      foldersFromFilesStructure: false

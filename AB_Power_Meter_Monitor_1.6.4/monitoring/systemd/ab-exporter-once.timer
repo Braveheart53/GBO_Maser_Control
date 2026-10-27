@@ -1,0 +1,20 @@
+# =============================================================================
+#  ab-exporter-once.timer - run ab-exporter-once.service on a schedule
+#  Version : 0.0.2   Created: 2026-10-27   Modified: 2026-10-27   Author: W. W. Wallace
+#  Template rendered by install.sh --once-timer --once-period N (default 60 s);
+#  by hand, replace __ONCE_PERIOD__ with the period in seconds.
+#  Build the dashboard with the same period (ab_grafana_dashboard.py
+#  --interval N) so "Seconds since last poll" and "Meter answering" turn red
+#  when the runs stop.
+# =============================================================================
+[Unit]
+Description=AB power meters - single poll every __ONCE_PERIOD__ s
+
+[Timer]
+OnBootSec=60
+OnUnitActiveSec=__ONCE_PERIOD__
+AccuracySec=5
+Unit=ab-exporter-once.service
+
+[Install]
+WantedBy=timers.target

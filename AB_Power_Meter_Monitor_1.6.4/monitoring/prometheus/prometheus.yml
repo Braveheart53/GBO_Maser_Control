@@ -1,0 +1,31 @@
+# =============================================================================
+#  prometheus.yml - Prometheus configuration for the AB power meters
+#  Version : 0.0.1   Created/Modified: 2026-10-27   Author: W. W. Wallace
+#  Use     : a complete file for a dedicated Prometheus, or copy the two jobs
+#            under scrape_configs into an existing prometheus.yml.
+#  Tested  : Prometheus 3.5.0 (promtool check config), Pushgateway 1.11.1.
+# -----------------------------------------------------------------------------
+#  ab_power_meter : CONTINUOUS exporter - Prometheus pulls its /metrics.
+#                   scrape_interval = the exporter's --interval (30 s default),
+#                   so every scrape sees a new reading.
+#  pushgateway    : SINGLE RUNS (ab_prometheus_exporter.py --once
+#                   --push-gateway ...) push here; honor_labels keeps the
+#                   pushed job="ab_power_meter" and instance=<host> labels, so
+#                   the same dashboard shows pulled and pushed data.
+# =============================================================================
+global:
+  scrape_interval: 30s
+  evaluation_interval: 30s
+
+scrape_configs:
+  - job_name: ab_power_meter
+    scrape_interval: 30s            # = ab_prometheus_exporter.py --interval
+    scrape_timeout: 10s             # a scrape never waits for the meters
+    static_configs:
+      - targets: ["localhost:9184"] # host:port of the exporter (--port)
+
+  - job_name: pushgateway
+    honor_labels: true              # keep job/instance labels of the pushed group
+    scrape_interval: 15s
+    static_configs:
+      - targets: ["localhost:9091"] # host:port of the Pushgateway

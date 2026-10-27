@@ -1,0 +1,41 @@
+# ===========================================================================
+# requirements.txt - AB Power Meter toolset, Python 3.8 - 3.12
+# ---------------------------------------------------------------------------
+# Version : 1.6.0 (matches ab_power_meter_monitor.py 1.6.0)   Modified: 2026-10-26
+# pip picks the newest release compatible with the running interpreter.
+# Python 3.12 (primary, tested): prefer requirements-py312.txt.
+# Python 3.7.x: use requirements-py37.txt (pinned last 3.7 releases).
+#
+# 1.6.0 changes: + h5py (native .vszh5 writer), + qtpy (the GUI always
+# imported it but it was not listed), - veusz (no longer needed to WRITE
+# .vszh5; install Veusz separately only as a viewer).
+# ===========================================================================
+
+# -- Core (always) --------------------------------------------------------------
+requests>=2.31
+beautifulsoup4>=4.12
+lxml>=4.9
+
+# -- Memory protection --------------------------------------------------------------
+psutil>=5.9
+
+# -- Prometheus exporter ------------------------------------------------------------
+prometheus_client>=0.19
+
+# -- Veusz .vszh5 output (vszh5_writer.py) ------------------------------------------
+numpy>=1.24
+h5py>=3.8
+
+# -- FITS output ----------------------------------------------------------------------
+astropy>=5.2
+
+# -- Excel output ----------------------------------------------------------------------
+openpyxl>=3.1
+
+# -- GUI + previews ---------------------------------------------------------------------
+PySide6>=6.5
+qtpy>=2.0
+matplotlib>=3.7
+
+# -- Optional: PDF bookmarks for vszh5_writer.render_pages ---------------------------------
+pypdf>=3.0

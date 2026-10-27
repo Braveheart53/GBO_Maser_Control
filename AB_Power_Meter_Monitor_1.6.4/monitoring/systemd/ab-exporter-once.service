@@ -1,0 +1,29 @@
+# =============================================================================
+#  ab-exporter-once.service - ONE poll of the AB meters, pushed to a Pushgateway
+#  Version : 0.0.2   Created: 2026-10-27   Modified: 2026-10-27   Author: W. W. Wallace
+#  Template rendered by install.sh --once-timer (__PLACEHOLDERS__ are filled in);
+#  to install by hand, replace them yourself:
+#    __PYTHON__        interpreter, e.g. /opt/abmeter/env/bin/python (Python 3.7 env)
+#    __INSTALL_DIR__   e.g. /opt/abmeter
+#    __IPS__           e.g. 10.16.130.50,10.16.130.54
+#    __PUSH_GATEWAY__  e.g. http://localhost:9091
+#    __USER_LINE__     User=abmeter   (empty for a per-user unit)
+#  Started by ab-exporter-once.timer (single-run mode). Writes no files.
+#  For CONTINUOUS operation use ab-exporter.service (repository root) instead.
+#  0.0.2: template for install.sh; SELinux/RHEL 9 notes in README_monitoring.md.
+# =============================================================================
+[Unit]
+Description=AB power meters - single poll pushed to the Pushgateway
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+__USER_LINE__
+WorkingDirectory=__INSTALL_DIR__
+ExecStart=__PYTHON__ __INSTALL_DIR__/ab_prometheus_exporter.py --once --ips __IPS__ --push-gateway __PUSH_GATEWAY__
+# Exit 1 = no meter answered (the dashboard shows it): not a unit failure.
+# Exit 2 = the push failed: the unit fails and shows in systemctl --failed.
+SuccessExitStatus=1
+TimeoutStartSec=240
+Nice=5

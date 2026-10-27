@@ -1,0 +1,22 @@
+# =============================================================================
+#  ab_prometheus.yaml - Grafana data source provisioning (Prometheus)
+#  Version : 0.0.1   Created/Modified: 2026-10-27   Author: W. W. Wallace
+#  Copy to : <Grafana>/conf/provisioning/datasources/   (Linux packages:
+#            /etc/grafana/provisioning/datasources/) and restart Grafana.
+#  The dashboard selects this data source by uid "ab-prometheus"; it also has
+#  a "Data source" drop-down, so an existing Prometheus data source works too
+#  (then this file is not needed).
+# =============================================================================
+apiVersion: 1
+
+datasources:
+  - name: Prometheus (AB meters)
+    uid: ab-prometheus
+    type: prometheus
+    access: proxy
+    url: http://localhost:9090        # your Prometheus server
+    isDefault: false                  # leave an existing default data source alone
+    editable: true
+    jsonData:
+      timeInterval: 30s               # = the scrape interval of the meter job
+      httpMethod: POST

@@ -1,0 +1,31 @@
+# =============================================================================
+#  pushgateway.service - Prometheus Pushgateway for the single-run mode
+#  Version : 0.0.1   Created/Modified: 2026-10-27   Author: W. W. Wallace
+#  RHEL 9 (no RPM in the base repositories): install the official release
+#    tar xzf pushgateway-1.11.1.linux-amd64.tar.gz
+#    install -m 0755 pushgateway-1.11.1.linux-amd64/pushgateway /usr/local/bin/
+#    useradd --system --no-create-home --shell /usr/sbin/nologin pushgateway
+#    restorecon -v /usr/local/bin/pushgateway                  # SELinux: bin_t
+#    cp pushgateway.service /etc/systemd/system/ && systemctl daemon-reload
+#    systemctl enable --now pushgateway
+#    firewall-cmd --permanent --add-port=9091/tcp && firewall-cmd --reload   # only if
+#      the exporter runs on another host than the Pushgateway
+#  The pushed values live in memory; --persistence.file keeps them across a
+#  restart (a file in /var/lib/pushgateway).
+# =============================================================================
+[Unit]
+Description=Prometheus Pushgateway (AB power meters, single runs)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pushgateway
+StateDirectory=pushgateway
+ExecStart=/usr/local/bin/pushgateway --web.listen-address=:9091 \
+          --persistence.file=/var/lib/pushgateway/metrics.store --persistence.interval=5m
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
