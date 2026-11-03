@@ -1,0 +1,1247 @@
+{
+  "application": "MHM2010 Correction Workbench",
+  "version": "0.1.0",
+  "created_utc": "2026-11-03T16:16:13.988736+00:00",
+  "series": {
+    "label": "MicroSem -> CNS_GPS1",
+    "kind": "FITS",
+    "provenance": [
+      {
+        "name": "2025_10_14_21_30_07.fits.gz",
+        "sha256": "8ffaa14a1a3eac90a785c350058d00cb547905131eebd089c0fb409b98c47665",
+        "bytes": 29698
+      },
+      {
+        "name": "2025_10_15_04_15_07.fits.gz",
+        "sha256": "efa67ddccf23004df24fbe57fc76cdbe38f34becf1c3e4cbbfe9bf762be78f5f",
+        "bytes": 29669
+      },
+      {
+        "name": "2025_10_15_11_00_07.fits.gz",
+        "sha256": "334a04b958266da85804f7b1c7e5d77283ddb601d5d8a6363bdd2c4e5e89f12e",
+        "bytes": 29681
+      },
+      {
+        "name": "2025_10_15_17_45_07.fits.gz",
+        "sha256": "89deedd4c90821210c021b8cce3395c70c0d90536d6bd2793bf74d8fd5897618",
+        "bytes": 29558
+      },
+      {
+        "name": "2025_10_16_00_30_07.fits.gz",
+        "sha256": "74d397f9431c5cfdcc08d17c2f821f5620da848beeefde527155a82101acc577",
+        "bytes": 29768
+      },
+      {
+        "name": "2025_10_16_07_15_07.fits.gz",
+        "sha256": "586dfe06616d82c675a9c5967dfcd2b861fd26fc72b2631e4f924192a6427a8f",
+        "bytes": 29796
+      },
+      {
+        "name": "2025_10_16_14_00_07.fits.gz",
+        "sha256": "06dc1e37e67a44fb6fae7ac8d954a945898a4bd2d2679ebefe41d428e6df2961",
+        "bytes": 29647
+      },
+      {
+        "name": "2025_10_16_20_45_07.fits.gz",
+        "sha256": "fa4c45d7bafe3c356de4f9650a28fd234147316ce08a2714d5c2a5f9cb188cf9",
+        "bytes": 29792
+      },
+      {
+        "name": "2025_10_17_03_30_07.fits.gz",
+        "sha256": "03e12599104c2ab2dbd14d8b0ba17a17679beca7077ec667d7243f5f76d23229",
+        "bytes": 29776
+      },
+      {
+        "name": "2025_10_17_10_15_07.fits.gz",
+        "sha256": "9e25eaa7a18b4255f0caa9c0a3f97cd4f54621218838f8038571fae559e1e488",
+        "bytes": 29731
+      },
+      {
+        "name": "2025_10_17_17_00_07.fits.gz",
+        "sha256": "2cebe1543d51c14efc6b59a0af6691c0823833e30367437caf8006db9e7cade4",
+        "bytes": 29653
+      },
+      {
+        "name": "2025_10_17_23_45_07.fits.gz",
+        "sha256": "7da9bba01f17a03917589b9d0665536f4855a22106cc6e2373588113b6eb200f",
+        "bytes": 29814
+      },
+      {
+        "name": "2025_10_18_06_30_07.fits.gz",
+        "sha256": "7980c7eb8b640a82750bea442e1ee2e44a395b19ac4abadbe88ea65e9a194f73",
+        "bytes": 29768
+      },
+      {
+        "name": "2025_10_18_13_15_07.fits.gz",
+        "sha256": "67fba48d52c5ee83c31eca02dbbe9255c5a41a1d215f97f348142412d7d2b40c",
+        "bytes": 29802
+      },
+      {
+        "name": "2025_10_18_20_00_07.fits.gz",
+        "sha256": "94092780e76d2536d775fa044cf845579125a92ada8e1ab3328e3fce24fad804",
+        "bytes": 29934
+      },
+      {
+        "name": "2025_10_19_02_45_07.fits.gz",
+        "sha256": "39db6306a0ee9b18019095f3a1387957f1ed79c0f3b1e7a5c617ad67aec9ec2e",
+        "bytes": 29860
+      },
+      {
+        "name": "2025_10_19_09_30_07.fits.gz",
+        "sha256": "9807fed40ca222244c13a40c57a96db1698f736f6851e375fd51695438490224",
+        "bytes": 29865
+      },
+      {
+        "name": "2025_10_19_16_15_07.fits.gz",
+        "sha256": "fa1d873e69a3c0ba6df91957bbe6c32da9ecfa5f4b1816b843f46a219c4d1891",
+        "bytes": 29709
+      },
+      {
+        "name": "2025_10_19_23_00_07.fits.gz",
+        "sha256": "87bf38ef7f1eca7d24f3c98f417dd76bae743dec62298a4770a77940f3cc38ce",
+        "bytes": 29829
+      },
+      {
+        "name": "2025_10_20_05_45_07.fits.gz",
+        "sha256": "2f5f66b73388fde6999663e91248e42c63cd8765a2c69872b7dbb58c2e5eb0ab",
+        "bytes": 29790
+      },
+      {
+        "name": "2025_10_20_12_30_07.fits.gz",
+        "sha256": "8ff9079a694934c65aaa31cf035f57765706f66019442a5b533b086d69a2d0c0",
+        "bytes": 29757
+      },
+      {
+        "name": "2025_10_20_19_15_07.fits.gz",
+        "sha256": "5f5f02b75012c246786f286cc74151ad8925a7f03a667190fc1b0f1019ff6c90",
+        "bytes": 29892
+      },
+      {
+        "name": "2025_10_21_02_00_07.fits.gz",
+        "sha256": "33d1193cdae9cf28aa15cfd9a7686b975631d3457a0e3e645170d3bfea45bd9c",
+        "bytes": 29837
+      },
+      {
+        "name": "2025_10_21_08_45_07.fits.gz",
+        "sha256": "1d49305729f946339c3b04aefd463ce0fd31cc0e0ea06f419634ab825b3ac4de",
+        "bytes": 29936
+      },
+      {
+        "name": "2025_10_21_15_30_07.fits.gz",
+        "sha256": "d69b2c18cc3b62f9cfd7a2c60ee808b60ec7a3eb2cab3ca5be0907aac34121ca",
+        "bytes": 29823
+      },
+      {
+        "name": "2025_10_21_22_15_07.fits.gz",
+        "sha256": "c4556c91c3189e6a97bf205a62c2a39c3ffc7272bcbe223761ebdc280a84a00f",
+        "bytes": 29724
+      },
+      {
+        "name": "2025_10_22_05_00_07.fits.gz",
+        "sha256": "0f5e3178dbf032ed77812e46b1b8394a0abb4215ab83ad151c7c715c4971994d",
+        "bytes": 29759
+      },
+      {
+        "name": "2025_10_22_11_45_07.fits.gz",
+        "sha256": "f5ddc42335fd5bb6fd1c803405a10a591852d324a5f9d54a55ee257d53a694fa",
+        "bytes": 29690
+      },
+      {
+        "name": "2025_10_22_18_30_07.fits.gz",
+        "sha256": "745cab88c4eb624a3affa2056cd87e178e644ec0e97ddee8820ba2d740402291",
+        "bytes": 29768
+      },
+      {
+        "name": "2025_10_23_01_15_07.fits.gz",
+        "sha256": "1a184892fdc5b530a144dce52bb12c4a2ee192464788a362df6f6443b6bfbe3a",
+        "bytes": 29853
+      },
+      {
+        "name": "2025_10_23_08_00_07.fits.gz",
+        "sha256": "da603075e739a1777fea306bbf93576306b5685b8e0965b30fcee8717c21e4cf",
+        "bytes": 29833
+      },
+      {
+        "name": "2025_10_23_14_45_07.fits.gz",
+        "sha256": "bad819a49200692a0d657da4fe358a62e5fbbf4e921df9db22d7dfdf16c62ff8",
+        "bytes": 29694
+      },
+      {
+        "name": "2025_10_23_21_30_07.fits.gz",
+        "sha256": "bbfebf95c85f1fd06844a911741cd62c1bc63deefc0c7e62d58289209cc7e824",
+        "bytes": 29831
+      },
+      {
+        "name": "2025_10_24_04_15_07.fits.gz",
+        "sha256": "0f10d40ab8a27271bf3e6ea73bb3496a76ef91a17a6e278ad7616a4809797038",
+        "bytes": 29852
+      },
+      {
+        "name": "2025_10_24_11_00_07.fits.gz",
+        "sha256": "a41ad77d512a74942f9cda1ef4ea17b31edeaa1ebeba50d08c507d95dc31e836",
+        "bytes": 29699
+      },
+      {
+        "name": "2025_10_24_17_45_07.fits.gz",
+        "sha256": "384caa7541e4ac9109a599a7d0ba854420d84f48d02a76b6b7c6b92493f136b5",
+        "bytes": 29757
+      },
+      {
+        "name": "2025_10_25_00_30_07.fits.gz",
+        "sha256": "74dcbfe004e53de9f539adf75cb55eeb8fb175394f83c0b3e0f6735e27d1ce60",
+        "bytes": 29826
+      },
+      {
+        "name": "2025_10_25_07_15_06.fits.gz",
+        "sha256": "c30e5df44369fdb4e5e50db1bf5d28a1029831fb61f075848e3ab86a95f196c3",
+        "bytes": 29953
+      },
+      {
+        "name": "2025_10_25_14_00_07.fits.gz",
+        "sha256": "b4ce669f83766328685bc1606b520128a3977258622eb4713fbbd2356e7981f8",
+        "bytes": 29634
+      },
+      {
+        "name": "2025_10_25_20_45_07.fits.gz",
+        "sha256": "f18fd65f99a7dd10c7ccb13736dc6193eddd575c7b3f797e15a65def96b91c0b",
+        "bytes": 29772
+      },
+      {
+        "name": "2025_10_26_03_30_07.fits.gz",
+        "sha256": "475eb953db9a08966148ce8b24666e794d736db8f93f655e2727beca1bff9594",
+        "bytes": 29902
+      },
+      {
+        "name": "2025_10_26_10_15_07.fits.gz",
+        "sha256": "adffe5c3327da8f1c1531b9d9b8956692fb390b92a1db8689e666c6192d797f1",
+        "bytes": 30052
+      },
+      {
+        "name": "2025_10_26_17_00_06.fits.gz",
+        "sha256": "b063fa0e2dc58f76363b8b900aac0827faa26097d912cc6852f30d79d261aea2",
+        "bytes": 29771
+      },
+      {
+        "name": "2025_10_26_23_45_07.fits.gz",
+        "sha256": "5413323b76d16427bcff312884f4ca83ef3968142a6f3a0304295352b42382fb",
+        "bytes": 29971
+      },
+      {
+        "name": "2025_10_27_06_30_07.fits.gz",
+        "sha256": "5c13aae3fac5bf9f7e5431c9ee589b728922092ea77940cad05dcdc7107c92fe",
+        "bytes": 29821
+      },
+      {
+        "name": "2025_10_27_13_15_07.fits.gz",
+        "sha256": "dd7ce44f85de5eb44408a49ce142546b2e4908a3307ad66224039af88732b01b",
+        "bytes": 29840
+      },
+      {
+        "name": "2025_10_27_20_00_07.fits.gz",
+        "sha256": "6e65b836ad34f6488560ec80fd1f13ea364f5204e5c81944a68b773730be6934",
+        "bytes": 29847
+      },
+      {
+        "name": "2025_10_28_02_45_07.fits.gz",
+        "sha256": "a53b5a80e0d8127c1f6dab5c140239b3fa0aea9fd774a9b0767568bbffca4981",
+        "bytes": 29759
+      },
+      {
+        "name": "2025_10_28_09_30_07.fits.gz",
+        "sha256": "26cb8823f77b427e229156286406df5c9dd3d753f62bec1202575f64508d1ed1",
+        "bytes": 29897
+      },
+      {
+        "name": "2025_10_28_16_15_07.fits.gz",
+        "sha256": "2a94a50c48779d5bf05cd5a70d161ce88c8ba91e0074b6ad33b92272c4345d7e",
+        "bytes": 29795
+      },
+      {
+        "name": "2025_10_28_23_00_07.fits.gz",
+        "sha256": "fe8ede945d26fb6ee4623c519ad514609cca61a82c3ad2eaa53143379a82fdc9",
+        "bytes": 29870
+      },
+      {
+        "name": "2025_10_29_05_45_07.fits.gz",
+        "sha256": "dfd467e80a6e33bd94e7a1811f11e48170136b5282ba31422fe65e494dee2434",
+        "bytes": 29921
+      },
+      {
+        "name": "2025_10_29_12_30_07.fits.gz",
+        "sha256": "4e9eaacd063b99b9e6f1d1429ddbb0e87c7c0a2ddded89e2849b587698d1ac70",
+        "bytes": 29803
+      },
+      {
+        "name": "2025_10_29_19_15_07.fits.gz",
+        "sha256": "7bb614cde720edb9dc2e684940c7a9dec76beae0bc38b756ec83747b0c56ab7a",
+        "bytes": 29932
+      },
+      {
+        "name": "2025_10_30_02_00_07.fits.gz",
+        "sha256": "b2ae30d0b59e2064a490e6e54ed95d7c301ad345e081387d11dcd3406b5fc3e8",
+        "bytes": 29879
+      },
+      {
+        "name": "2025_10_30_08_45_07.fits.gz",
+        "sha256": "2e07069459e5e3a4a51013e2cd72f6981c04dc4f6cffd443da1267080db91317",
+        "bytes": 29930
+      },
+      {
+        "name": "2025_10_30_15_30_07.fits.gz",
+        "sha256": "d4371e038b28e40b74490973ef5fe580aa276fe987296e658f521973bea57b6e",
+        "bytes": 29777
+      },
+      {
+        "name": "2025_10_30_22_15_07.fits.gz",
+        "sha256": "233b969cad8b246236836f96750ba34af8d96c8bf4eebc6b00cb68a22283a0a7",
+        "bytes": 29808
+      },
+      {
+        "name": "2025_10_31_05_00_07.fits.gz",
+        "sha256": "1179c1098207a5883adc39528a34800a70ea1c499667ee9fad67292b9c857d89",
+        "bytes": 29903
+      },
+      {
+        "name": "2025_10_31_11_45_07.fits.gz",
+        "sha256": "6b089dd3706f89ac54d9b3925b0376391317fd640c9362f68cf93f82ea75c02a",
+        "bytes": 29686
+      },
+      {
+        "name": "2025_10_31_18_30_07.fits.gz",
+        "sha256": "c8dd4445d5b2c078bf88687bddf50d1b85067bfa8a551c697c8a2332b8e80193",
+        "bytes": 29919
+      },
+      {
+        "name": "2025_11_01_01_15_07.fits.gz",
+        "sha256": "5c928f514e948c423bcd1d7a1e8af625c8365a93cf44e397a457ea433fd31dda",
+        "bytes": 29856
+      },
+      {
+        "name": "2025_11_01_08_00_07.fits.gz",
+        "sha256": "f67ebb81c9dbbcfb82bde9b25aa97baa9f8043e0e30fa0d884006ce2165f0a28",
+        "bytes": 29869
+      },
+      {
+        "name": "2025_11_01_14_45_07.fits.gz",
+        "sha256": "45cd5a18073dd8fc56d5365d5fe52b54fd58dc19c26f7d8fad6868ca571eb471",
+        "bytes": 29576
+      },
+      {
+        "name": "2025_11_01_21_30_07.fits.gz",
+        "sha256": "c6ca0a0bb4a2be4a8ccdc93e481e978cd98c61b39cbb000efafe57b375561be5",
+        "bytes": 29831
+      },
+      {
+        "name": "2025_11_02_04_15_07.fits.gz",
+        "sha256": "bbb84251d7314da9f89402625ab23fda85e25acef3e32eda1e64a3dbf5222eac",
+        "bytes": 29769
+      },
+      {
+        "name": "2025_11_02_11_00_07.fits.gz",
+        "sha256": "966cfa61a4fdca7bb2ed3bbac245a5ca14403d675f714d5736a353696e8054bc",
+        "bytes": 29809
+      },
+      {
+        "name": "2025_11_02_17_45_07.fits.gz",
+        "sha256": "bbad9d2cbf8d5884807536b99e6f3ff3a9f4de75cea7bd399106f2df20fa7e96",
+        "bytes": 29766
+      },
+      {
+        "name": "2025_11_03_00_30_07.fits.gz",
+        "sha256": "fe3e8e454b5c126f758f5c2f16042e66ac968688c8d0f37860ed7c283eab2c66",
+        "bytes": 29776
+      },
+      {
+        "name": "2025_11_03_07_15_07.fits.gz",
+        "sha256": "18bd885f453f3800537cdebb6a188ca744ac82c76ee88f325bae01aa022f8951",
+        "bytes": 30026
+      },
+      {
+        "name": "2025_11_03_14_00_07.fits.gz",
+        "sha256": "bd8337f16b1076cef521b1488c88f78bcd5146df76ef6f56cf9f4bf43f6ddf4e",
+        "bytes": 29851
+      },
+      {
+        "name": "2025_11_03_20_45_07.fits.gz",
+        "sha256": "15533888a5384dec18c6a8619f258c2a64ecf291a75cf9b9bcd0832fcfbdd5d3",
+        "bytes": 29913
+      },
+      {
+        "name": "2025_11_04_03_30_07.fits.gz",
+        "sha256": "5b4e71a281429e05a8d00e6031680372ac94afd29f6b08db93feec9c4cf53730",
+        "bytes": 29710
+      },
+      {
+        "name": "2025_11_04_10_15_07.fits.gz",
+        "sha256": "b2894ad571fad6a63fcaf8f5a9f640c2a5d0ab0f5475071823f6d7155cb3e878",
+        "bytes": 29781
+      },
+      {
+        "name": "2025_11_04_17_00_07.fits.gz",
+        "sha256": "8df9ddc046f3f6d09be8ac979f1eececd587f6137db138dd116b7879dac46360",
+        "bytes": 29829
+      },
+      {
+        "name": "2025_11_04_23_45_07.fits.gz",
+        "sha256": "32cd09fbb8d9e7c220350e98c7404fa022568e0e9f0683694c655fa7e0cdd624",
+        "bytes": 29952
+      },
+      {
+        "name": "2025_11_05_06_30_07.fits.gz",
+        "sha256": "94cc5b58e466f6392871f819456ed0bace70703a802632fc8d94cb2b89164ed3",
+        "bytes": 29936
+      },
+      {
+        "name": "2025_11_05_13_15_07.fits.gz",
+        "sha256": "f3d499c1f7ef368e648a446d146738bccf9c114ef01ac1074fb5e4ef53db1722",
+        "bytes": 29773
+      },
+      {
+        "name": "2025_11_05_20_00_07.fits.gz",
+        "sha256": "f2265712f182ed5a24c4a882e4196f1a9c29e343d5fb464e40b588d885283351",
+        "bytes": 29796
+      },
+      {
+        "name": "2025_11_06_02_45_07.fits.gz",
+        "sha256": "6e99bd71a56d8e55952615a163ae1758f9227f9e49baf632ebd3a55f8b381839",
+        "bytes": 29684
+      },
+      {
+        "name": "2025_11_06_09_30_07.fits.gz",
+        "sha256": "06ed2af22d129ff59486bc1b8b4266191408b9115497e3aea14c92a7b29596b1",
+        "bytes": 29908
+      },
+      {
+        "name": "2025_11_06_16_15_07.fits.gz",
+        "sha256": "4dbd8039c2beb4ab145a471c92fc6d17f32498d448c3821273efad31a1ac5dfb",
+        "bytes": 29631
+      },
+      {
+        "name": "2025_11_06_23_00_07.fits.gz",
+        "sha256": "d7d7bfc14781916453c9443302a18cdf1d628178f2adbc0507abd23ba59f852b",
+        "bytes": 29887
+      },
+      {
+        "name": "2025_11_07_05_45_07.fits.gz",
+        "sha256": "0c070cad32a7ff317fae068cf47f73a56506b452642ab4b34035ce82d45fc03a",
+        "bytes": 29880
+      },
+      {
+        "name": "2025_11_07_12_30_07.fits.gz",
+        "sha256": "907cee1c2a81c0317f7a63162ede4e4b676f925ae970d6194cec2bf0b22a6646",
+        "bytes": 30066
+      },
+      {
+        "name": "2025_11_07_19_15_07.fits.gz",
+        "sha256": "c05fa78e96308ce7fcfbe381b210b7fb137fa882eb6e362da4f623a0dbdbbf9a",
+        "bytes": 29924
+      },
+      {
+        "name": "2025_11_08_02_00_07.fits.gz",
+        "sha256": "fe8b7531e27277046daa60362c488b870fafb44a7ae23cef36e194306743851a",
+        "bytes": 29726
+      },
+      {
+        "name": "2025_11_08_08_45_07.fits.gz",
+        "sha256": "c7bcda879e3d8515e4b2d58cb2b699a105191ce8aae23d87c4c203b05a565c4d",
+        "bytes": 29847
+      },
+      {
+        "name": "2025_11_08_15_30_07.fits.gz",
+        "sha256": "a362756c78fc470f3984d1b654f075b8a38a7b82aa2887691ba5ac335f73c8d0",
+        "bytes": 29876
+      },
+      {
+        "name": "2025_11_08_22_15_07.fits.gz",
+        "sha256": "441e42b1f5302d038a398e02468a2ba79ce411ab0890b1d84805b041102ff556",
+        "bytes": 29862
+      },
+      {
+        "name": "2025_11_09_05_00_07.fits.gz",
+        "sha256": "dec08baf58ba4acd60128f279013f0b9ae6e10d70559836e789b59cbe5de45e7",
+        "bytes": 29905
+      },
+      {
+        "name": "2025_11_09_11_45_07.fits.gz",
+        "sha256": "7ab3bfb5d36aab7d3c517eda1588697e2a3e6e11b0d8be65fa86423002cdc8a8",
+        "bytes": 29870
+      },
+      {
+        "name": "2025_11_09_18_30_07.fits.gz",
+        "sha256": "8ae4d3e8334f7a2e4cb614cd235c09141a7e19c0b01fa2a0b266e2d13844e993",
+        "bytes": 29736
+      },
+      {
+        "name": "2025_11_10_01_15_07.fits.gz",
+        "sha256": "a7528c56c3e2c521664e552e7c9cba18e4d465cf7ebda48e8091a0832edecc96",
+        "bytes": 29900
+      },
+      {
+        "name": "2025_11_10_08_00_07.fits.gz",
+        "sha256": "8fd5dcafcc234f6fdb2cc63589b095dfe57cef49b4fe8c05c2d0a9c9df416160",
+        "bytes": 29922
+      },
+      {
+        "name": "2025_11_10_14_45_07.fits.gz",
+        "sha256": "ef209001224861d25b39eedbeea209cb83ff1fc9acc7fa129a096e68fa576f38",
+        "bytes": 29807
+      },
+      {
+        "name": "2025_11_10_21_30_07.fits.gz",
+        "sha256": "16f6da5e2ccd7817c6566e5cfe929cf409208747530180181b07922ef749e08a",
+        "bytes": 29899
+      },
+      {
+        "name": "2025_11_11_04_15_07.fits.gz",
+        "sha256": "d66efa3f6761e639d80044664f438066cd89cf73f2ae0e5ac42b48868ebd2d06",
+        "bytes": 30037
+      },
+      {
+        "name": "2025_11_11_11_00_07.fits.gz",
+        "sha256": "2866ecea08348558db46a437c23c60b061b1461d7e827bbca8ebed8b276722c9",
+        "bytes": 29784
+      },
+      {
+        "name": "2025_11_11_17_45_07.fits.gz",
+        "sha256": "b2b64ff9ecf0708347e336709b9931117acd0f2e857e294efebc8a56dbb422ea",
+        "bytes": 29862
+      },
+      {
+        "name": "2025_11_12_00_30_07.fits.gz",
+        "sha256": "7e78f9a12c04168d9de2c697e59f1d47d2d3a744f90d7bd6346b841c4e595a4f",
+        "bytes": 29916
+      },
+      {
+        "name": "2025_11_12_07_15_07.fits.gz",
+        "sha256": "fb47673abbced464d78a60e0c189f47f716b93243f2d90c4d489d232f35ec93a",
+        "bytes": 30016
+      },
+      {
+        "name": "2025_11_12_14_00_07.fits.gz",
+        "sha256": "698fb77c1844884e73d78789c43a358a39862a63c595eabd3902ad11dd3f391d",
+        "bytes": 29952
+      },
+      {
+        "name": "2025_11_12_20_45_07.fits.gz",
+        "sha256": "00c5ab74194b81b65934094748831704581d12316c214361f9666375743e161e",
+        "bytes": 29866
+      },
+      {
+        "name": "2025_11_13_03_30_07.fits.gz",
+        "sha256": "29b6df7da1c83c666107218e2baeb59f7109d38d9951137a5652c8447a759a0a",
+        "bytes": 29797
+      },
+      {
+        "name": "2025_11_13_10_15_07.fits.gz",
+        "sha256": "ac57205e23be081e32c7fd924d401760d8ebf86bed3915e275fbae112c0d95cc",
+        "bytes": 29977
+      },
+      {
+        "name": "2025_11_13_17_00_07.fits.gz",
+        "sha256": "074b3688c02d66f2e872b2312e948b961479338a485dfdeec4294302d16ae9b7",
+        "bytes": 29742
+      },
+      {
+        "name": "2025_11_13_23_45_07.fits.gz",
+        "sha256": "a8915795a35f913890297d8bf096d979bbfae26e5296b4aaf4d09d03a784c023",
+        "bytes": 29955
+      },
+      {
+        "name": "2025_11_14_06_30_07.fits.gz",
+        "sha256": "d273e9e3aeef3339a26a803996ce92cb4a57bc6f08bbadbab4a71e3acf94b617",
+        "bytes": 29889
+      }
+    ],
+    "notes": [
+      "2025_10_14_21_30_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_10_15_04_15_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_10_15_11_00_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_10_15_17_45_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_10_16_00_30_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_10_16_07_15_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_10_16_14_00_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_10_16_20_45_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_10_17_03_30_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_10_17_10_15_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_10_17_17_00_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_10_17_23_45_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_10_18_06_30_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_10_18_13_15_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_10_18_20_00_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_10_19_02_45_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_10_19_09_30_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_10_19_16_15_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_10_19_23_00_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_10_20_05_45_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_10_20_12_30_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_10_20_19_15_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_10_21_02_00_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_10_21_08_45_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_10_21_15_30_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_10_21_22_15_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_10_22_05_00_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_10_22_11_45_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_10_22_18_30_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_10_23_01_15_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_10_23_08_00_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_10_23_14_45_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_10_23_21_30_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_10_24_04_15_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_10_24_11_00_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_10_24_17_45_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_10_25_00_30_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_10_25_07_15_06.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_10_25_14_00_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_10_25_20_45_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_10_26_03_30_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_10_26_10_15_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_10_26_17_00_06.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_10_26_23_45_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_10_27_06_30_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_10_27_13_15_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_10_27_20_00_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_10_28_02_45_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_10_28_09_30_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_10_28_16_15_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_10_28_23_00_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_10_29_05_45_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_10_29_12_30_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_10_29_19_15_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_10_30_02_00_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_10_30_08_45_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_10_30_15_30_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_10_30_22_15_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_10_31_05_00_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_10_31_11_45_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_10_31_18_30_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_11_01_01_15_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_11_01_08_00_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_11_01_14_45_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_11_01_21_30_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_11_02_04_15_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_11_02_11_00_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_11_02_17_45_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_11_03_00_30_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_11_03_07_15_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_11_03_14_00_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_11_03_20_45_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_11_04_03_30_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_11_04_10_15_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_11_04_17_00_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_11_04_23_45_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_11_05_06_30_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_11_05_13_15_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_11_05_20_00_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_11_06_02_45_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_11_06_09_30_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_11_06_16_15_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_11_06_23_00_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_11_07_05_45_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_11_07_12_30_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_11_07_19_15_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_11_08_02_00_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_11_08_08_45_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_11_08_15_30_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_11_08_22_15_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_11_09_05_00_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_11_09_11_45_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_11_09_18_30_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_11_10_01_15_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_11_10_08_00_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_11_10_14_45_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_11_10_21_30_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_11_11_04_15_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_11_11_11_00_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_11_11_17_45_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_11_12_00_30_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_11_12_07_15_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_11_12_14_00_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_11_12_20_45_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_11_13_03_30_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_11_13_10_15_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_11_13_17_00_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_11_13_23_45_07.fits.gz: 3600 rows; 7 invalid/padding rows.",
+      "2025_11_14_06_30_07.fits.gz: 3600 rows; 7 invalid/padding rows."
+    ]
+  },
+  "fit": {
+    "epoch_mjd": 60977.99976349281,
+    "order": 2,
+    "coefficients_ns": [
+      -2455.5992133891004,
+      1.3607920212188938,
+      -0.028547988431773304
+    ],
+    "covariance_ns": [
+      [
+        0.006849079005555521,
+        2.2096128018183347e-12,
+        -5.073391959728492e-05
+      ],
+      [
+        2.2096128018183356e-12,
+        4.0587134726899365e-05,
+        -2.945529621194246e-14
+      ],
+      [
+        -5.073391959728492e-05,
+        -2.945529621194246e-14,
+        6.764522680880756e-07
+      ]
+    ],
+    "rms_ns": 5.404961110385247,
+    "condition": 3.758284656743811,
+    "warnings": [
+      "Fit uncertainty is conditional IID-OLS only; GPS, colored noise and systematics are not included.",
+      "Constant phase offset is not corrected by the DDS/drift fields."
+    ]
+  },
+  "selected_count": 9600,
+  "fit_count": 9600,
+  "correction": {
+    "application_epoch_mjd_utc": 60992.998201057395,
+    "residual_fractional_frequency": 5.838444178725387e-15,
+    "residual_frequency_drift_per_day": -6.60833065550308e-16,
+    "conditional_frequency_sigma": 2.9491579969249224e-16,
+    "conditional_drift_sigma_per_day": 1.9038592212810412e-17,
+    "current_external_dds": "5751.6772565",
+    "delta_dds_counts_unrounded": 82.92959692308136,
+    "new_external_dds": "5751.6772648",
+    "quantization_residual_fractional_frequency": -4.956546877e-18,
+    "current_drift_field": 975.0,
+    "existing_drift_enabled": true,
+    "drift_units": "pp18/day",
+    "positive_pp18_convention": "output",
+    "delta_drift_field": 660.8330655503041,
+    "new_drift_field": 1635.8330655503041,
+    "new_drift_field_rounded_integer": 1636,
+    "both_drift_units": {
+      "DDS_units_per_day": {
+        "current": -13.848956078853254,
+        "increment": -9.38651087206179,
+        "new": -23.235466950915043,
+        "new_nearest_integer": -23
+      },
+      "parts_in_1e18_per_day": {
+        "current": 975.0000000000001,
+        "increment": 660.8330655503042,
+        "new": 1635.8330655503044,
+        "new_nearest_integer": 1636
+      },
+      "fractional_drift_residual_if_integer_DDS_per_day": -1.6577442793159332e-17,
+      "fractional_drift_residual_if_integer_pp18_per_day": 1.6693444969564553e-19,
+      "manufacturer_drift_range": "Not specified in Rev. J; verify installed software limits."
+    },
+    "fractional_frequency_per_dds_count": -7.040241838074584e-17,
+    "phase_sign_multiplier": 1,
+    "status": "HISTORICAL / UNREVIEWED. Settings and signs are explicit CLI assumptions, not current recommendations.",
+    "operator_confirmed": false,
+    "operating_state_reviewed": false
+  },
+  "settings": {
+    "start_mjd": 60963.0,
+    "end_mjd": 60992.999999999,
+    "sampling_tolerance": 0.02,
+    "phase_sign": 1,
+    "pp18_sign": "output",
+    "fit_sensitivity": [
+      {
+        "window_days": 30,
+        "samples": 9600,
+        "fractional_frequency_at_end": 5.838444178725387e-15,
+        "drift_pp18_per_day": -660.833065550308,
+        "rms_ns": 5.404961110385247
+      },
+      {
+        "window_days": 21,
+        "samples": 6720,
+        "fractional_frequency_at_end": 3.800250561210922e-15,
+        "drift_pp18_per_day": -883.575209309342,
+        "rms_ns": 5.810035704698308
+      },
+      {
+        "window_days": 14,
+        "samples": 4481,
+        "fractional_frequency_at_end": 1.394209762907856e-14,
+        "drift_pp18_per_day": 407.1990594165091,
+        "rms_ns": 5.92248365585631
+      },
+      {
+        "window_days": 7,
+        "samples": 2241,
+        "fractional_frequency_at_end": -4.32655381894217e-15,
+        "drift_pp18_per_day": -5454.180494208509,
+        "rms_ns": 6.969888438113646
+      }
+    ],
+    "current_drift_is_explicit_cli_input": true
+  },
+  "stability": {
+    "tau0_s": 270.0000000020695,
+    "grid_error_s": 2.999953268794343,
+    "sampling_tolerance": 0.02,
+    "detrend_order": -1,
+    "sample_count": 9600,
+    "estimators": {
+      "OADEV": {
+        "tau_s": [
+          270.0000000020695,
+          540.000000004139,
+          810.0000000062084,
+          1080.000000008278,
+          1350.0000000103475,
+          1620.0000000124169,
+          2160.000000016556,
+          2700.000000020695,
+          3510.0000000269033,
+          4590.000000035181,
+          5670.000000043459,
+          7290.000000055877,
+          9450.000000072432,
+          11880.000000091059,
+          15120.000000115891,
+          19170.000000146934,
+          24300.000000186254,
+          31050.000000237993,
+          39420.00000030215,
+          49950.00000038285,
+          63180.000000484266,
+          80190.00000061464,
+          101790.0000007802,
+          129060.00000098922,
+          163620.0000012541,
+          207630.00000159146,
+          263250.00000201777,
+          333720.0000025579,
+          423360.00000324496,
+          536760.0000041141,
+          680400.0000052152,
+          862920.0000066141
+        ],
+        "deviation": [
+          9.868331746220651e-12,
+          5.263097187888848e-12,
+          3.658029768524842e-12,
+          2.7892252971406526e-12,
+          2.242240452858642e-12,
+          1.933181652903952e-12,
+          1.4996906140431022e-12,
+          1.2399265774195126e-12,
+          1.0206588090153966e-12,
+          8.551844960619975e-13,
+          7.785704037111471e-13,
+          7.185621319181188e-13,
+          6.418532558893075e-13,
+          5.754307248685013e-13,
+          4.936060686513501e-13,
+          4.1493442529223867e-13,
+          3.5809930137086406e-13,
+          3.1535403760683925e-13,
+          2.783358614863426e-13,
+          2.1500518474236498e-13,
+          1.425040547444283e-13,
+          8.156895017304247e-14,
+          8.18482347158117e-14,
+          8.263000325626667e-14,
+          4.83988812369331e-14,
+          4.8366239129784976e-14,
+          2.7082334045492465e-14,
+          2.4490330185309755e-14,
+          1.9627351706297563e-14,
+          1.934379585416794e-14,
+          1.3237107358875442e-14,
+          1.174475465599042e-14
+        ],
+        "terms": [
+          9598,
+          9596,
+          9594,
+          9592,
+          9590,
+          9588,
+          9584,
+          9580,
+          9574,
+          9566,
+          9558,
+          9546,
+          9530,
+          9512,
+          9488,
+          9458,
+          9420,
+          9370,
+          9308,
+          9230,
+          9132,
+          9006,
+          8846,
+          8644,
+          8388,
+          8062,
+          7650,
+          7128,
+          6464,
+          5624,
+          4560,
+          3208
+        ]
+      },
+      "MDEV": {
+        "tau_s": [
+          270.0000000020695,
+          540.000000004139,
+          810.0000000062084,
+          1080.000000008278,
+          1350.0000000103475,
+          1620.0000000124169,
+          2160.000000016556,
+          2700.000000020695,
+          3510.0000000269033,
+          4590.000000035181,
+          5670.000000043459,
+          7290.000000055877,
+          9450.000000072432,
+          11880.000000091059,
+          15120.000000115891,
+          19170.000000146934,
+          24300.000000186254,
+          31050.000000237993,
+          39420.00000030215,
+          49950.00000038285,
+          63180.000000484266,
+          80190.00000061464,
+          101790.0000007802,
+          129060.00000098922,
+          163620.0000012541,
+          207630.00000159146,
+          263250.00000201777,
+          333720.0000025579,
+          423360.00000324496,
+          536760.0000041141,
+          680400.0000052152,
+          862920.0000066141
+        ],
+        "deviation": [
+          9.868331746220651e-12,
+          3.830634764328543e-12,
+          2.2561122797540932e-12,
+          1.5676961683353193e-12,
+          1.2025130780973853e-12,
+          9.870131664407907e-13,
+          7.455088341869909e-13,
+          6.173595666510981e-13,
+          5.409481619156527e-13,
+          5.137217051079548e-13,
+          4.999869627871134e-13,
+          4.791530306311808e-13,
+          4.393912329358299e-13,
+          3.879485867849137e-13,
+          3.305286815522921e-13,
+          2.8132468710178285e-13,
+          2.4553819919637445e-13,
+          2.1554382516697572e-13,
+          1.7258053764490975e-13,
+          1.0713567024428348e-13,
+          5.403497454120237e-14,
+          3.206866274345872e-14,
+          2.6038935360888653e-14,
+          2.4633414875737622e-14,
+          1.8022506432848618e-14,
+          1.3764766197720671e-14,
+          1.0272839558040873e-14,
+          8.896651934167908e-15,
+          8.235056475622931e-15,
+          6.7759417141620324e-15,
+          6.518994440710395e-15,
+          5.701628764114927e-15
+        ],
+        "terms": [
+          9598,
+          9595,
+          9592,
+          9589,
+          9586,
+          9583,
+          9577,
+          9571,
+          9562,
+          9550,
+          9538,
+          9520,
+          9496,
+          9469,
+          9433,
+          9388,
+          9331,
+          9256,
+          9163,
+          9046,
+          8899,
+          8710,
+          8470,
+          8167,
+          7783,
+          7294,
+          6676,
+          5893,
+          4897,
+          3637,
+          2041,
+          13
+        ]
+      },
+      "TDEV": {
+        "tau_s": [
+          270.0000000020695,
+          540.000000004139,
+          810.0000000062084,
+          1080.000000008278,
+          1350.0000000103475,
+          1620.0000000124169,
+          2160.000000016556,
+          2700.000000020695,
+          3510.0000000269033,
+          4590.000000035181,
+          5670.000000043459,
+          7290.000000055877,
+          9450.000000072432,
+          11880.000000091059,
+          15120.000000115891,
+          19170.000000146934,
+          24300.000000186254,
+          31050.000000237993,
+          39420.00000030215,
+          49950.00000038285,
+          63180.000000484266,
+          80190.00000061464,
+          101790.0000007802,
+          129060.00000098922,
+          163620.0000012541,
+          207630.00000159146,
+          263250.00000201777,
+          333720.0000025579,
+          423360.00000324496,
+          536760.0000041141,
+          680400.0000052152,
+          862920.0000066141
+        ],
+        "deviation": [
+          1.5383206773477072e-09,
+          1.1942737266793545e-09,
+          1.0550792959589043e-09,
+          9.775185891871092e-10,
+          9.372661866210048e-10,
+          9.231607540951145e-10,
+          9.297066083855092e-10,
+          9.623683223879424e-10,
+          1.0962311498261225e-09,
+          1.3613819041332121e-09,
+          1.6367453348575789e-09,
+          2.0166992665942204e-09,
+          2.39730101053072e-09,
+          2.6609087856430125e-09,
+          2.885362047851028e-09,
+          3.113646683004739e-09,
+          3.4448055533038186e-09,
+          3.8639950642555e-09,
+          3.927785931154882e-09,
+          3.089647662388317e-09,
+          1.97103322640469e-09,
+          1.4847059071131797e-09,
+          1.5302687535623986e-09,
+          1.8355053500707665e-09,
+          1.7025150126538817e-09,
+          1.6500546018428491e-09,
+          1.561342774621493e-09,
+          1.714147570336331e-09,
+          2.012870231237605e-09,
+          2.099854379922315e-09,
+          2.5608508700267827e-09,
+          2.8405918993066905e-09
+        ],
+        "terms": [
+          9598,
+          9595,
+          9592,
+          9589,
+          9586,
+          9583,
+          9577,
+          9571,
+          9562,
+          9550,
+          9538,
+          9520,
+          9496,
+          9469,
+          9433,
+          9388,
+          9331,
+          9256,
+          9163,
+          9046,
+          8899,
+          8710,
+          8470,
+          8167,
+          7783,
+          7294,
+          6676,
+          5893,
+          4897,
+          3637,
+          2041,
+          13
+        ]
+      },
+      "OHDEV": {
+        "tau_s": [
+          270.0000000020695,
+          540.000000004139,
+          810.0000000062084,
+          1080.000000008278,
+          1350.0000000103475,
+          1620.0000000124169,
+          2160.000000016556,
+          2700.000000020695,
+          3510.0000000269033,
+          4590.000000035181,
+          5670.000000043459,
+          7290.000000055877,
+          9450.000000072432,
+          11880.000000091059,
+          15120.000000115891,
+          19170.000000146934,
+          24300.000000186254,
+          31050.000000237993,
+          39420.00000030215,
+          49950.00000038285,
+          63180.000000484266,
+          80190.00000061464,
+          101790.0000007802,
+          129060.00000098922,
+          163620.0000012541,
+          207630.00000159146,
+          263250.00000201777,
+          333720.0000025579,
+          423360.00000324496,
+          536760.0000041141,
+          680400.0000052152,
+          862920.0000066141
+        ],
+        "deviation": [
+          1.0332606575825634e-11,
+          5.511911306442092e-12,
+          3.833521869217343e-12,
+          2.9178248328126903e-12,
+          2.3351645176284844e-12,
+          2.018224289175796e-12,
+          1.562330779215345e-12,
+          1.2688466475500264e-12,
+          1.0196227902905092e-12,
+          8.417282842220388e-13,
+          7.624126292855574e-13,
+          7.138630373932824e-13,
+          6.519361514427232e-13,
+          5.902039999899583e-13,
+          5.052269533962333e-13,
+          4.1931878717513747e-13,
+          3.603985736699058e-13,
+          3.2779091163011067e-13,
+          3.0614160651170534e-13,
+          2.30437208492034e-13,
+          1.448450654644487e-13,
+          8.215508626337883e-14,
+          8.298604294136613e-14,
+          8.957868416608972e-14,
+          5.012776554668422e-14,
+          5.054731140284394e-14,
+          2.6554002338641096e-14,
+          2.5146910108061136e-14,
+          2.0720215990077027e-14,
+          2.096298731292801e-14,
+          1.2997041817341285e-14,
+          3.5271679042494052e-15
+        ],
+        "terms": [
+          9597,
+          9594,
+          9591,
+          9588,
+          9585,
+          9582,
+          9576,
+          9570,
+          9561,
+          9549,
+          9537,
+          9519,
+          9495,
+          9468,
+          9432,
+          9387,
+          9330,
+          9255,
+          9162,
+          9045,
+          8898,
+          8709,
+          8469,
+          8166,
+          7782,
+          7293,
+          6675,
+          5892,
+          4896,
+          3636,
+          2040,
+          12
+        ]
+      }
+    }
+  },
+  "telemetry": {
+    "provenance": [
+      {
+        "name": "MHM2010.HMD",
+        "sha256": "40d74c4be797ce864b256348bbe0a7bb6688f9ff51df9bc00e05b0d67148f023",
+        "bytes": 108896581
+      }
+    ],
+    "notes": [
+      "MHM2010.HMD: 362987 timestamp-valid telemetry rows; 0 rejected.",
+      "Alarm/status channels are raw logged values, not decoded booleans."
+    ],
+    "first_mjd": 60774.567766,
+    "last_mjd": 61124.968438
+  },
+  "stable32_raw": {
+    "tau0_s": 270.0000000020695,
+    "grid_error_s": 2.999953268794343,
+    "phase_count": 9600,
+    "frequency_count": 9599,
+    "timetags": "separate CSV",
+    "zero_policy": "Actual zero replaced by 1e-99, never interpreted as missing.",
+    "units": {
+      "PHD": "phase seconds",
+      "FRD": "dimensionless fractional frequency"
+    },
+    "PHD_zero_replacements": 0,
+    "FRD_zero_replacements": 2644
+  },
+  "stable32_residual": {
+    "tau0_s": 270.0000000020695,
+    "grid_error_s": 2.999953268794343,
+    "phase_count": 9600,
+    "frequency_count": 9599,
+    "timetags": "separate CSV",
+    "zero_policy": "Actual zero replaced by 1e-99, never interpreted as missing.",
+    "units": {
+      "PHD": "phase seconds",
+      "FRD": "dimensionless fractional frequency"
+    },
+    "PHD_zero_replacements": 0,
+    "FRD_zero_replacements": 0
+  }
+}
