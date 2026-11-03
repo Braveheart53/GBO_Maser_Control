@@ -1,0 +1,9 @@
+# MHM2010 / T4 Maser Timing Workbench 0.2.0 | Python 3.12 (psutil optional: RAM read-out in the T4 tab)
+numpy>=2.0,<3
+scipy>=1.13,<2
+pandas>=2.2,<4
+astropy>=6.1,<9
+h5py>=3.11,<4
+QtPy>=2.4,<3
+PySide6>=6.7,<7
+pyqtgraph>=0.13.7,<0.15
