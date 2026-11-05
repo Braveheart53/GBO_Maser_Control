@@ -1,5 +1,14 @@
 # Revision History
 
+## Workbench 0.2.2, 2026-11-05
+
+- **Time display.** View > Time display (axes, dates, ranges): MJD (UTC), calendar date-time local, or UTC, ISO 8601 (e.g. `2026-11-05T15:47:13-05:00`; shortcuts Ctrl+Shift+M/L/U). One choice drives every time axis (fit, residual, overview, HMD, reference figures, T4 telemetry, T4 monitoring files), the Start/End/epoch fields (they show and accept the chosen form, including `-5:00`, `Z`, dates or MJD), the run list, results, status bar and audit messages. Data, fits and files stay MJD. Remembered in `workbench_view.ini` and in saved settings. New `time_format.py` and `time_axis.py` 0.0.1 (DST-aware ticks, two-line ISO labels without overlap).
+- **Fit windows.** "Fit window" presets and a Fit menu: last 7, 14, 30, 90 days or all data, enabled only when the data span them; gaps switch on fit-across-gaps (logged). Comparison adds 90 days and skips windows longer than the data (`maser_core.py` 0.2.2: `window_sensitivity(days=...)`).
+- **Veusz files.** Menus and the OUTPUT button say "Veusz .vszh5"; after an export a dialog gives the path with Open in Veusz / Open folder; "Open last export in Veusz"; File > Set Veusz program.
+- **Batch** (`analyze_maser.py` 0.2.2): `--start/--end` accept ISO 8601 with offsets or MJD; `--last-days` must fit in the data; 90-day comparison when spanned; prints `veusz_file`.
+- **Fixes.** MJD tick labels keep the decimals the spacing needs (61349.71, not 61349.7 twice); plot titles readable in Light; run list no longer widens the side panel. `gui_reference.py` 0.0.2, `gui_t4.py` 0.0.3, `gui_t4_logs.py` 0.0.2 (its own x-axis selector replaced by the global setting).
+- **Tests.** 112 pass (103 retained + 9 new). **Docs.** Manual 0.2.2 (28 pages), README, VALIDATION.
+
 ## Workbench 0.2.1, 2026-11-05
 
 - **T4 monitoring files.** New `t4_native.py` 0.0.1 reads the LAN module's own logs from FTP `./Monitoring` (format inferred from the GBO `MonitHCB.dat`: tab-separated, `TIME` in `DD/MM/YY HH:MM:SS` UTC, `Label [unit]` columns). Records stamped before the time-server sync are kept and flagged, never plotted; runs are reported separately. Degree-sign repair, Windows-1252 fallback, date-order warning, interval statistics, rolled-file merge, parallel file reads.

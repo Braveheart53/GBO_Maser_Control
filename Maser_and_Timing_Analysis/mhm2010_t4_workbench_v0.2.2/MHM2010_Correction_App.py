@@ -10,7 +10,7 @@
 ===============================================================================
  Title          : MHM2010 / T4 Maser Timing Workbench
  Filename       : MHM2010_Correction_App.py
- Version        : 0.2.1 (Semantic Versioning 2.0.0, MAJOR.MINOR.PATCH)
+ Version        : 0.2.2 (Semantic Versioning 2.0.0, MAJOR.MINOR.PATCH)
  Author         : William W. Wallace
  Company        : NRAO/GBO
  Created        : 2026-11-03
@@ -34,6 +34,14 @@
                         MONIT telemetry, pages in the analysis bundle. T4 live
                         polling uses local port 14000 by default. DRIFTCOMP
                         note: REBOOT restarts the M&C software (Table 1).
+                  0.2.2 View > Time display: MJD, local or UTC ISO 8601
+                        (e.g. 2026-11-05T15:47:13-05:00) for every time axis,
+                        date field, run list and result text; data stay MJD.
+                        Fit window presets incl. last 30 and 90 days (enabled
+                        only when the data span them) and a Fit menu. Veusz
+                        exports named as such; after an export a dialog gives
+                        the .vszh5 path with Open in Veusz / Open folder.
+                        View preferences kept in workbench_view.ini.
 ===============================================================================
 PURPOSE
 -------
@@ -69,6 +77,8 @@ os.environ.setdefault("PYQTGRAPH_QT_LIB",
                           os.environ["QT_API"].lower(), "PySide6"))
 import sys
 import json
+import shutil
+import subprocess
 from pathlib import Path
 from datetime import datetime, timezone
 import numpy as np
@@ -84,8 +94,9 @@ from maser_plots import reference_set
 from gui_reference import ReferencePlotsWidget
 from gui_t4 import T4TelemetryWidget
 from gui_t4_logs import T4LogsWidget
+from time_axis import TimeAxisItem, TimeEdit, MODES, MODE_NAMES, format_time, span_text, axis_label
 
-__version__ = "0.2.1"
+__version__ = "0.2.2"
 APPLICATION = "MHM2010 / T4 Maser Timing Workbench"
 pg.setConfigOptions(antialias=True, background="#101b29", foreground="#dce5ef")
 MHM_ELIGIBLE = {"MicroSem -> CNS_GPS1": 1, "MicroSem -> CNS2018": 1, "MicroSem -> CNS_GPS2": 1,
@@ -126,6 +137,32 @@ STYLES = {
     """,
 }
 PLOT_COLOURS = {"dark": ("#101b29", "#dce5ef"), "light": ("#ffffff", "#202020")}
+#: Fit-window presets (label, days); None = the blue interval as dragged, "all" = all data.
+FIT_WINDOWS = (("Custom (blue interval)", None), ("Last 7 days", 7), ("Last 14 days", 14),
+               ("Last 30 days", 30), ("Last 90 days", 90), ("All data", "all"))
+#: Window lengths compared by "Compare window lengths" when the data span them.
+COMPARE_DAYS = (90, 30, 21, 14, 7)
+TIME_SHORTCUTS = {"mjd": "Ctrl+Shift+M", "local": "Ctrl+Shift+L", "utc": "Ctrl+Shift+U"}
+
+
+def view_settings() -> QtCore.QSettings:
+    """Theme, time display and Veusz path, kept in workbench_view.ini beside the program.
+
+    MHM_WORKBENCH_VIEW_INI overrides the location (the tests use a temporary file).
+    """
+    path = os.environ.get("MHM_WORKBENCH_VIEW_INI") or str(Path(__file__).with_name("workbench_view.ini"))
+    return QtCore.QSettings(path, QtCore.QSettings.Format.IniFormat)
+
+
+def find_veusz(configured: str = "") -> str:
+    """Veusz executable: the configured path, then PATH, then the usual Windows folders."""
+    candidates = [configured] if configured else []
+    candidates += [shutil.which("veusz") or "", shutil.which("veusz.exe") or ""]
+    for variable in ("ProgramFiles", "ProgramFiles(x86)", "LOCALAPPDATA"):
+        base = os.environ.get(variable)
+        if base:
+            candidates += [str(Path(base)/"Veusz"/"veusz.exe"), str(Path(base)/"Programs"/"Veusz"/"veusz.exe")]
+    return next((c for c in candidates if c and Path(c).is_file()), "")
 
 
 # %% ===========================================================================
@@ -161,7 +198,8 @@ def spin(minimum, maximum, decimals, value):
 
 
 def plot(title, ylabel="Time error (ns)"):
-    widget = pg.PlotWidget(title=title)
+    """Plot whose x data are MJD; the time axis follows View > Time display."""
+    widget = pg.PlotWidget(title=title, axisItems={"bottom": TimeAxisItem("bottom")})
     widget.setLabel("bottom", "MJD (UTC)")
     widget.setLabel("left", ylabel)
     widget.showGrid(x=True, y=True, alpha=0.16)
@@ -196,6 +234,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.t4_native = []                  # 0.2.1: T4 monitoring-file logs
         self.reference = None
         self.theme = "dark"
+        self.time_mode = "mjd"               # 0.2.2: View > Time display
+        self.overview_axes = []
+        self.last_vszh5 = None
+        self._setting_window = False
         self.loading = False
         self.pool = QtCore.QThreadPool.globalInstance()
         self.active_workers = set()
@@ -205,7 +247,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.refit_timer.timeout.connect(self.refit)
         self._build()
         self._menus()
-        self.apply_theme("dark")
+        stored = view_settings()
+        self.apply_theme(stored.value("theme", "dark") if stored.value("theme", "dark") in STYLES else "dark")
+        mode = stored.value("time_display", "mjd")
+        self.apply_time_mode(mode if mode in MODES else "mjd")
         self.setAcceptDrops(True)
 
     def _build(self):
@@ -249,14 +294,28 @@ class MainWindow(QtWidgets.QMainWindow):
         grid.addWidget(self.channel)
         self.run_choice = QtWidgets.QComboBox()
         self.run_choice.currentIndexChanged.connect(self.select_run)
+        self.run_choice.view().setMinimumWidth(720)          # full ISO text in the drop-down
+        self.run_choice.setSizeAdjustPolicy(QtWidgets.QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+        self.run_choice.setMinimumContentsLength(24)          # the side panel keeps its width
+        self.run_choice.setToolTip("Continuous acquisition runs of the selected channel (times in the "
+                                   "View > Time display format)")
         grid.addWidget(self.run_choice)
         side_layout.addWidget(inputs)
         fit_box = QtWidgets.QGroupBox("FIT SELECTION")
         form = QtWidgets.QFormLayout(fit_box)
-        self.low = spin(1, 100000, 9, 60000)
-        self.high = spin(1, 100000, 9, 60001)
-        form.addRow("Start MJD", self.low)
-        form.addRow("End MJD", self.high)
+        self.window_choice = QtWidgets.QComboBox()
+        for label, days in FIT_WINDOWS:
+            self.window_choice.addItem(label, days)
+        self.window_choice.setToolTip("Fit the last 7/14/30/90 days or all data, ending at the last sample. "
+                                      "A window is offered only when the loaded data span it.")
+        self.window_choice.activated.connect(self.apply_window)
+        form.addRow("Fit window", self.window_choice)
+        self.low = TimeEdit(60000.0)
+        self.high = TimeEdit(60001.0)
+        self.low_label = QtWidgets.QLabel("Start MJD")
+        self.high_label = QtWidgets.QLabel("End MJD")
+        form.addRow(self.low_label, self.low)
+        form.addRow(self.high_label, self.high)
         self.low.valueChanged.connect(self.numeric_selection)
         self.high.valueChanged.connect(self.numeric_selection)
         self.order = QtWidgets.QComboBox()
@@ -282,15 +341,18 @@ class MainWindow(QtWidgets.QMainWindow):
         clear_button = QtWidgets.QPushButton("Clear exclusions")
         clear_button.clicked.connect(self.clear_exclusions)
         form.addRow(exclude_button, clear_button)
-        sensitivity_button = QtWidgets.QPushButton("Compare 7 / 14 / 21 / 30 day fits")
+        sensitivity_button = QtWidgets.QPushButton("Compare 7 / 14 / 21 / 30 / 90-day fits")
+        sensitivity_button.setToolTip("Quadratic fits of the trailing windows ending at the selected end; "
+                                      "windows longer than the data are skipped. Results go to the audit tab.")
         sensitivity_button.clicked.connect(self.compare_windows)
         form.addRow(sensitivity_button)
         side_layout.addWidget(fit_box)
         state_box = QtWidgets.QGroupBox("SETTINGS AT APPLICATION EPOCH")
         state = QtWidgets.QFormLayout(state_box)
-        self.apply_epoch = spin(1, 100000, 9, 60000)
+        self.apply_epoch = TimeEdit(60000.0)
         self.apply_epoch.valueChanged.connect(self.refresh_candidate)
-        state.addRow("MJD UTC", self.apply_epoch)
+        self.epoch_label = QtWidgets.QLabel("MJD UTC")
+        state.addRow(self.epoch_label, self.apply_epoch)
         self.dds = QtWidgets.QLineEdit()
         self.dds.setPlaceholderText("Required: nnnn.nnnnnnn")
         self.dds.textChanged.connect(self.refresh_candidate)
@@ -352,9 +414,19 @@ class MainWindow(QtWidgets.QMainWindow):
         export_layout = QtWidgets.QVBoxLayout(export_box)
         self.stable32_check = QtWidgets.QCheckBox("Include Stable32 phase + fractional frequency")
         export_layout.addWidget(self.stable32_check)
-        export_button = QtWidgets.QPushButton("Export new analysis folder")
+        export_button = QtWidgets.QPushButton("Export analysis: Veusz .vszh5 + CSV/JSON…")
+        export_button.setToolTip("File > Export analysis folder (Ctrl+E)")
         export_button.clicked.connect(self.choose_export)
         export_layout.addWidget(export_button)
+        export_note = QtWidgets.QLabel("Creates a NEW folder <maser>_analysis_<time> with analysis.vszh5 "
+                                       "(open in Veusz; every time page against MJD and local ISO time), "
+                                       "CSV, JSON, review.md and optional Stable32 files.")
+        export_note.setWordWrap(True)
+        export_layout.addWidget(export_note)
+        self.open_veusz_button = QtWidgets.QPushButton("Open last export in Veusz")
+        self.open_veusz_button.setEnabled(False)
+        self.open_veusz_button.clicked.connect(lambda: self.open_in_veusz(self.last_vszh5))
+        export_layout.addWidget(self.open_veusz_button)
         config_button = QtWidgets.QPushButton("Save / load analysis settings")
         config_button.clicked.connect(self.config_menu)
         export_layout.addWidget(config_button)
@@ -480,8 +552,11 @@ class MainWindow(QtWidgets.QMainWindow):
         for text, slot, shortcut in (("Open timing files (FITS / Franks)…", self.choose_timing, "Ctrl+O"),
                                      ("Open MHM2010 HMD telemetry…", self.choose_hmd, "Ctrl+H"),
                                      ("Open T4 telemetry or monitoring files…", self.choose_t4, "Ctrl+T"),
-                                     ("Export analysis folder…", self.choose_export, "Ctrl+E"),
-                                     ("Export T4 telemetry…", self.export_t4, ""),
+                                     ("Export analysis folder (Veusz .vszh5, CSV, JSON, Stable32)…",
+                                      self.choose_export, "Ctrl+E"),
+                                     ("Export T4 data (Veusz .vszh5, CSV, JSON)…", self.export_t4, "Ctrl+Shift+E"),
+                                     ("Open last export in Veusz", lambda: self.open_in_veusz(self.last_vszh5), ""),
+                                     ("Set Veusz program…", self.choose_veusz, ""),
                                      ("Save / load analysis settings…", self.config_menu, "")):
             action = file_menu.addAction(text, slot)
             if shortcut:
@@ -499,9 +574,30 @@ class MainWindow(QtWidgets.QMainWindow):
             action.triggered.connect(lambda _=False, theme=name: self.apply_theme(theme))
             group.addAction(action)
             self.theme_actions[name] = action
+        time_menu = view.addMenu("Time display (axes, dates, ranges)")
+        time_group = QtGui.QActionGroup(self)
+        self.time_actions = {}
+        for mode in MODES:
+            example = {"mjd": "61349.86612", "local": "2026-11-05T15:47:13-05:00",
+                       "utc": "2026-11-05T20:47:13+00:00"}[mode]
+            action = time_menu.addAction(f"{MODE_NAMES[mode]}   e.g. {example}")
+            action.setCheckable(True)
+            action.setShortcut(TIME_SHORTCUTS[mode])
+            action.triggered.connect(lambda _=False, mode=mode: self.apply_time_mode(mode))
+            time_group.addAction(action)
+            self.time_actions[mode] = action
+        self.time_actions["mjd"].setChecked(True)
+        view.addSeparator()
         for index in range(self.tabs.count()):
             view.addAction(f"Go to {self.tabs.tabText(index)}",
                            lambda index=index: self.tabs.setCurrentIndex(index))
+        fit_menu = bar.addMenu("F&it")
+        for label, days in FIT_WINDOWS[1:]:
+            action = fit_menu.addAction(f"Fit window: {label.lower()}")
+            action.triggered.connect(lambda _=False, days=days: self.set_window(days))
+        fit_menu.addSeparator()
+        fit_menu.addAction("Compare window lengths (7 to 90 days)", self.compare_windows)
+        self.fit_menu = fit_menu
         t4_menu = bar.addMenu("&T4")
         t4_menu.addAction("Read synthesizer and DRIFTCOMP state (read-only)", self.t4_widget.read_state)
         t4_menu.addAction("Start read-only polling", self.t4_widget.start)
@@ -533,12 +629,78 @@ class MainWindow(QtWidgets.QMainWindow):
             for side in ("left", "bottom"):
                 widget.getAxis(side).setPen(pg.mkPen(foreground))
                 widget.getAxis(side).setTextPen(pg.mkPen(foreground))
+        for widget in widgets:                              # titles were faint in Light
+            item = widget.getPlotItem()
+            item.titleLabel.setText(item.titleLabel.text, color=foreground)
         self.overview.setBackground(background)
+        for item in self.overview.ci.items:
+            if isinstance(item, pg.PlotItem):
+                item.titleLabel.setText(item.titleLabel.text, color=foreground)
+                for side in ("left", "bottom"):
+                    item.getAxis(side).setPen(pg.mkPen(foreground))
+                    item.getAxis(side).setTextPen(pg.mkPen(foreground))
         self.reference_widget.set_theme(theme)
         self.t4_widget.set_theme(background, foreground)
         self.t4_logs_widget.set_theme(background, foreground)
         if hasattr(self, "theme_actions"):
             self.theme_actions[theme].setChecked(True)
+        view_settings().setValue("theme", theme)
+
+    # ------------------------------------------------------------ time display
+    def time_axes(self) -> list:
+        """Every MJD time axis of the main window (other tabs handle their own)."""
+        axes = [widget.getAxis("bottom") for widget in (self.phase_plot, self.residual_plot,
+                                                         self.telemetry_plot, self.dds_plot)]
+        return axes + self.overview_axes
+
+    def time_text(self, mjd: float) -> str:
+        """One time in the current display; calendar text keeps the MJD in brackets for audit."""
+        if self.time_mode == "mjd":
+            return f"MJD {mjd:.9f}"
+        return f"{format_time(mjd, self.time_mode)} (MJD {mjd:.6f})"
+
+    def apply_time_mode(self, mode: str):
+        """View > Time display: MJD, local or UTC ISO 8601 everywhere; the data stay in MJD."""
+        if mode not in MODES:
+            raise ValueError(f"time display must be one of {MODES}")
+        self.time_mode = mode
+        for edit in (self.low, self.high, self.apply_epoch):
+            edit.blockSignals(True)
+            edit.set_mode(mode)
+            edit.blockSignals(False)
+        names = {"mjd": ("Start MJD", "End MJD", "MJD UTC"),
+                 "local": ("Start (local)", "End (local)", "Epoch (local)"),
+                 "utc": ("Start (UTC)", "End (UTC)", "Epoch (UTC)")}[mode]
+        for label, text in zip((self.low_label, self.high_label, self.epoch_label), names, strict=True):
+            label.setText(text)
+        for axis in self.time_axes():
+            axis.set_mode(mode)
+        self.update_time_labels()
+        self.reference_widget.set_time_mode(mode)
+        self.t4_widget.set_time_mode(mode)
+        self.t4_logs_widget.set_time_mode(mode)
+        self.relabel_runs()
+        self.draw_overview()
+        self.draw_telemetry()
+        self.refresh_candidate()
+        if hasattr(self, "time_actions"):
+            self.time_actions[mode].setChecked(True)
+        view_settings().setValue("time_display", mode)
+
+    def update_time_labels(self):
+        """Axis titles of the fit, residual and HMD plots for the current display."""
+        low = high = None
+        if self.series is not None and len(self.series.mjd):
+            low, high = float(self.series.mjd[0]), float(self.series.mjd[-1])
+        for widget in (self.phase_plot, self.residual_plot):
+            widget.setLabel("bottom", axis_label(self.time_mode, low, high))
+        if self.telemetry is not None:
+            frame = self.telemetry.frame
+            label = axis_label(self.time_mode, float(frame.MJD.min()), float(frame.MJD.max()))
+        else:
+            label = axis_label(self.time_mode)
+        for widget in (self.telemetry_plot, self.dds_plot):
+            widget.setLabel("bottom", label)
 
     def maser_kind(self) -> str:
         return "T4" if self.maser.currentIndex() == 1 else "MHM2010"
@@ -647,6 +809,7 @@ class MainWindow(QtWidgets.QMainWindow):
         try:
             export_t4_only(target, self.t4, self.t4_native)
             self.log(f"Created {target.name}.")
+            self.export_done(target, "t4_telemetry.vszh5")
         except Exception as error:
             self.error(str(error))
 
@@ -704,16 +867,84 @@ class MainWindow(QtWidgets.QMainWindow):
         self.run_choice.blockSignals(True)
         self.run_choice.clear()
         runs = segments(self.series.mjd)
-        for number, indices in enumerate(runs):
-            self.run_choice.addItem(f"Run {number+1}: {len(indices)} samples / "
-                                    f"{self.series.mjd[indices[-1]]-self.series.mjd[indices[0]]:.2f} d", indices)
+        self.runs = runs
+        for indices in runs:
+            self.run_choice.addItem("", indices)
         if len(runs) > 1:
-            everything = np.arange(len(self.series.mjd))
-            self.run_choice.addItem(f"All data: {len(everything)} samples, {len(runs)} runs (needs gap bridging)",
-                                    everything)
+            self.run_choice.addItem("", np.arange(len(self.series.mjd)))
+        self.relabel_runs()
         self.run_choice.setCurrentIndex(len(runs)-1)
         self.run_choice.blockSignals(False)
+        self.update_window_choices()
+        self.update_time_labels()
         self.select_run(self.run_choice.currentIndex())
+
+    def relabel_runs(self):
+        """Run list text in the current time display (data unchanged)."""
+        if self.series is None or not getattr(self, "runs", None):
+            return
+        mjd = self.series.mjd
+        for number, indices in enumerate(self.runs):
+            low, high = mjd[indices[0]], mjd[indices[-1]]
+            self.run_choice.setItemText(number, f"Run {number+1}: {len(indices)} samples, {high-low:.2f} d, "
+                                                f"{span_text(low, high, self.time_mode)}")
+        if len(self.runs) > 1:
+            self.run_choice.setItemText(len(self.runs),
+                                        f"All data: {len(mjd)} samples, {len(self.runs)} runs, "
+                                        f"{span_text(mjd[0], mjd[-1], self.time_mode)} (needs gap bridging)")
+
+    # ------------------------------------------------------------ fit windows
+    def update_window_choices(self):
+        """Enable a preset only if the loaded data span it ("if the data is present")."""
+        model = self.window_choice.model()
+        span = float(self.series.mjd[-1]-self.series.mjd[0]) if self.series is not None else 0.0
+        for row in range(self.window_choice.count()):
+            days = self.window_choice.itemData(row)
+            item = model.item(row)
+            if isinstance(days, (int, float)):
+                available = span >= days - 0.01
+                item.setEnabled(available)
+                item.setToolTip(f"Last {days} days, ending at the last sample." if available else
+                                f"Needs {days} days of data; the loaded channel spans {span:.2f} days.")
+            elif days == "all":
+                item.setEnabled(self.series is not None)
+        self.window_choice.setCurrentIndex(0)
+
+    def set_window(self, days):
+        """Fit menu / preset: last N days (or all data) ending at the last sample."""
+        index = next(i for i in range(self.window_choice.count()) if self.window_choice.itemData(i) == days)
+        self.apply_window(index)
+
+    def apply_window(self, index: int):
+        days = self.window_choice.itemData(index)
+        if self.series is None:
+            self.error("Load timing files first.")
+            return
+        if days is None:
+            return
+        mjd = self.series.mjd
+        high = float(mjd[-1])
+        span = high - float(mjd[0])
+        if days != "all" and span < days - 0.01:
+            self.window_choice.setCurrentIndex(0)
+            self.error(f"Last {days} days needs {days} days of data; the loaded channel spans {span:.2f} days.")
+            return
+        low = float(mjd[0]) if days == "all" else high - float(days)
+        inside = mjd[(mjd >= low) & (mjd <= high)]
+        gaps = len(segments(inside)) - 1
+        if gaps > 0 and not self.bridge.isChecked():
+            self.bridge.setChecked(True)
+            self.log(f"Fit window contains {gaps} acquisition gap(s): fit across gaps enabled (see the plot).")
+        self.window_choice.setCurrentIndex(index)
+        self._setting_window = True
+        self.region.setBounds((float(mjd[0]), high))
+        self.region.setRegion((low, high))
+        self._setting_window = False
+        self.apply_epoch.setValue(high)
+        self.phase_plot.setXRange(low, high, padding=0.02)
+        label = "All data" if days == "all" else f"Last {days} days"
+        self.log(f"Fit window: {label}, {span_text(low, high, self.time_mode)} ({inside.size} samples).")
+        self.refit()
 
     def select_run(self, index):
         if self.series is None or index < 0:
@@ -725,6 +956,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.exclude_region.setRegion((float(low+(high-low)*0.45), float(low+(high-low)*0.55)))
         self.apply_epoch.setValue(float(high))
         self.phase_plot.setXRange(low, high, padding=0.02)
+        self.window_choice.setCurrentIndex(0)
         self.refit()
 
     def numeric_selection(self):
@@ -737,6 +969,8 @@ class MainWindow(QtWidgets.QMainWindow):
             control.blockSignals(True)
             control.setValue(value)
             control.blockSignals(False)
+        if not self._setting_window:
+            self.window_choice.setCurrentIndex(0)          # dragged by hand: custom interval
         self.queue_fit()
 
     def queue_fit(self, *_):
@@ -746,7 +980,9 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def add_exclusion(self):
         self.exclusions.append(tuple(self.exclude_region.getRegion()))
-        self.log(f"Excluded MJD interval {self.exclusions[-1]}.")
+        low, high = self.exclusions[-1]
+        self.log(f"Excluded {span_text(low, high, self.time_mode)}"
+                 + ("" if self.time_mode == "mjd" else f" (MJD {low:.6f} to {high:.6f})") + ".")
         self.refit()
 
     def clear_exclusions(self):
@@ -830,7 +1066,7 @@ class MainWindow(QtWidgets.QMainWindow):
         eligible, expected_sign, reason = self.eligibility()
         self.update_reference(eligible and sign == expected_sign, sign)
         lines = [f"{maser} | {self.series.label} | {int(fit.used.sum())} fitted samples | RMS {fit.rms_ns:.4g} ns",
-                 f"At MJD {self.apply_epoch.value():.9f}: y = {sign*frequency:+.7e}",
+                 f"At {self.time_text(self.apply_epoch.value())}: y = {sign*frequency:+.7e}",
                  (f"dy/day = {sign*drift:+.7e} = {sign*drift*1e18:+.4f} parts in 1e18/day"
                   if fit.order == 2 else "Linear fit: drift is not estimated; do not change the drift setting.")]
         reasons = []
@@ -907,8 +1143,8 @@ class MainWindow(QtWidgets.QMainWindow):
         lines.extend(reasons)
         lines.append("Conditional OLS uncertainties only; see audit/manual. GPS noise is included.")
         self.results.setPlainText("\n".join(lines))
-        self.statusBar().showMessage(f"Fit epoch MJD {fit.epoch_mjd:.9f} | {int(fit.used.sum())} points | "
-                                     "no maser writes")
+        self.statusBar().showMessage(f"Fit epoch {self.time_text(fit.epoch_mjd)} | {int(fit.used.sum())} "
+                                     "points | no maser writes")
 
     def nearest_dds(self):
         if self.telemetry is None:
@@ -923,16 +1159,25 @@ class MainWindow(QtWidgets.QMainWindow):
         value = frame.ExtSynth_32.iloc[position]
         self.dds.setText(f"{value:.7f}")
         self.confirm.setChecked(False)
-        self.log(f"Copied historical HMD DDS from MJD {frame.MJD.iloc[position]:.9f}; drift remains operator-supplied.")
+        self.log(f"Copied historical HMD DDS from {self.time_text(float(frame.MJD.iloc[position]))}; "
+                 "drift remains operator-supplied.")
 
     def draw_overview(self):
         self.overview.clear()
+        self.overview_axes = []
         if self.collection is None:
             return
         for index, (name, series) in enumerate(overview_series(self.collection).items()):
-            pane = self.overview.addPlot(row=index//3, col=index%3, title=name)
+            axis = TimeAxisItem("bottom", self.time_mode)
+            self.overview_axes.append(axis)
+            pane = self.overview.addPlot(row=index//3, col=index%3, axisItems={"bottom": axis})
+            pane.setTitle(name, color=PLOT_COLOURS[self.theme][1])
+            for side in ("left", "bottom"):
+                pane.getAxis(side).setPen(pg.mkPen(PLOT_COLOURS[self.theme][1]))
+                pane.getAxis(side).setTextPen(pg.mkPen(PLOT_COLOURS[self.theme][1]))
             pane.setLabel("left", "ns")
-            pane.setLabel("bottom", "MJD UTC")
+            pane.setLabel("bottom", axis_label(self.time_mode, *((float(series.mjd[0]), float(series.mjd[-1]))
+                                                                 if len(series.mjd) else (None, None))))
             pane.showGrid(x=True, y=True, alpha=0.15)
             pane.plot(series.mjd, series.phase_s*1e9, pen=pg.mkPen("#67b7d5"))
 
@@ -950,8 +1195,9 @@ class MainWindow(QtWidgets.QMainWindow):
         events = telemetry_events(self.telemetry)
         self.dds_plot.plot(events.MJD.to_numpy(), events.ExtSynth_32.to_numpy(), pen=None, symbol="o",
                            symbolBrush="#e78179", symbolSize=6)
+        self.update_time_labels()
         self.telemetry_label.setText(
-            f"HMD MJD {frame.MJD.min():.6f} to {frame.MJD.max():.6f}; {len(frame)} rows; "
+            f"HMD {span_text(float(frame.MJD.min()), float(frame.MJD.max()), self.time_mode)}; {len(frame)} rows; "
             f"{len(events)} DDS/selector events (>50 DDS least-significant digits for steps). "
             "Alarm/status voltages are not decoded booleans. A gradual ramp is not a step.")
 
@@ -986,9 +1232,15 @@ class MainWindow(QtWidgets.QMainWindow):
             self.error("Select a continuous interval first.")
             return
         try:
-            rows = window_sensitivity(self.series, self.low.value(), self.high.value(), self.exclusions,
-                                      self.bridge.isChecked(), self.maser_kind())
-            self.log("Window sensitivity: unclipped quadratic fits; raw channel sign; not a confidence interval.")
+            end = self.high.value()
+            available = end - float(self.series.mjd[0])
+            days = tuple(d for d in COMPARE_DAYS if available >= d - 0.01)
+            skipped = [d for d in COMPARE_DAYS if d not in days]
+            rows = window_sensitivity(self.series, float(self.series.mjd[0]), end, self.exclusions,
+                                      self.bridge.isChecked(), self.maser_kind(), days=days)
+            self.log(f"Window sensitivity ending {self.time_text(end)}: unclipped quadratic fits; raw channel "
+                     "sign; not a confidence interval."
+                     + (f" Skipped (data too short): {', '.join(f'{d} d' for d in skipped)}." if skipped else ""))
             for row in rows:
                 self.log(f"{row['requested_days']} d requested / {row['actual_span_days']:.3f} d actual: "
                          f"y(end)={row['fractional_frequency_at_end']:+.5e}, "
@@ -1017,7 +1269,10 @@ class MainWindow(QtWidgets.QMainWindow):
                 "t4_driftcomp": self.t4_driftcomp.text(), "t4_setfsrel_convention": self.t4_convention.currentIndex(),
                 "reference_labels": self.reference_widget.labels(), "theme": self.theme,
                 # 0.2.1
-                "t4_monitoring_reader": self.t4_logs_widget.reader_options()}
+                "t4_monitoring_reader": self.t4_logs_widget.reader_options(),
+                # 0.2.2
+                "time_display": self.time_mode,
+                "fit_window": self.window_choice.currentText()}
 
     def choose_export(self):
         if self.fit is None:
@@ -1036,9 +1291,55 @@ class MainWindow(QtWidgets.QMainWindow):
                           self.t4, (self.series.label.split(" -> ")[-1],) if self.maser_kind() == "T4" else (),
                           self.t4_native)
             self.log(f"Created {target.name}; no existing files replaced.")
-            QtWidgets.QMessageBox.information(self, "Export complete", f"Created {target}")
+            self.export_done(target, "analysis.vszh5")
         except Exception as error:
             self.error(str(error))
+
+    # ----------------------------------------------------------------- Veusz
+    def export_done(self, folder: Path, vszh5_name: str):
+        """Tell the operator where the Veusz file is; offer to open it (non-blocking dialog)."""
+        vszh5 = Path(folder)/vszh5_name
+        self.last_vszh5 = vszh5
+        self.open_veusz_button.setEnabled(True)
+        self.log(f"Veusz file: {vszh5}")
+        box = QtWidgets.QMessageBox(self)
+        box.setWindowTitle("Export complete")
+        box.setIcon(QtWidgets.QMessageBox.Icon.Information)
+        box.setText(f"Veusz file:\n{vszh5}\n\nFolder (CSV, JSON, review.md):\n{folder}")
+        box.setDetailedText("\n".join(sorted(p.name for p in Path(folder).iterdir())))
+        open_veusz = box.addButton("Open in Veusz", QtWidgets.QMessageBox.ButtonRole.ActionRole)
+        open_folder = box.addButton("Open folder", QtWidgets.QMessageBox.ButtonRole.ActionRole)
+        box.addButton(QtWidgets.QMessageBox.StandardButton.Close)
+
+        def clicked(button):
+            if button is open_veusz:
+                self.open_in_veusz(vszh5)
+            elif button is open_folder:
+                QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(str(folder)))
+        box.buttonClicked.connect(clicked)
+        box.open()
+        self.export_box = box
+
+    def choose_veusz(self) -> str:
+        name, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Locate the Veusz program (veusz.exe)", "",
+                                                        "Programs (*.exe);;All files (*)")
+        if name:
+            view_settings().setValue("veusz_program", name)
+        return name
+
+    def open_in_veusz(self, vszh5):
+        """Start Veusz on a .vszh5 (Veusz 3.6 or later opens HDF5 documents directly)."""
+        if not vszh5 or not Path(vszh5).is_file():
+            self.error("No exported .vszh5 yet: use File > Export analysis folder (Ctrl+E) first.")
+            return
+        program = find_veusz(str(view_settings().value("veusz_program", "") or ""))
+        if not program:
+            program = self.choose_veusz()
+        if not program:
+            self.error(f"Veusz was not found. Open this file in Veusz yourself:\n{vszh5}")
+            return
+        subprocess.Popen([program, str(vszh5)], close_fds=True)
+        self.log(f"Opened {Path(vszh5).name} in Veusz ({program}).")
 
     def config_menu(self):
         choice = QtWidgets.QMessageBox.question(self, "Analysis settings",
@@ -1086,6 +1387,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self.t4_logs_widget.date_order.setCurrentText(reader["date_order"])
         if reader.get("earliest_valid"):
             self.t4_logs_widget.earliest.setDate(QtCore.QDate.fromString(reader["earliest_valid"], "yyyy-MM-dd"))
+        if settings.get("time_display") in MODES:
+            self.apply_time_mode(settings["time_display"])
         self.confirm.setChecked(False)
         self.state_review.setChecked(False)
         self.refit()

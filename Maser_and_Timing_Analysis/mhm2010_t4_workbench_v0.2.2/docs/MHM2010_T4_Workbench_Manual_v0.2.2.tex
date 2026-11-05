@@ -1,10 +1,12 @@
 % !TEX program = lualatex
 % MHM2010 Correction Workbench documentation
-% Version: 0.2.1 | Author: William W. Wallace | Created: 2026-11-03 | Modified: 2026-11-05
+% Version: 0.2.2 | Author: William W. Wallace | Created: 2026-11-03 | Modified: 2026-11-05
 % Revision: 0.1.0 Initial operator manual, validation and equation appendix.
 %           0.2.0 T4 iMaser 3000, reference 1 PPS figures, MJD/local time axes.
 %           0.2.1 T4 monitoring files (FTP ./Monitoring), operator reboot
 %                 script, local UDP port 14000, REBOOT wording and page cites.
+%           0.2.2 View > Time display (MJD / ISO 8601 local / UTC), fit
+%                 windows (last 30 and 90 days), where the Veusz files are.
 % Build twice: lualatex -interaction=nonstopmode -halt-on-error <this file>
 \documentclass[11pt,a4paper]{article}
 \usepackage[margin=19mm,headheight=16pt]{geometry}
@@ -29,12 +31,12 @@
 \pagestyle{fancy}
 \fancyhf{}
 \fancyhead[L]{\sffamily\small MHM2010 / T4 MASER TIMING WORKBENCH}
-\fancyhead[R]{\sffamily\small 0.2.1}
+\fancyhead[R]{\sffamily\small 0.2.2}
 \fancyfoot[L]{\sffamily\footnotesize Engineering analysis; no maser writes}
 \fancyfoot[R]{\sffamily\footnotesize\thepage}
 \renewcommand{\headrulewidth}{0.4pt}
 \hypersetup{pdftitle={MHM2010 / T4 Maser Timing Workbench: Operator and Scientific Manual},
- pdfauthor={William W. Wallace},pdfsubject={Version 0.2.1, Python 3.12, MHM2010 and T4 iMaser 3000}}
+ pdfauthor={William W. Wallace},pdfsubject={Version 0.2.2, Python 3.12, MHM2010 and T4 iMaser 3000}}
 \lstset{basicstyle=\ttfamily\small,breaklines=true,frame=single,
  backgroundcolor=\color{light},rulecolor=\color{teal},columns=fullflexible}
 \newcommand{\manual}{\href{https://www.gb.nrao.edu/~fghigo/timer/MSMmaser/Maser_UG_75666-201_Rev_J.PDF}{[1]}}
@@ -62,7 +64,7 @@ the T4's own monitoring files,\\
 stability and native Veusz output against MJD and local ISO time.\par}
 \vspace{12mm}
 \begin{tabular}{@{}ll@{}}
-Application version & 0.2.1 (0.2.0 and 0.1.0 content retained below)\\
+Application version & 0.2.2 (0.2.1, 0.2.0 and 0.1.0 content retained below)\\
 Bundled writer & \texttt{vszh5\_writer.py} 0.0.24 (built on master 0.0.23)\\
 Author & William W. Wallace\\
 Date & November 5, 2026\\
@@ -696,6 +698,113 @@ applying these equations; raw mode removes only a constant for numerical
 convenience.
 \clearpage
 
+\section{What is new in release 0.2.2}
+\begin{itemize}
+\item \textbf{View $\rightarrow$ Time display (axes, dates, ranges)}: MJD (UTC), calendar date-time
+local, or calendar date-time UTC, both ISO 8601 (e.g.\ \texttt{2026-11-05T15:47:13-05:00}). One choice
+drives every time axis, every date field, the run list and the result text (next section).
+\item \textbf{Fit windows}: ``Fit window'' presets and a Fit menu with the last 7, 14, 30 and 90 days
+or all data, each offered only when the loaded data span it; comparison now includes 90 days.
+\item \textbf{Veusz output named}: File $\rightarrow$ Export analysis folder (Veusz .vszh5, CSV, JSON,
+Stable32) and Export T4 data (Veusz .vszh5, CSV, JSON); afterwards a dialog gives the
+\texttt{.vszh5} path with Open in Veusz and Open folder (section ``Where the Veusz files are'').
+\item MJD tick labels keep the decimals the spacing needs (61349.71, not 61349.7 twice); plot
+titles are readable in the Light theme.
+\end{itemize}
+
+\section{Time display: MJD or ISO 8601 calendar time}
+\subsection{Use}
+Choose \textbf{View $\rightarrow$ Time display (axes, dates, ranges)}:
+\begin{center}
+\small
+\begin{tabular}{@{}lll@{}}
+\toprule
+Menu entry & Example & Shortcut\\
+\midrule
+MJD (UTC) & \texttt{61349.86612} & Ctrl+Shift+M\\
+Calendar date-time, local (ISO 8601) & \texttt{2026-11-05T15:47:13-05:00} & Ctrl+Shift+L\\
+Calendar date-time, UTC (ISO 8601) & \texttt{2026-11-05T20:47:13+00:00} & Ctrl+Shift+U\\
+\bottomrule
+\end{tabular}
+\end{center}
+\includegraphics[width=.75\linewidth]{../validation/gui_view_time_display_menu.png}
+
+The choice applies at once to: the fit, residual, HMD, overview, reference-figure, T4 telemetry and
+T4 monitoring-file axes; the Start, End and application-epoch fields (they show and accept the chosen
+form); the run list; the result text and status bar (calendar times keep the MJD in brackets for the
+audit trail); and audit messages. It is remembered in \texttt{workbench\_view.ini} beside the program and
+saved with the analysis settings. The data, fits and exported numbers are always MJD (UTC); only the
+display changes. The \texttt{.vszh5} always contains every time page against both MJD and local ISO time.
+
+\textbf{Typing a time.} In calendar modes a field accepts \texttt{2026-11-05T15:47:13-05:00}, the one-digit
+offset \texttt{-5:00}, \texttt{Z}, a date alone, a time without offset (read as local in local mode, UTC in
+UTC mode) or a plain MJD. Up/down steps one hour (one day in MJD mode). The batch script's
+\texttt{--start}/\texttt{--end} accept the same forms (no offset = UTC).
+
+\subsection{Conversion and ticks}
+\[
+t^{\mathrm{Unix}}=(\mathrm{MJD}-40587)\times86400\ \mathrm{s},\qquad
+t^{\mathrm{local}}=t^{\mathrm{Unix}}+\Delta_{\mathrm{local}}(t^{\mathrm{Unix}}),
+\]
+with $\Delta_{\mathrm{local}}$ the computer's UTC offset at that instant ($-4$~h in summer, $-5$~h in
+winter at Green Bank), so a July time shows \texttt{-04:00} and a November time \texttt{-05:00}. Ticks
+fall on round calendar times (pyqtgraph's date logic, daylight-saving aware) and are labelled with
+the full ISO time on two lines (date, then \texttt{Thh:mm:ss$\pm$hh:mm}); ticks closer than one label
+width are dropped so labels never overlap. The axis title gives the offsets in the range, e.g.\
+``Local date-time, ISO 8601 (UTC$-$05:00 then $-$04:00)''. ``Julian'' in common speech often means
+this calendar view; strictly, MJD is the Julian-day count (JD$-$2\,400\,000.5) and the calendar
+dates are Gregorian.
+
+\begin{center}
+\includegraphics[width=.95\linewidth]{../validation/gui_time_display_local_90d_light.png}\\
+{\small Local ISO 8601 display, last 90 days of the 2026 Franks MSM-GPS channel (Light theme).}
+\end{center}
+
+\section{Fit windows: last 30 and 90 days}
+FIT SELECTION $\rightarrow$ \textbf{Fit window} (or the \textbf{Fit} menu) sets the blue interval to the
+last 7, 14, 30 or 90 days ending at the last sample, or to all data, and moves the application epoch to
+the last sample. A preset is enabled only when the loaded channel spans it (its tooltip gives the span
+otherwise). If the window contains acquisition gaps, ``Allow fit across acquisition gaps'' is switched
+on and logged; check the plot for phase steps. Dragging the blue interval returns to ``Custom''.
+\textbf{Compare 7/14/21/30/90-day fits} (or Fit $\rightarrow$ Compare window lengths) fits each trailing
+window ending at the selected end, skipping windows longer than the data; results go to the audit tab.
+In batch, \texttt{--last-days 30} or \texttt{90} does the same and stops if the data are shorter.
+
+On the 2026 Franks MSM-GPS data (193 days), the 90-day quadratic window ending 2026-07-13 02:29 UTC
+gives $y=-2.38\times10^{-14}$ and drift $-413$ parts in $10^{18}$/day with 14.2~ns RMS; the 30-day
+window gives $y=-3.71\times10^{-14}$, $-686$ parts in $10^{18}$/day and 3.6~ns RMS. The difference is
+the window sensitivity this comparison exists to expose; the 90-day window spans gaps and a visible
+phase excursion in April.
+
+\section{Where the Veusz files are}
+The \texttt{.vszh5} files are written only by an export, always into a \emph{new} folder:
+\begin{center}
+\small
+\begin{tabular}{@{}p{.36\linewidth}p{.58\linewidth}@{}}
+\toprule
+Action & Result\\
+\midrule
+File $\rightarrow$ Export analysis folder (Ctrl+E), or OUTPUT $\rightarrow$ ``Export analysis: Veusz
+.vszh5 + CSV/JSON'' & \texttt{<parent>/<MHM2010|T4>\_analysis\_}\allowbreak\texttt{<YYYYMMDDTHHMMSS$\pm$hhmm>/}\allowbreak\texttt{analysis.vszh5}
+(needs a valid fit)\\
+File $\rightarrow$ Export T4 data (Ctrl+Shift+E), or the T4 tabs' export buttons &
+\texttt{<parent>/T4\_telemetry\_export\_<time>/}\allowbreak\texttt{t4\_telemetry.vszh5}\\
+\texttt{analyze\_maser.py \dots --output DIR} & \texttt{DIR/analysis.vszh5} (path printed as
+\texttt{veusz\_file})\\
+\texttt{t4\_native.py FILES --output DIR} & \texttt{DIR/t4\_telemetry.vszh5}\\
+\bottomrule
+\end{tabular}
+\end{center}
+After a GUI export a dialog shows the full path with \textbf{Open in Veusz} and \textbf{Open folder};
+``Open last export in Veusz'' (OUTPUT box and File menu) reopens it. Veusz is looked for at the path set
+with File $\rightarrow$ Set Veusz program, then on PATH, then in
+\texttt{Program Files\textbackslash Veusz}; if not found, the program asks once. Veusz 3.6 or later opens
+\texttt{.vszh5} directly.
+
+\begin{center}
+\includegraphics[width=.45\linewidth]{../validation/gui_export_dialog.png}
+\end{center}
+
 \section{What is new in release 0.2.1}
 \begin{itemize}
 \item \textbf{T4 monitoring files}: the LAN module's own logs from FTP \texttt{./Monitoring}
@@ -1019,6 +1128,24 @@ reference figures keep the operator's $\mathrm{MJD}-\mathrm{MJD}_0$ axis and gai
 $\mathrm{MJD}-\mathrm{MJD}_0$, and the deltas twin against local ISO time (EDT in June).}
 \end{center}
 
+\section{Validation of release 0.2.2}
+\begin{center}
+\small
+\begin{tabular}{@{}p{.42\linewidth}p{.5\linewidth}@{}}
+\toprule
+Check & Result\\
+\midrule
+Test suite (Python 3.12, PySide6 6.12.0, offscreen, TZ America/New\_York) & 112 passed: 103 from 0.2.1 + 9 time-display, fit-window and export tests\\
+ISO 8601 round trip & \texttt{2026-11-05T15:47:13-5:00} $\rightarrow$ MJD 61349.866123 $\rightarrow$ \texttt{2026-11-05T15:47:13-05:00} / \texttt{20:47:13+00:00}; July shows \texttt{-04:00}\\
+Every control follows the menu & axes, Start/End/epoch fields, run list, results, status bar, reference, T4 and monitoring tabs\\
+Last 30 / 90 days, 2026 Franks MSM-GPS & 622 / 1955 samples; 90 d needs and enables gap bridging; disabled on the 12-day July file\\
+Batch \texttt{--start} with \texttt{-4:00} offset & runs; \texttt{veusz\_file} printed; \texttt{--last-days 400} refused\\
+\bottomrule
+\end{tabular}
+\end{center}
+\textbf{Not validated:} Windows (time-zone rules come from the operating system there), launching
+Veusz from the dialog (not installed in the test environment).
+
 \section{Validation of release 0.2.1}
 \begin{center}
 \small
@@ -1067,7 +1194,8 @@ import, and Veusz 4.2.1 for the new pages.
 \end{itemize}
 
 Release 0.2.0 adds the T4 iMaser 3000 (read-only telemetry and advisory
-settings); 0.2.1 adds the T4's own monitoring files. Site tests on the real T4
+settings); 0.2.1 adds the T4's own monitoring files; 0.2.2 the time display and fit windows.
+Site tests on the real T4
 (captured MONIT replies, RDFS before and after a SETFSREL entry, the main
 monitoring file) and on Windows remain open; see the validation sections.
 

@@ -1,5 +1,19 @@
 # MHM2010 / T4 Workbench Validation
 
+## Release 0.2.2 (2026-11-05)
+
+| Check | Result | Confidence |
+|---|---|---|
+| Test suite, Python 3.12, PySide6 6.12.0, offscreen, TZ America/New_York | 112 passed (103 from 0.2.1 + 9 new) | High |
+| ISO 8601 round trip | `2026-11-05T15:47:13-5:00` → MJD 61349.866123 → `2026-11-05T15:47:13-05:00` / `2026-11-05T20:47:13+00:00`; July → `-04:00` | High |
+| Every control follows View > Time display | axes, Start/End/epoch fields, run list, results, status bar, reference, T4 and monitoring tabs | High |
+| Last 30 / 90 days, 2026 Franks MSM-GPS (193 d) | 622 / 1955 samples; 90 d contains gaps → bridging enabled; disabled on the 12-day July file | High |
+| Window comparison (end 2026-07-13 02:29 UTC) | 90 d: y −2.38e−14, −413 pp18/day, RMS 14.2 ns; 30 d: y −3.71e−14, −686 pp18/day, RMS 3.6 ns | High (numbers); the spread is window sensitivity |
+| Batch `--start ...-4:00 --end ...-04:00` | runs; `veusz_file` printed; `--last-days 400` refused | High |
+| Captures | `validation/gui_time_display_local_90d_light.png`, `gui_reference_local_30d_dark.png`, `gui_overview_utc_light.png`, `gui_view_time_display_menu.png`, `gui_fit_menu.png`, `gui_export_dialog.png` | High |
+
+**Not validated:** Windows (the zone rules come from the operating system), launching Veusz from the dialog (Veusz not installed in the test environment).
+
 ## Release 0.2.1 (2026-11-05)
 
 | Check | Result | Confidence |

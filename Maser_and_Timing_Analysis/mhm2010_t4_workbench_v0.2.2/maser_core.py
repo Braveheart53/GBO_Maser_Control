@@ -10,7 +10,7 @@
 ===============================================================================
  Title          : MHM2010 Scientific Analysis Core
  Filename       : maser_core.py
- Version        : 0.2.1 (Semantic Versioning 2.0.0)
+ Version        : 0.2.2 (Semantic Versioning 2.0.0)
  Author         : William W. Wallace
  Company        : NRAO/GBO
  Created        : 2026-11-03
@@ -28,6 +28,8 @@
                   0.2.1 DRIFTCOMP note corrected: REBOOT "Reboot[s] the M&C
                         software" (T4S-MAN-0015 Table 1, p. 8; Sec. 1.1.3,
                         p. 13); no calculation changed.
+                  0.2.2 window_sensitivity(days=...): the GUI compares 7 to
+                        90-day windows when the data span them.
 ===============================================================================
 References:
 [1] Microsemi, MHM-2010 User's Guide, 75666-201, rev. J, Oct. 2014.
@@ -48,7 +50,7 @@ import numpy as np
 from astropy.time import Time
 from maser_io import TimingSeries, Telemetry
 
-__version__ = "0.2.1"
+__version__ = "0.2.2"
 MASER_KINDS = ("MHM2010", "T4")
 SECONDS_PER_DAY = 86400.0
 DDS_FACTOR = 2e-7
@@ -476,15 +478,19 @@ def stability(mjd, phase_s, detrend_order=-1, tolerance=0.01) -> dict:
 # %% ===========================================================================
 #    WINDOW SENSITIVITY: A DIAGNOSTIC, NOT AN UNCERTAINTY ESTIMATE
 # =============================================================================
-def window_sensitivity(series, low_mjd, high_mjd, excluded=(), bridge_gaps=False, maser="MHM2010"):
-    """Refit trailing 7/14/21/30-day windows ending at the selected endpoint."""
+def window_sensitivity(series, low_mjd, high_mjd, excluded=(), bridge_gaps=False, maser="MHM2010",
+                       days=(30, 21, 14, 7)):
+    """Refit trailing windows (default 30/21/14/7 days) ending at the selected endpoint.
+
+    Each window starts at max(low_mjd, high_mjd - days); 0.2.2 adds ``days``.
+    """
     output = []
-    for days in (30, 21, 14, 7):
-        start = max(low_mjd, high_mjd-days)
+    for length in days:
+        start = max(low_mjd, high_mjd-length)
         trial = fit_phase(series, start, high_mjd, order=2, excluded=excluded, maser=maser,
                           bridge_gaps=bridge_gaps)
         frequency, drift, _, _ = trial.frequency(high_mjd)
-        output.append({"requested_days": days, "actual_span_days":
+        output.append({"requested_days": length, "actual_span_days":
                        float(np.ptp(series.mjd[trial.used])), "samples": int(trial.used.sum()),
                        "fractional_frequency_at_end": frequency,
                        "drift_pp18_per_day": drift*1e18, "rms_ns": trial.rms_ns})

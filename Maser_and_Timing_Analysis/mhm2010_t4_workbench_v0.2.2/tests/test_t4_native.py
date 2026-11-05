@@ -176,9 +176,10 @@ def test_gui_monitoring_tab(app):
         assert window.tabs.currentWidget() is widget
         assert widget.model.rowCount() == 84 and widget.columns.count() == 4
         assert "74 clock-valid" in widget.summary.text()
-        for index in range(3):                       # MJD, UTC and local x axes
-            widget.x_axis.setCurrentIndex(index)
+        for mode in ("utc", "local", "mjd"):            # View > Time display drives the tab
+            window.apply_time_mode(mode)
             app.processEvents()
+            assert widget.time_mode == mode
         window.apply_theme("light")
         assert window.t4_native and window.settings()["t4_monitoring_reader"]["date_order"] == "DMY"
         widget.clear()

@@ -10,7 +10,7 @@
 ===============================================================================
  Title          : T4 Telemetry Panel
  Filename       : gui_t4.py
- Version        : 0.0.2 (Semantic Versioning 2.0.0)
+ Version        : 0.0.3 (Semantic Versioning 2.0.0)
  Author         : William W. Wallace
  Company        : NRAO/GBO
  Created        : 2026-11-03
@@ -28,6 +28,8 @@
                   example; T4_Maser_Comms.py), ephemeral for the emulator;
                   open-button tooltip names the T4 monitoring files (.dat),
                   which open in the "T4 monitoring files" tab.
+                  0.0.3 Time axis and status times follow View > Time display
+                  (MJD or ISO 8601 local/UTC); data stay MJD.
 ===============================================================================
 SAFETY: the only commands this panel can cause to be sent are the read-only
 queries in t4_protocol.READ_ONLY_QUERIES. A non-loopback endpoint needs the
@@ -44,8 +46,9 @@ import pyqtgraph as pg
 from qtpy import QtCore, QtWidgets
 
 from t4_protocol import load_schema, synth_hz_from_reply
+from time_axis import TimeAxisItem, axis_label, span_text
 
-__version__ = "0.0.2"
+__version__ = "0.0.3"
 PALETTE = ("#1f77b4", "#d62728", "#2ca02c", "#9467bd", "#ff7f0e", "#17becf", "#8c564b", "#e377c2",
            "#7f7f7f", "#bcbd22")
 
@@ -174,7 +177,8 @@ class T4TelemetryWidget(QtWidgets.QWidget):
         left_layout.addWidget(self.channels, 1)
         splitter.addWidget(left)
         right = QtWidgets.QSplitter(QtCore.Qt.Vertical)
-        self.plot = pg.PlotWidget(title="T4 telemetry")
+        self.time_mode = "mjd"
+        self.plot = pg.PlotWidget(title="T4 telemetry", axisItems={"bottom": TimeAxisItem("bottom")})
         self.plot.setLabel("bottom", "MJD (UTC, host receive time)")
         self.plot.addLegend()
         self.plot.showGrid(x=True, y=True, alpha=0.15)
@@ -221,9 +225,19 @@ class T4TelemetryWidget(QtWidgets.QWidget):
     def set_telemetry(self, telemetry) -> None:
         self.telemetry = telemetry
         self.schema = telemetry.schema
-        self.status.setText(f"Loaded {len(telemetry.mjd)} frames, MJD {telemetry.mjd.min():.5f} to "
-                            f"{telemetry.mjd.max():.5f}. " + " ".join(telemetry.notes[-2:]))
+        self.status.setText(f"Loaded {len(telemetry.mjd)} frames, "
+                            f"{span_text(telemetry.mjd.min(), telemetry.mjd.max(), self.time_mode)}. "
+                            + " ".join(telemetry.notes[-2:]))
+        self.set_time_mode(self.time_mode)
         self.refresh(force=True)
+
+    def set_time_mode(self, mode: str) -> None:
+        """View > Time display; x data stay MJD (host receive time)."""
+        self.time_mode = mode
+        self.plot.getAxis("bottom").set_mode(mode)
+        span = (float(self.telemetry.mjd.min()), float(self.telemetry.mjd.max())) \
+            if self.telemetry is not None and len(self.telemetry.mjd) else (None, None)
+        self.plot.setLabel("bottom", axis_label(mode, *span, note="(host receive time)"))
 
     def _data(self):
         if self.recorder is not None and self.recorder.preview_mjd:

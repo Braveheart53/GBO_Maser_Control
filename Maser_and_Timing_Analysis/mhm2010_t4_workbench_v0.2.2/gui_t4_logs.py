@@ -10,7 +10,7 @@
 ===============================================================================
  Title          : T4 Monitoring Files Panel
  Filename       : gui_t4_logs.py
- Version        : 0.0.1 (Semantic Versioning 2.0.0; first internal draft)
+ Version        : 0.0.2 (Semantic Versioning 2.0.0)
  Author         : William W. Wallace
  Company        : NRAO/GBO
  Created        : 2026-11-05
@@ -24,6 +24,9 @@
                   records table (every record, clock-not-set rows greyed),
                   summary with notes, reader options (date order, clock
                   valid from), RAM clear.
+                  0.0.2 The x axis and summary times follow the global
+                  View > Time display (MJD - MJD0, ISO 8601 local or UTC);
+                  the tab's own x-axis selector is removed.
 ===============================================================================
 Records stamped before the time-server sync (clock not set) are listed in the
 table but never plotted. Time stamps are the maser's own UTC times [1, p. 12].
@@ -41,10 +44,10 @@ import pyqtgraph as pg
 from qtpy import QtCore, QtGui, QtWidgets
 
 import t4_native
+from time_axis import TimeAxisItem, axis_label, span_text
 
-__version__ = "0.0.1"
+__version__ = "0.0.2"
 PALETTE = ("#1f77b4", "#d62728", "#2ca02c", "#9467bd", "#ff7f0e", "#17becf", "#8c564b", "#e377c2")
-X_AXES = ("MJD - MJD0 (UTC)", "Date-time (UTC)", "Date-time (local)")
 
 
 # %% ===========================================================================
@@ -101,6 +104,7 @@ class T4LogsWidget(QtWidgets.QWidget):
         super().__init__(parent)
         self.logs: list = []
         self.foreground = "#dce5ef"
+        self.time_mode = "mjd"
         self._build()
 
     # ------------------------------------------------------------------ layout
@@ -145,11 +149,9 @@ class T4LogsWidget(QtWidgets.QWidget):
         self.log_choice = QtWidgets.QComboBox()
         self.log_choice.currentIndexChanged.connect(self._show_log)
         left_layout.addWidget(self.log_choice)
-        left_layout.addWidget(QtWidgets.QLabel("X axis"))
-        self.x_axis = QtWidgets.QComboBox()
-        self.x_axis.addItems(X_AXES)
-        self.x_axis.currentIndexChanged.connect(self.draw)
-        left_layout.addWidget(self.x_axis)
+        self.x_axis_note = QtWidgets.QLabel("X axis: View > Time display\n(MJD Ctrl+Shift+M, local Ctrl+Shift+L,\n"
+                                            "UTC Ctrl+Shift+U)")
+        left_layout.addWidget(self.x_axis_note)
         left_layout.addWidget(QtWidgets.QLabel("Columns (one plot each)"))
         self.columns = QtWidgets.QListWidget()
         self.columns.itemChanged.connect(lambda *_: self.draw())
@@ -213,9 +215,15 @@ class T4LogsWidget(QtWidgets.QWidget):
         self.columns.blockSignals(False)
         self.model.set_frame(log.frame())
         self.table.resizeColumnsToContents()
+        self._summary(log)
+        self.draw()
+
+    def _summary(self, log):
         stats = log.stats
+        valid = log.valid_mjd
+        span = span_text(float(valid[0]), float(valid[-1]), self.time_mode) if len(valid) else "-"
         lines = [f"<b>{log.name}</b>: {stats['records']} records; {stats['clock_valid']} clock-valid "
-                 f"({stats.get('first_utc', '-')} to {stats.get('last_utc', '-')}); "
+                 f"({span}); "
                  f"{stats['clock_not_set']} stamped before the time-server sync (grey, not plotted)."]
         if "interval_s" in stats:
             interval = stats["interval_s"]
@@ -223,36 +231,38 @@ class T4LogsWidget(QtWidgets.QWidget):
                          f"range {interval['min']:.0f} to {interval['max']:.0f} s.")
         lines += [f"• {note}" for note in log.notes]
         self.summary.setText("<br>".join(lines))
+
+    def set_time_mode(self, mode: str) -> None:
+        """View > Time display; data stay MJD (maser UTC stamps)."""
+        self.time_mode = mode
+        log = self.current()
+        if log is not None:
+            self._summary(log)
         self.draw()
 
     # ------------------------------------------------------------------- plots
     def _x(self, log):
-        """x values and label for clock-valid records, per the x-axis choice."""
+        """x = MJD - MJD0 for clock-valid records; label per View > Time display."""
         mjd = log.valid_mjd
-        choice = self.x_axis.currentIndex()
-        if choice == 0:
-            mjd0 = float(np.floor(mjd[0]))
-            return mjd - mjd0, f"MJD - {mjd0:.0f} (UTC, maser time stamps)", None
-        epoch = (mjd - t4_native.MJD_UNIX_EPOCH) * 86400.0
-        if choice == 1:
-            return epoch, "UTC date-time (maser time stamps)", 0
-        return epoch, "Local date-time (this computer's zone)", None
+        mjd0 = float(np.floor(mjd[0]))
+        x = mjd - mjd0
+        if self.time_mode == "mjd":
+            return x, f"MJD - {mjd0:.0f} (UTC, maser time stamps)", mjd0
+        return x, axis_label(self.time_mode, float(x.min()), float(x.max()), mjd0, "(maser time stamps)"), mjd0
 
     def draw(self, *_):
         self.plots.clear()
         log = self.current()
         if log is None or not log.clock_valid.any():
             return
-        x, xlabel, utc_offset = self._x(log)
+        x, xlabel, mjd0 = self._x(log)
         wanted = [self.columns.item(row).data(QtCore.Qt.UserRole) for row in range(self.columns.count())
                   if self.columns.item(row).checkState() == QtCore.Qt.Checked]
         columns = {c.key: c for c in log.columns}
         first = None
         for number, key in enumerate(wanted):
             column = columns[key]
-            axis_items = None
-            if self.x_axis.currentIndex() > 0:
-                axis_items = {"bottom": pg.DateAxisItem(orientation="bottom", utcOffset=utc_offset)}
+            axis_items = {"bottom": TimeAxisItem("bottom", self.time_mode, mjd0)}
             plot = self.plots.addPlot(row=number, col=0, axisItems=axis_items)
             y = (log.valid(key) if column.kind == "numeric"
                  else log.status_flag(key)[log.clock_valid])

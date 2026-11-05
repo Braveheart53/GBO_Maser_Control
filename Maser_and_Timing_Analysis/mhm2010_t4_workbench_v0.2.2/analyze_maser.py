@@ -9,7 +9,7 @@
 ===============================================================================
  Title          : MHM2010 / T4 Batch Analysis
  Filename       : analyze_maser.py
- Version        : 0.2.1 (Semantic Versioning 2.0.0)
+ Version        : 0.2.2 (Semantic Versioning 2.0.0)
  Author         : William W. Wallace
  Company        : NRAO/GBO
  Created        : 2026-11-03
@@ -25,6 +25,10 @@
                   0.2.1 --t4-telemetry also takes the T4's own monitoring
                         files (*.dat from FTP ./Monitoring), routed by
                         content; --t4-date-order, --t4-earliest-valid.
+                  0.2.2 --start/--end accept ISO 8601 with an offset
+                        (2026-11-05T15:47:13-05:00 or -5:00), 'Z', a date,
+                        or an MJD; --last-days 30 / 90 must fit in the data
+                        (as the GUI presets); the .vszh5 path is printed.
 ===============================================================================
 No current drift default is assumed. Without settings only measurement results
 are exported. --derive-dds copies a historical HMD value within 120 s, not a
@@ -46,12 +50,13 @@ import json
 from pathlib import Path
 import numpy as np
 from astropy.time import Time
+from time_format import parse_time, format_time
 from maser_io import load_timing, load_hmd, load_t4_files, FITS_SUFFIXES
 from maser_core import fit_phase, correction, stability, t4_settings
 from maser_plots import reference_set
 from maser_export import export_bundle, json_safe
 
-__version__ = "0.2.1"
+__version__ = "0.2.2"
 MHM_SIGNS = {"MicroSem -> CNS_GPS1": 1, "MicroSem -> CNS2018": 1, "MicroSem -> CNS_GPS2": 1,
              "CNS_GPS1 -> MicroSem": -1, "CNS2018 -> MicroSem": -1, "CNS_GPS2 -> MicroSem": -1, "MSM-GPS": 1}
 
@@ -71,9 +76,12 @@ def main():
                         help="T4 monitoring records stamped before this UTC date are 'clock not set'")
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--channel", default="MicroSem -> CNS_GPS1")
-    parser.add_argument("--start", help="UTC ISO date or datetime")
-    parser.add_argument("--end", help="UTC ISO date or datetime, exclusive")
-    parser.add_argument("--last-days", type=float, help="Fit the last N days of the channel instead of --start")
+    parser.add_argument("--start", help="ISO 8601 date-time (offset allowed, e.g. 2026-11-05T15:47:13-05:00; "
+                                        "no offset = UTC) or an MJD")
+    parser.add_argument("--end", help="as --start; exclusive")
+    parser.add_argument("--last-days", type=float,
+                        help="Fit the last N days (e.g. 30 or 90) ending at --end or the last sample; "
+                             "the data must span N days")
     parser.add_argument("--order", type=int, choices=[1, 2], default=2, help="1 linear, 2 quadratic phase")
     parser.add_argument("--bridge-gaps", action="store_true", help="Allow one fit across acquisition gaps")
     parser.add_argument("--dds", help="MHM2010 DDS setting at application epoch")
@@ -99,11 +107,16 @@ def main():
     if arguments.channel not in collection.series:
         parser.error(f"Channel {arguments.channel!r} not found. Available: {', '.join(sorted(collection.series))}")
     series = collection.series[arguments.channel]
-    high = float(Time(arguments.end, scale="utc").mjd)-1e-9 if arguments.end else series.mjd[-1]
+    try:
+        high = parse_time(arguments.end, "utc")-1e-9 if arguments.end else float(series.mjd[-1])
+        low = parse_time(arguments.start, "utc") if arguments.start else float(series.mjd[0])
+    except ValueError as error:
+        parser.error(f"--start/--end: {error}")
     if arguments.last_days:
+        if high - float(series.mjd[0]) < arguments.last_days - 0.01:
+            parser.error(f"--last-days {arguments.last_days:g}: the channel spans only "
+                         f"{high-float(series.mjd[0]):.2f} days up to {format_time(high, 'utc')}")
         low = high - arguments.last_days
-    else:
-        low = float(Time(arguments.start, scale="utc").mjd) if arguments.start else series.mjd[0]
     fit = fit_phase(series, low, high, order=arguments.order, maser=arguments.maser,
                     bridge_gaps=arguments.bridge_gaps)
     application_epoch = float(series.mjd[fit.used][-1])
@@ -152,7 +165,9 @@ def main():
         stability_result = None
         print("Stability not calculated:", error)
     sensitivity = []
-    for days in (30, 21, 14, 7):
+    for days in (90, 30, 21, 14, 7):
+        if days == 90 and application_epoch - low < days - 0.01:
+            continue                                  # 90 d only when the selection spans it
         start = max(low, application_epoch-days)
         try:
             trial = fit_phase(series, start, application_epoch, maser=arguments.maser,
@@ -176,7 +191,8 @@ def main():
     print(json.dumps({"application_epoch_utc": Time(application_epoch, format="mjd").isot,
                       "fit_count": int(fit.used.sum()), "coefficients_ns": fit.coefficients_ns,
                       "reference_fit": reference.as_dict()["fit"], "settings_candidate": result,
-                      "sensitivity": sensitivity}, indent=2, default=json_safe))
+                      "sensitivity": sensitivity,
+                      "veusz_file": str(Path(arguments.output)/"analysis.vszh5")}, indent=2, default=json_safe))
 
 
 if __name__ == "__main__":

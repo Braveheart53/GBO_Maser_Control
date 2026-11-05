@@ -10,17 +10,20 @@
 ===============================================================================
  Title          : 1 PPS Reference Plots Panel
  Filename       : gui_reference.py
- Version        : 0.0.1 (Semantic Versioning 2.0.0; first internal draft)
+ Version        : 0.0.2 (Semantic Versioning 2.0.0)
  Author         : William W. Wallace
  Company        : NRAO/GBO
  Created        : 2026-11-03
- Modified       : 2026-11-03
+ Modified       : 2026-11-05
  Language       : Python 3.12
  GUI            : qtpy (PySide6 default) + pyqtgraph
  Licence        : GPL-3.0-or-later; see LICENSE
  Revision       : 0.0.1 Deltas figure with statistics box; data + fit over
                   residuals (linked x, 3:1 heights) with the fit-results and
                   residual boxes; editable title/axis labels; light/dark.
+                  0.0.2 x axes follow View > Time display: MJD - MJD0 (as the
+                  operator's figures) or ISO 8601 local/UTC date-time. The
+                  data, fit and boxes are unchanged (x stays MJD - MJD0).
 ===============================================================================
 The numbers and box text come from maser_plots, the same code that writes the
 Veusz pages, so the GUI and the .vszh5 always agree.
@@ -33,8 +36,9 @@ from qtpy import QtCore, QtWidgets
 
 from maser_plots import (DATA_COLOUR, FIT_COLOUR, ReferenceSet, fit_box_lines, mjd_axis_label,
                          raw_box_lines, residual_box_lines)
+from time_axis import TimeAxisItem, axis_label
 
-__version__ = "0.0.1"
+__version__ = "0.0.2"
 
 THEMES = {
     "light": {"background": "#ffffff", "foreground": "#202020", "box_fill": (255, 255, 255, 235),
@@ -83,6 +87,7 @@ class ReferencePlotsWidget(QtWidgets.QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.theme = "dark"
+        self.time_mode = "mjd"
         self.reference: ReferenceSet | None = None
         layout = QtWidgets.QVBoxLayout(self)
         form = QtWidgets.QHBoxLayout()
@@ -113,12 +118,13 @@ class ReferencePlotsWidget(QtWidgets.QWidget):
         splitter.addWidget(self.fit_widget)
         splitter.setSizes([520, 760])
         # Figure 1: deltas
-        self.deltas_plot = self.deltas_widget.addPlot(title="1PPS Deltas")
+        self.deltas_plot = self.deltas_widget.addPlot(title="1PPS Deltas",
+                                                      axisItems={"bottom": TimeAxisItem("bottom")})
         self.deltas_curve = self.deltas_plot.plot(pen=None, symbol="o", symbolSize=4,
                                                   symbolBrush=DATA_COLOUR, symbolPen=None)
         self.deltas_box = CornerText(self.deltas_plot.vb, "upper right")
         # Figure 2: data + fit (3) over residuals (1), x linked
-        self.fit_plot = self.fit_widget.addPlot(row=0, col=0)
+        self.fit_plot = self.fit_widget.addPlot(row=0, col=0, axisItems={"bottom": TimeAxisItem("bottom")})
         self.fit_plot.addLegend(offset=(-10, 10))
         self.excluded_curve = self.fit_plot.plot(pen=None, symbol="o", symbolSize=5, symbolBrush=None,
                                                  symbolPen=pg.mkPen("#8c8c8c"))
@@ -127,7 +133,7 @@ class ReferencePlotsWidget(QtWidgets.QWidget):
                                              symbolPen=None, name="data")
         self.model_curve = self.fit_plot.plot(pen=pg.mkPen(FIT_COLOUR, width=2), name="fit")
         self.fit_box = CornerText(self.fit_plot.vb, "lower left")
-        self.residual_plot = self.fit_widget.addPlot(row=1, col=0)
+        self.residual_plot = self.fit_widget.addPlot(row=1, col=0, axisItems={"bottom": TimeAxisItem("bottom")})
         self.residual_plot.setXLink(self.fit_plot)
         self.residual_curve = self.residual_plot.plot(pen=None, symbol="o", symbolSize=4,
                                                       symbolBrush=DATA_COLOUR, symbolPen=None)
@@ -173,11 +179,9 @@ class ReferencePlotsWidget(QtWidgets.QWidget):
         self.reference = ref
         self.deltas_plot.setTitle(ref.title)
         self.deltas_plot.setLabel("left", ref.ylabel)
-        self.deltas_plot.setLabel("bottom", mjd_axis_label(ref.raw.mjd0))
         self.deltas_curve.setData(ref.raw.x_days, ref.raw.y_ns)
         self.deltas_box.set_lines(raw_box_lines(ref.raw))
         self.fit_plot.setLabel("left", ref.fit_ylabel)
-        self.residual_plot.setLabel("bottom", mjd_axis_label(ref.fit.mjd0))
         self.data_curve.setData(ref.fit.x_days, ref.fit.y_ns)
         order = np.argsort(ref.fit.x_days)
         self.model_curve.setData(ref.fit.x_days[order], ref.fit.model_ns[order])
@@ -198,8 +202,27 @@ class ReferencePlotsWidget(QtWidgets.QWidget):
         self.residual_box.set_lines(residual_box_lines(ref.fit))
         for plot in (self.deltas_plot, self.fit_plot, self.residual_plot):
             plot.enableAutoRange()
+        self.set_time_mode(self.time_mode)
         self.note.setText(f"{ref.raw.n} samples in the interval; {ref.fit.n} fitted. Straight-line OLS; "
                           "std is the population value; ± are IID-OLS standard errors.")
+
+    # ------------------------------------------------------------ time display
+    def set_time_mode(self, mode: str) -> None:
+        """x axes in MJD - MJD0 (figure style) or ISO 8601 local/UTC; data unchanged."""
+        self.time_mode = mode
+        ref = self.reference
+        for plot, part in ((self.deltas_plot, ref.raw if ref else None), (self.fit_plot, ref.fit if ref else None),
+                           (self.residual_plot, ref.fit if ref else None)):
+            origin = part.mjd0 if part is not None else 0.0
+            plot.getAxis("bottom").set_mode(mode, origin)
+        if ref is None:
+            return
+        for plot, part in ((self.deltas_plot, ref.raw), (self.residual_plot, ref.fit)):
+            if mode == "mjd":
+                plot.setLabel("bottom", mjd_axis_label(part.mjd0))
+            else:
+                x = np.asarray(part.x_days, float)
+                plot.setLabel("bottom", axis_label(mode, float(x.min()), float(x.max()), part.mjd0))
 
     # ------------------------------------------------------------------ theme
     def set_theme(self, theme: str) -> None:

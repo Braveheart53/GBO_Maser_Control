@@ -1,6 +1,6 @@
 # MHM2010 / T4 Maser Timing Workbench
 
-Version **0.2.1**, 2026-11-05. Python 3.12, qtpy with PySide6, pyqtgraph. Author: William W. Wallace (NRAO/GBO). GPL-3.0-or-later.
+Version **0.2.2**, 2026-11-05. Python 3.12, qtpy with PySide6, pyqtgraph. Author: William W. Wallace (NRAO/GBO). GPL-3.0-or-later.
 
 The workbench analyses 1 PPS timing deltas (FITS OnePpsDeltas and/or Franks `.t00new`). It reproduces your two reference figures and suggests settings for the **MHM2010** (external DDS, drift) and the **T4 iMaser 3000** (`SETFSREL`, `DRIFTCOMP`). It also reads MHM2010 HMD telemetry, T4 MONIT telemetry and the T4's own monitoring files (FTP `./Monitoring`, e.g. `MonitHCB.dat`). **It never sends a setting to a maser.** The T4 tab can send only the documented read-only queries `MONIT;`, `RDFS;`, `GETID;` and `RDREG=…;` [4].
 
@@ -21,12 +21,13 @@ python MHM2010_Correction_App.py
 |---|---|---|
 | Load timing | File > Open timing files | FITS and Franks may be selected together; they stay separate series |
 | Choose maser | INPUTS: MHM2010 / T4 | T4: tick "Selected channel is the T4 comparison" (no FITS/Franks name identifies the T4 yet) |
-| Select interval | Blue region, run list ("All data" bridges gaps) | "Allow fit across acquisition gaps" is on for Franks; each bridged gap is reported |
+| Select interval | Blue region, run list, or **Fit window** / **Fit** menu: last 7, 14, **30**, **90** days or all data | A preset is enabled only when the data span it; gaps switch on "Allow fit across acquisition gaps" (logged) |
 | Reference figures | Tab "1 PPS reference plots" | Deltas + statistics; data + fit over residuals; editable title/labels |
 | Settings | Fit & corrections | MHM2010: DDS, drift (both units). T4: SETFSREL (with predicted RDFS), DRIFTCOMP |
 | T4 monitoring files | File > Open T4 telemetry or monitoring files (Ctrl+T), or drag in `*.dat` | Tab "T4 monitoring files": one plot per column against MJD − MJD0, UTC or local time; every record listed |
 | T4 state | T4 tab > Read synthesizer and DRIFTCOMP state | Fills the RDFS and DRIFTCOMP fields (read-only) |
-| Export | File > Export analysis folder | `analysis.vszh5` (reference pages first; every time page against MJD and local ISO time), CSV, JSON, review, Stable32 |
+| Time display | **View > Time display (axes, dates, ranges)** | MJD (Ctrl+Shift+M), local ISO 8601 `2026-11-05T15:47:13-05:00` (Ctrl+Shift+L) or UTC ISO 8601 (Ctrl+Shift+U): every axis, date field, run list and result text; data stay MJD |
+| Export | **File > Export analysis folder (Veusz .vszh5, CSV, JSON, Stable32)** (Ctrl+E) | New folder `<maser>_analysis_<time>/analysis.vszh5` (every time page against MJD and local ISO time), CSV, JSON, review, Stable32; a dialog gives the path with **Open in Veusz** / **Open folder** |
 
 The figure's "synth adjustment" uses the straight-line mean rate over the plotted span, as your figures do. The settings panel evaluates the selected model at the application epoch. Enter only reviewed settings-panel values.
 
@@ -35,11 +36,32 @@ The figure's "synth adjustment" uses the straight-line mean rate over the plotte
 - Frequency: y₀ = −Δν_synth / (284 × 5 MHz) (Eq. 12). The synthesizer step is 5 MHz/2³⁹ = 9.0949 µHz (6.4×10⁻¹⁵ relative). The panel prints `SETFSREL=±x;` and the RDFS value expected afterwards. **Confirm the SETFSREL sign by comparing RDFS before and after.**
 - Drift: `DRIFTCOMP_new = DRIFTCOMP_now − measured drift/day`, with |x| between 10⁻¹⁷ and 8×10⁻¹³. Send REBOOT afterwards (it restarts the M&C software [4, Table 1]), then verify with `RDREG=DRIFTCOMP;`.
 
+## Time display and fit windows (0.2.2)
+
+- **View > Time display** changes every time shown, not the data: plots (fit, residual, overview, HMD, reference figures, T4 telemetry and monitoring files), the Start/End/epoch fields, the run list, the results and status bar. Calendar times keep the MJD in brackets for the audit trail. The choice is remembered in `workbench_view.ini` beside the program.
+- Fields accept `2026-11-05T15:47:13-05:00`, `-5:00`, `Z`, a date alone, a time without offset (local in local mode, UTC in UTC mode) or an MJD.
+- **Fit window** presets end at the last sample. "Compare 7/14/21/30/90-day fits" logs each window to the audit tab.
+
+## Where the Veusz files are
+
+| Action | Veusz file |
+|---|---|
+| File > Export analysis folder (Ctrl+E) or OUTPUT > "Export analysis: Veusz .vszh5 + CSV/JSON" | `<parent>/<MHM2010\|T4>_analysis_<time>/analysis.vszh5` (needs a valid fit) |
+| File > Export T4 data (Ctrl+Shift+E) or the T4 tabs' export buttons | `<parent>/T4_telemetry_export_<time>/t4_telemetry.vszh5` |
+| `analyze_maser.py ... --output DIR` | `DIR/analysis.vszh5` (printed as `veusz_file`) |
+| `t4_native.py FILES --output DIR` | `DIR/t4_telemetry.vszh5` |
+
+"Open last export in Veusz" (OUTPUT box, File menu) reopens it. Veusz is found via File > Set Veusz program, PATH, or `Program Files\Veusz`.
+
 ## Batch
 
 ```text
 python analyze_maser.py --timing-directory <FRANKS_OR_FITS_DIR> --channel MSM-GPS --order 1
   --bridge-gaps --last-days 30.9 --dds 5751.6770000 --output <NEW_DIR>
+python analyze_maser.py --timing-directory <DIR> --channel MSM-GPS --bridge-gaps --last-days 90
+  --end 2026-07-13T02:29:08Z --output <NEW_DIR>
+python analyze_maser.py --timing-directory <DIR> --channel MSM-GPS --order 1 --bridge-gaps
+  --start 2026-06-12T22:29:07-4:00 --end 2026-07-12T22:29:08-04:00 --output <NEW_DIR>
 python analyze_maser.py --timing-directory <DIR> --maser T4 --channel "<T4 CHANNEL>"
   --t4-synth <RDFS Hz> --t4-driftcomp <RDREG value> --output <NEW_DIR>
 ```
@@ -75,20 +97,23 @@ In the GBO file the HCB external temperature reads a constant 80 °C, which sugg
 
 | Item | Version | Purpose |
 |---|---|---|
-| `MHM2010_Correction_App.py` | 0.2.1 | GUI entry point |
-| `maser_io.py`, `maser_core.py`, `maser_export.py` | 0.2.1 | Inputs, science, outputs |
-| `maser_plots.py`, `gui_reference.py` | 0.0.1 | Reference figures (Veusz, GUI) |
+| `MHM2010_Correction_App.py` | 0.2.2 | GUI entry point |
+| `maser_io.py`, `maser_export.py` | 0.2.1 | Inputs, outputs |
+| `maser_core.py` | 0.2.2 | Science (window comparison lengths) |
+| `time_format.py`, `time_axis.py` | 0.0.1 | MJD / ISO 8601 formatting and parsing; time axis and time field for the GUI |
+| `maser_plots.py` | 0.0.1 | Reference figures (Veusz) |
+| `gui_reference.py` | 0.0.2 | Reference figures (GUI; time display) |
 | `t4_protocol.py`, `t4_emulator.py` | 0.0.2 | T4 decoder, emulator |
 | `t4_monitor.py` | 0.0.3 | Read-only poller/recorder (local port 14000 default) |
 | `t4_native.py` | 0.0.1 | T4 monitoring files (FTP ./Monitoring) |
-| `gui_t4.py` | 0.0.2 | T4 telemetry tab |
-| `gui_t4_logs.py` | 0.0.1 | T4 monitoring files tab |
+| `gui_t4.py` | 0.0.3 | T4 telemetry tab |
+| `gui_t4_logs.py` | 0.0.2 | T4 monitoring files tab (x axis follows View > Time display) |
 | `tools/T4_Reboot.py` | 0.0.4 | Operator reboot script (not used by the workbench) |
 | `t4/t4_monit_schema_v0.0.2.json` | 0.0.2 | Channel table per T4S-MAN-0012 Table 6 |
 | `vszh5_writer.py` | 0.0.24 | Native Veusz writer (master 0.0.23 + time-axis helpers) |
-| `analyze_maser.py` | 0.2.1 | Batch analysis |
-| `docs/MHM2010_T4_Workbench_Manual_v0.2.1.pdf/.tex` | 0.2.1 | Bookmarked LuaLaTeX manual, 24 pages (compile twice with `lualatex`) |
-| `docs/VALIDATION.md`, `docs/vszh5_writer_0.0.24_NOTES.md` | 0.2.1 / 0.0.24 | Validation and writer notes |
+| `analyze_maser.py` | 0.2.2 | Batch analysis |
+| `docs/MHM2010_T4_Workbench_Manual_v0.2.2.pdf/.tex` | 0.2.2 | Bookmarked LuaLaTeX manual, 28 pages (compile twice with `lualatex`) |
+| `docs/VALIDATION.md`, `docs/vszh5_writer_0.0.24_NOTES.md` | 0.2.2 / 0.0.24 | Validation and writer notes |
 | `examples/franks_2026_01_07/` | — | Your 2026 Franks files (regression input) |
 | `examples/t4_monitoring_2026_11_05/` | — | Your `MonitHCB.dat` (regression input) |
 | `docs/PLAN_0.3.0_status_0.2.1.md` | — | Plan 0.3.0 with item status after 0.2.1 |
@@ -101,7 +126,7 @@ python -m pip install -r requirements-test.txt
 python -m pytest tests -q
 ```
 
-103 tests pass on Python 3.12 (Linux, offscreen Qt). Not yet tested: a real T4 (MONIT captures, reply port, the main monitoring file), Windows, Stable32 import and Veusz 4.2.1 for the new pages.
+112 tests pass on Python 3.12 (Linux, offscreen Qt, America/New_York). Not yet tested: a real T4 (MONIT captures, reply port, the main monitoring file), Windows, Stable32 import and Veusz 4.2.1 for the new pages.
 
 ## References
 
