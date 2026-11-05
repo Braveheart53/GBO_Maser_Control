@@ -1,5 +1,18 @@
 # Revision History
 
+## Workbench 0.2.1, 2026-11-05
+
+- **T4 monitoring files.** New `t4_native.py` 0.0.1 reads the LAN module's own logs from FTP `./Monitoring` (format inferred from the GBO `MonitHCB.dat`: tab-separated, `TIME` in `DD/MM/YY HH:MM:SS` UTC, `Label [unit]` columns). Records stamped before the time-server sync are kept and flagged, never plotted; runs are reported separately. Degree-sign repair, Windows-1252 fallback, date-order warning, interval statistics, rolled-file merge, parallel file reads.
+- **GUI.** New tab "T4 monitoring files" (`gui_t4_logs.py` 0.0.1): one x-linked plot per column against MJD − MJD0, UTC or local time; every record (clock-not-set rows greyed); reader options; Clear from RAM. Open (Ctrl+T), T4 menu and drag-and-drop route files by content. `gui_t4.py` 0.0.2: local port 14000 by default for a real T4.
+- **Exports.** `maser_export.py` 0.2.1: monitoring-file pages (per column, status, notes; MJD and local), records CSV and JSON summary; `export_t4_only` accepts MONIT, monitoring files or both; analysis bundles include them. Review reference to `GBO_Maser_Control` corrected to commit c72244d.
+- **Inputs.** `maser_io.py` 0.2.1: `load_t4_files()` routes MONIT and monitoring files; they are never merged.
+- **Poller.** `t4_monitor.py` 0.0.3: command line uses local port 14000 for a real T4 (vendor example; `T4_Maser_Comms.py`), ephemeral for `--emulator`.
+- **Core.** `maser_core.py` 0.2.1: DRIFTCOMP note now says REBOOT restarts the M&C software (T4S-MAN-0015 Table 1); no calculation changed.
+- **Batch.** `analyze_maser.py` 0.2.1: `--t4-telemetry` takes monitoring files; `--t4-date-order`, `--t4-earliest-valid`.
+- **Operator script.** `tools/T4_Reboot.py` 0.0.4 (not used by the workbench) with 15 loopback tests.
+- **Tests.** 103 pass (79 retained + 9 monitoring-file + 15 reboot-script). Franks regression unchanged.
+- **Docs.** Manual 0.2.1 (24 pages): monitoring files, reboot script, local port, corrected REBOOT wording and page citations; README, VALIDATION; plan 0.3.0 status.
+
 ## Workbench 0.2.0, 2026-11-03
 
 - **T4 iMaser 3000.** Maser selector. `t4_settings()` suggests `SETFSREL` (Eq. 12 of T4S-MAN-0012, 39-bit synthesizer step 5 MHz/2^39) and `DRIFTCOMP` (T4S-MAN-0015) with documented ranges, predicted `RDFS` read-back and an explicit sign-convention selector. Nothing is ever sent.

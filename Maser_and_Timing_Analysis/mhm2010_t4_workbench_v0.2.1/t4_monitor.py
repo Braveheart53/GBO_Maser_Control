@@ -10,11 +10,11 @@
 ===============================================================================
  Title          : T4 Read-Only Monitor and Recorder
  Filename       : t4_monitor.py
- Version        : 0.0.2 (Semantic Versioning 2.0.0)
+ Version        : 0.0.3 (Semantic Versioning 2.0.0)
  Author         : William W. Wallace
  Company        : NRAO/GBO
  Created        : 2026-11-03
- Modified       : 2026-11-03
+ Modified       : 2026-11-05
  Language       : Python 3.12
  Requires       : numpy; t4_protocol (psutil optional, for RAM reporting)
  Licence        : GPL-3.0-or-later; see LICENSE
@@ -30,6 +30,10 @@
                   RDREG=DRIFTCOMP/LSBWEIGHT/UVAR/SETH/ADJ1PPS) through the
                   same validated exchange; UDP port 14000 is the documented
                   default (T4S-MAN-0015 Sec. 1.1.2).
+                  0.0.3 Command line: local UDP port 14000 by default for a
+                  real T4 (the vendor example and T4_Maser_Comms.py bind it;
+                  "seems one must bind the port to local port as well"),
+                  ephemeral for --emulator; --local-port 0 = ephemeral.
 ===============================================================================
 
 SAFETY RULES (from the T4 extension plan, 0.1.0)
@@ -74,7 +78,7 @@ import numpy as np
 from t4_protocol import (MONIT_COMMAND, READ_ONLY_QUERIES, T4Frame, T4FrameError, T4ReplyError,
                          T4Schema, column_names, load_schema, parse_frame, parse_query_reply)
 
-__version__ = "0.0.2"
+__version__ = "0.0.3"
 
 #: Commands this program may send: documented read-only queries only.
 ALLOWED_COMMANDS = frozenset(READ_ONLY_QUERIES)
@@ -100,9 +104,12 @@ def folder_stamp(when: datetime | None = None) -> str:
 class MonitorConfig:
     """Endpoint and timing. ``local_port`` None uses an ephemeral port.
 
-    The source example binds the same local port as the remote one; set
-    ``local_port`` to reproduce that if the instrument replies to a fixed
-    port. One local port serves ONE monitor (serialized requests).
+    The vendor example and T4_Maser_Comms.py bind local port 14000, and the
+    latter notes "seems one must bind the port to local port as well": the
+    T4 probably answers to port 14000, not to the sender's port (not stated
+    in T4S-MAN-0015). Use local_port=14000 for a real T4; the GUI and the
+    command line do so by default (0.0.3). One local port serves ONE monitor
+    (serialized requests).
     """
     host: str
     port: int = 14000
@@ -450,7 +457,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Read-only T4 MONIT recorder (schema per T4S-MAN-0012 Table 6).")
     parser.add_argument("--host", help="T4 address (operator supplied; none is built in)")
     parser.add_argument("--port", type=int, default=14000)
-    parser.add_argument("--local-port", type=int)
+    parser.add_argument("--local-port", type=int,
+                        help="local UDP port; default 14000 for a real T4, ephemeral for --emulator; 0 = ephemeral")
     parser.add_argument("--interval", type=float, default=10.0)
     parser.add_argument("--timeout", type=float, default=1.0)
     parser.add_argument("--attempts", type=int, default=3)
@@ -469,7 +477,10 @@ def main() -> int:
         arguments.host, arguments.port = emulator.address
     if not arguments.host:
         parser.error("--host or --emulator is required")
-    config = MonitorConfig(arguments.host, arguments.port, arguments.local_port, arguments.timeout,
+    local_port = arguments.local_port
+    if local_port is None:
+        local_port = None if arguments.emulator else 14000
+    config = MonitorConfig(arguments.host, arguments.port, local_port or None, arguments.timeout,
                            arguments.attempts, 1.5, arguments.interval, arguments.allow_prefix,
                            arguments.approve_read_only)
     monitor = T4Monitor(config)

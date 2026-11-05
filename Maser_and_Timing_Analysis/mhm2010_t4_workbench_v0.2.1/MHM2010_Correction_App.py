@@ -10,11 +10,11 @@
 ===============================================================================
  Title          : MHM2010 / T4 Maser Timing Workbench
  Filename       : MHM2010_Correction_App.py
- Version        : 0.2.0 (Semantic Versioning 2.0.0, MAJOR.MINOR.PATCH)
+ Version        : 0.2.1 (Semantic Versioning 2.0.0, MAJOR.MINOR.PATCH)
  Author         : William W. Wallace
  Company        : NRAO/GBO
  Created        : 2026-11-03
- Modified       : 2026-11-03
+ Modified       : 2026-11-05
  Language       : Python 3.12
  GUI            : qtpy abstraction; PySide6 default; pyqtgraph plots
  Requires       : See requirements.txt
@@ -28,11 +28,17 @@
                         tab (deltas; fit over residuals); FITS and Franks in
                         one selection; optional fit across gaps; "All data"
                         run; menus incl. View > Light/Dark theme.
+                  0.2.1 T4 monitoring files (the LAN module's own logs from
+                        FTP ./Monitoring, e.g. MonitHCB.dat): new tab, open
+                        and drag-and-drop routing, export with or without
+                        MONIT telemetry, pages in the analysis bundle. T4 live
+                        polling uses local port 14000 by default. DRIFTCOMP
+                        note: REBOOT restarts the M&C software (Table 1).
 ===============================================================================
 PURPOSE
 -------
 Select FITS/FITS.GZ and/or Franks t00new timing files, HMD housekeeping (MHM2010)
-and T4 MONIT telemetry, inspect time intervals, fit phase slope/curvature,
+T4 MONIT telemetry and T4 monitoring files, inspect time intervals, fit phase slope/curvature,
 review suggested MHM2010 (DDS, drift) or T4 (SETFSREL, DRIFTCOMP) settings and
 export native Veusz HDF5, Stable32, CSV and JSON. No Veusz import is needed.
 
@@ -69,7 +75,7 @@ import numpy as np
 from qtpy import QtCore, QtGui, QtWidgets
 import pyqtgraph as pg
 from astropy.time import Time
-from maser_io import (load_timing, load_hmd, load_t4_telemetry, overview_series, TimingSeries,
+from maser_io import (load_timing, load_hmd, load_t4_files, overview_series, TimingSeries,
                       TimingCollection)
 from maser_core import (fit_phase, correction, stability, segments, telemetry_events, window_sensitivity,
                         t4_settings)
@@ -77,8 +83,9 @@ from maser_export import export_bundle, export_t4_only, json_safe
 from maser_plots import reference_set
 from gui_reference import ReferencePlotsWidget
 from gui_t4 import T4TelemetryWidget
+from gui_t4_logs import T4LogsWidget
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 APPLICATION = "MHM2010 / T4 Maser Timing Workbench"
 pg.setConfigOptions(antialias=True, background="#101b29", foreground="#dce5ef")
 MHM_ELIGIBLE = {"MicroSem -> CNS_GPS1": 1, "MicroSem -> CNS2018": 1, "MicroSem -> CNS_GPS2": 1,
@@ -186,6 +193,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.stability_result = None
         self.exclusions = []
         self.t4 = None
+        self.t4_native = []                  # 0.2.1: T4 monitoring-file logs
         self.reference = None
         self.theme = "dark"
         self.loading = False
@@ -408,6 +416,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self.t4_widget.stateRead.connect(self.accept_t4_state)
         self.t4_widget.message.connect(self.log)
         self.tabs.addTab(self.t4_widget, "T4 telemetry")
+        self.t4_logs_widget = T4LogsWidget()
+        self.t4_logs_widget.openRequested.connect(self.choose_t4)
+        self.t4_logs_widget.exportRequested.connect(self.export_t4)
+        self.t4_logs_widget.cleared.connect(self.clear_t4_native)
+        self.t4_logs_widget.message.connect(self.log)
+        self.tabs.addTab(self.t4_logs_widget, "T4 monitoring files")
         stability_page = QtWidgets.QWidget()
         stability_layout = QtWidgets.QVBoxLayout(stability_page)
         stability_controls = QtWidgets.QHBoxLayout()
@@ -465,7 +479,7 @@ class MainWindow(QtWidgets.QMainWindow):
         file_menu = bar.addMenu("&File")
         for text, slot, shortcut in (("Open timing files (FITS / Franks)…", self.choose_timing, "Ctrl+O"),
                                      ("Open MHM2010 HMD telemetry…", self.choose_hmd, "Ctrl+H"),
-                                     ("Open T4 telemetry…", self.choose_t4, "Ctrl+T"),
+                                     ("Open T4 telemetry or monitoring files…", self.choose_t4, "Ctrl+T"),
                                      ("Export analysis folder…", self.choose_export, "Ctrl+E"),
                                      ("Export T4 telemetry…", self.export_t4, ""),
                                      ("Save / load analysis settings…", self.config_menu, "")):
@@ -493,6 +507,9 @@ class MainWindow(QtWidgets.QMainWindow):
         t4_menu.addAction("Start read-only polling", self.t4_widget.start)
         t4_menu.addAction("Stop polling", self.t4_widget.stop)
         t4_menu.addAction("Flush T4 RAM preview", self.t4_widget.flush_ram)
+        t4_menu.addSeparator()
+        t4_menu.addAction("Open T4 monitoring files (FTP ./Monitoring)…", self.choose_t4)
+        t4_menu.addAction("Clear T4 monitoring files from RAM", self.t4_logs_widget.clear)
         help_menu = bar.addMenu("&Help")
         help_menu.addAction("About", self.about)
 
@@ -500,7 +517,8 @@ class MainWindow(QtWidgets.QMainWindow):
         QtWidgets.QMessageBox.about(self, f"About {APPLICATION}",
             f"<b>{APPLICATION}</b> {__version__}<br>Author: William W. Wallace (NRAO/GBO)<br>"
             "Licence: GPL-3.0-or-later<br><br>Advisory analysis only: this program never sends a setting "
-            "to a maser. The T4 panel can send documented read-only queries (MONIT, RDFS, RDREG, GETID).<br>"
+            "to a maser. The T4 panel can send documented read-only queries (MONIT, RDFS, RDREG, GETID). "
+            "T4 monitoring files (FTP ./Monitoring) are read offline.<br>"
             "References: Microsemi MHM-2010 UG rev. J; T4S-MAN-0012 1.27; T4S-MAN-0015 1.17; NIST SP 1065.")
 
     def apply_theme(self, theme: str):
@@ -518,6 +536,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.overview.setBackground(background)
         self.reference_widget.set_theme(theme)
         self.t4_widget.set_theme(background, foreground)
+        self.t4_logs_widget.set_theme(background, foreground)
         if hasattr(self, "theme_actions"):
             self.theme_actions[theme].setChecked(True)
 
@@ -574,9 +593,33 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def choose_t4(self):
         paths, _ = QtWidgets.QFileDialog.getOpenFileNames(
-            self, "Select T4 telemetry", "", "T4 telemetry (*.csv *.txt *.log);;All files (*)")
+            self, "Select T4 telemetry or monitoring files", "",
+            "T4 telemetry and monitoring files (*.csv *.txt *.log *.dat);;All files (*)")
         if paths:
-            self.run_worker(lambda: load_t4_telemetry(paths), self.accept_t4)
+            self.load_t4_paths(paths)
+
+    def load_t4_paths(self, paths):
+        """MONIT telemetry and/or T4 monitoring files, routed by content (0.2.1)."""
+        options = self.t4_logs_widget.reader_options()
+        self.run_worker(lambda: load_t4_files(paths, **options), self.accept_t4_files)
+
+    def accept_t4_files(self, result):
+        if result.monit is not None:
+            self.accept_t4(result.monit)
+        if result.native:
+            self.t4_native = result.native
+            self.t4_logs_widget.set_logs(result.native)
+            for log in result.native:
+                for note in log.notes:
+                    self.log(f"{log.name}: {note}")
+            if result.monit is None:
+                self.tabs.setCurrentWidget(self.t4_logs_widget)
+        for note in result.notes:
+            self.log(note)
+        self.log("Loaded " + result.describe() + ".")
+
+    def clear_t4_native(self):
+        self.t4_native = []
 
     def accept_t4(self, telemetry):
         self.t4 = telemetry
@@ -594,15 +637,15 @@ class MainWindow(QtWidgets.QMainWindow):
         self.confirm.setChecked(False)
 
     def export_t4(self):
-        if self.t4 is None:
-            self.error("Load T4 telemetry first.")
+        if self.t4 is None and not self.t4_native:
+            self.error("Load T4 telemetry or T4 monitoring files first.")
             return
         parent = QtWidgets.QFileDialog.getExistingDirectory(self, "Choose output parent directory")
         if not parent:
             return
         target = Path(parent)/("T4_telemetry_export_"+datetime.now().astimezone().strftime("%Y%m%dT%H%M%S%z"))
         try:
-            export_t4_only(target, self.t4)
+            export_t4_only(target, self.t4, self.t4_native)
             self.log(f"Created {target.name}.")
         except Exception as error:
             self.error(str(error))
@@ -617,8 +660,8 @@ class MainWindow(QtWidgets.QMainWindow):
             return
         if paths and all(path.lower().endswith(".hmd") for path in paths):
             self.run_worker(lambda: load_hmd(paths), self.accept_hmd)
-        elif paths and all(path.lower().endswith((".csv", ".txt", ".log")) for path in paths):
-            self.run_worker(lambda: load_t4_telemetry(paths), self.accept_t4)
+        elif paths and all(path.lower().endswith((".csv", ".txt", ".log", ".dat")) for path in paths):
+            self.load_t4_paths(paths)
         elif paths:
             self.run_worker(lambda: load_timing(paths), self.accept_timing)
 
@@ -852,7 +895,7 @@ class MainWindow(QtWidgets.QMainWindow):
                                  "SETFSREL sign convention is reversed.")
                 if t4["drift"]:
                     known = "" if t4["drift"]["current_known"] else " (current DRIFTCOMP not read: assumed 0)"
-                    lines.append(f"Drift: {t4['drift']['command']}{known}, then REBOOT (LAN module) and "
+                    lines.append(f"Drift: {t4['drift']['command']}{known}, then REBOOT (restarts the M&C software) and "
                                  "verify with RDREG=DRIFTCOMP;")
                 lines.append(t4["time_offset_note"])
             if self.candidate is not None:
@@ -972,7 +1015,9 @@ class MainWindow(QtWidgets.QMainWindow):
                 "maser": self.maser_kind(), "bridge_gaps": self.bridge.isChecked(),
                 "t4_designated": self.t4_designated.isChecked(), "t4_synth_hz": self.t4_synth.text(),
                 "t4_driftcomp": self.t4_driftcomp.text(), "t4_setfsrel_convention": self.t4_convention.currentIndex(),
-                "reference_labels": self.reference_widget.labels(), "theme": self.theme}
+                "reference_labels": self.reference_widget.labels(), "theme": self.theme,
+                # 0.2.1
+                "t4_monitoring_reader": self.t4_logs_widget.reader_options()}
 
     def choose_export(self):
         if self.fit is None:
@@ -988,7 +1033,8 @@ class MainWindow(QtWidgets.QMainWindow):
                           self.telemetry if self.maser_kind() == "MHM2010" else None,
                           self.stability_result, self.settings(), self.stable32_check.isChecked(),
                           self.tolerance.value()/100, self.collection, self.maser_kind(), self.reference,
-                          self.t4, (self.series.label.split(" -> ")[-1],) if self.maser_kind() == "T4" else ())
+                          self.t4, (self.series.label.split(" -> ")[-1],) if self.maser_kind() == "T4" else (),
+                          self.t4_native)
             self.log(f"Created {target.name}; no existing files replaced.")
             QtWidgets.QMessageBox.information(self, "Export complete", f"Created {target}")
         except Exception as error:
@@ -1035,6 +1081,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.t4_driftcomp.setText(settings.get("t4_driftcomp", ""))
         self.t4_convention.setCurrentIndex(settings.get("t4_setfsrel_convention", 0))
         self.reference_widget.set_labels(settings.get("reference_labels"))
+        reader = settings.get("t4_monitoring_reader") or {}
+        if reader.get("date_order"):
+            self.t4_logs_widget.date_order.setCurrentText(reader["date_order"])
+        if reader.get("earliest_valid"):
+            self.t4_logs_widget.earliest.setDate(QtCore.QDate.fromString(reader["earliest_valid"], "yyyy-MM-dd"))
         self.confirm.setChecked(False)
         self.state_review.setChecked(False)
         self.refit()

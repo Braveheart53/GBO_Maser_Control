@@ -1,5 +1,20 @@
 # MHM2010 / T4 Workbench Validation
 
+## Release 0.2.1 (2026-11-05)
+
+| Check | Result | Confidence |
+|---|---|---|
+| Test suite, Python 3.12, PySide6 6.12.0, offscreen | 103 passed (79 from 0.2.0 + 9 monitoring-file + 15 reboot-script loopback) | High |
+| GBO `MonitHCB.dat` (3,530 bytes, SHA-256 `6fd040ecadccc053…`) | 84 records; 74 clock-valid, 2026-11-05 17:13:09 to 18:25:39 UTC; 10 pre-sync in 2 runs (2006-01-16 ×3, 2007-06-06 ×7); interval median 60 s, mean 59.59 s, range 59–62 s | High |
+| Date order and time base | DMY: `16/01/06` is not MM/DD; last record 1.5 min before receipt (18:27 UTC); operator confirmed UTC. MDY reads 81 lines and the reader warns | High |
+| HCB values | Set = internal = 21.5 °C, external constant 80 °C (probably no sensor; unverified), status "No error" | High for values; inference for the sensor |
+| Franks 2026 regression with the file added | N 644, a1 −2.268 ± 0.019 ns/day, −373 counts (unchanged) | High |
+| Veusz 3.6.2 render of the monitoring export | 5 pages (`validation/veusz_render_v0.2.1/`) | High |
+| GUI captures | `validation/gui_t4_monitoring_light.png`, `_dark.png` | High |
+| Reboot script 0.0.4 (loopback fake T4) | Fixed- and source-port answers, cancel, silence, `!GETID`, `!REBOOT`, busy port, stray/late datagrams, Windows reset; original 0.0.1 ends in `TimeoutError` after a successful send | High (loopback); untested on the T4 |
+
+**Not validated:** the main 40-channel monitoring file, the T4's reply port (inferred from the vendor example and `T4_Maser_Comms.py`), the reboot script on the T4, Windows.
+
 ## Release 0.2.0 (2026-11-03)
 
 | Check | Result | Confidence |

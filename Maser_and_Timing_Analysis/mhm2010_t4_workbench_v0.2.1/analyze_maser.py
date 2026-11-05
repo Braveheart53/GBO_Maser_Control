@@ -9,11 +9,11 @@
 ===============================================================================
  Title          : MHM2010 / T4 Batch Analysis
  Filename       : analyze_maser.py
- Version        : 0.2.0 (Semantic Versioning 2.0.0)
+ Version        : 0.2.1 (Semantic Versioning 2.0.0)
  Author         : William W. Wallace
  Company        : NRAO/GBO
  Created        : 2026-11-03
- Modified       : 2026-11-03
+ Modified       : 2026-11-05
  Language       : Python 3.12
  Licence        : GPL-3.0-or-later; see LICENSE
  Revision       : 0.1.0 FITS directory analysis with explicit historical settings.
@@ -22,6 +22,9 @@
                         --bridge-gaps; reference 1 PPS figures (titles and
                         labels selectable) first in analysis.vszh5, with MJD
                         and local ISO date-time pages (writer 0.0.24).
+                  0.2.1 --t4-telemetry also takes the T4's own monitoring
+                        files (*.dat from FTP ./Monitoring), routed by
+                        content; --t4-date-order, --t4-earliest-valid.
 ===============================================================================
 No current drift default is assumed. Without settings only measurement results
 are exported. --derive-dds copies a historical HMD value within 120 s, not a
@@ -33,6 +36,9 @@ Examples (one line each):
       --bridge-gaps --last-days 30.9 --dds 5751.6770000 --output NEW_DIR
   python analyze_maser.py --timing-directory FITS_DIR --maser T4 --channel "Site1Hz -> T4CHAN"
       --t4-synth 405750.927598720 --t4-driftcomp +0.0e+00 --output NEW_DIR
+  python analyze_maser.py --timing-directory FRANKS_DIR --channel MSM-GPS --bridge-gaps
+      --t4-telemetry MonitHCB.dat --output NEW_DIR
+  python t4_native.py MonitHCB.dat --output NEW_DIR      (monitoring files only)
 """
 from __future__ import annotations
 import argparse
@@ -40,12 +46,12 @@ import json
 from pathlib import Path
 import numpy as np
 from astropy.time import Time
-from maser_io import load_timing, load_hmd, load_t4_telemetry, FITS_SUFFIXES
+from maser_io import load_timing, load_hmd, load_t4_files, FITS_SUFFIXES
 from maser_core import fit_phase, correction, stability, t4_settings
 from maser_plots import reference_set
 from maser_export import export_bundle, json_safe
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 MHM_SIGNS = {"MicroSem -> CNS_GPS1": 1, "MicroSem -> CNS2018": 1, "MicroSem -> CNS_GPS2": 1,
              "CNS_GPS1 -> MicroSem": -1, "CNS2018 -> MicroSem": -1, "CNS_GPS2 -> MicroSem": -1, "MSM-GPS": 1}
 
@@ -57,7 +63,12 @@ def main():
                         type=Path, help="Folder with FITS/FITS.GZ and/or .t00new files (searched recursively)")
     parser.add_argument("--maser", choices=["MHM2010", "T4"], default="MHM2010")
     parser.add_argument("--hmd", type=Path, help="MHM2010 HMD telemetry")
-    parser.add_argument("--t4-telemetry", type=Path, nargs="*", default=[], help="T4 recorder CSV or text logs")
+    parser.add_argument("--t4-telemetry", type=Path, nargs="*", default=[],
+                        help="T4 recorder CSV, text logs and/or T4 monitoring files (*.dat, FTP ./Monitoring)")
+    parser.add_argument("--t4-date-order", choices=["DMY", "MDY", "YMD"], default="DMY",
+                        help="TIME field order in T4 monitoring files (DMY verified on the GBO file)")
+    parser.add_argument("--t4-earliest-valid", default="2020-01-01",
+                        help="T4 monitoring records stamped before this UTC date are 'clock not set'")
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--channel", default="MicroSem -> CNS_GPS1")
     parser.add_argument("--start", help="UTC ISO date or datetime")
@@ -97,7 +108,10 @@ def main():
                     bridge_gaps=arguments.bridge_gaps)
     application_epoch = float(series.mjd[fit.used][-1])
     telemetry = load_hmd([arguments.hmd]) if arguments.hmd else None
-    t4 = load_t4_telemetry(arguments.t4_telemetry) if arguments.t4_telemetry else None
+    t4_files = (load_t4_files(arguments.t4_telemetry, date_order=arguments.t4_date_order,
+                              earliest_valid=arguments.t4_earliest_valid) if arguments.t4_telemetry else None)
+    t4 = t4_files.monit if t4_files else None
+    t4_native = t4_files.native if t4_files else []
     result = None
     if arguments.maser == "MHM2010":
         eligible = arguments.channel in MHM_SIGNS and arguments.phase_sign == MHM_SIGNS[arguments.channel]
@@ -158,7 +172,7 @@ def main():
     extra = (arguments.channel.split(" -> ")[-1],) if arguments.maser == "T4" else ()
     export_bundle(arguments.output, series, fit, result, telemetry if arguments.maser == "MHM2010" else None,
                   stability_result, settings, arguments.stable32, arguments.sampling_tolerance, collection,
-                  arguments.maser, reference, t4, extra)
+                  arguments.maser, reference, t4, extra, t4_native)
     print(json.dumps({"application_epoch_utc": Time(application_epoch, format="mjd").isot,
                       "fit_count": int(fit.used.sum()), "coefficients_ns": fit.coefficients_ns,
                       "reference_fit": reference.as_dict()["fit"], "settings_candidate": result,

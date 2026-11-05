@@ -10,11 +10,11 @@
 ===============================================================================
  Title          : Maser Telemetry and Timing Input
  Filename       : maser_io.py
- Version        : 0.2.0 (Semantic Versioning 2.0.0)
+ Version        : 0.2.1 (Semantic Versioning 2.0.0)
  Author         : William W. Wallace
  Company        : NRAO/GBO
  Created        : 2026-11-03
- Modified       : 2026-11-03
+ Modified       : 2026-11-05
  Language       : Python 3.12
  Requires       : numpy, pandas, astropy; t4_protocol (T4 telemetry only)
  Licence        : GPL-3.0-or-later; see LICENSE
@@ -26,6 +26,10 @@
                         FITS and Franks in one selection (kept separate);
                         Franks month-boundary repeats resolved and reported
                         (real 2026_06/2026_07 files disagreed at one hour).
+                  0.2.1 load_t4_files(): one selection may mix MONIT
+                        telemetry (recorder CSV, text logs) and the T4's own
+                        monitoring files (FTP ./Monitoring, e.g. MonitHCB.dat,
+                        read by t4_native); each kind is returned separately.
 ===============================================================================
 The counter measures arrival(B)-arrival(A). For A=MicroSem and B=GPS,
 this is the clock time error clock(A)-clock(B), not its negative.
@@ -44,7 +48,7 @@ import numpy as np
 import pandas as pd
 from astropy.io import fits
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 
 
 # %% ===========================================================================
@@ -399,6 +403,48 @@ def load_t4_telemetry(paths: list[str | Path], schema=None, allow_prefix: bool =
     if rejected:
         notes.append("Rejected lines/frames: " + ", ".join(f"{key} x{value}" for key, value in rejected.items()))
     return T4Telemetry(mjd[keep], codes[keep], values[keep], schema, provenance, notes, rejected)
+
+
+@dataclass
+class T4Files:
+    """Result of load_t4_files: MONIT telemetry and/or native monitoring logs."""
+    monit: T4Telemetry | None
+    native: list
+    notes: list[str]
+
+    def describe(self) -> str:
+        parts = []
+        if self.monit is not None:
+            parts.append(f"{len(self.monit.mjd)} MONIT frames")
+        for log in self.native:
+            parts.append(f"{log.name}: {log.stats['clock_valid']} clock-valid of {log.stats['records']} records")
+        return "; ".join(parts) or "nothing loaded"
+
+
+def load_t4_files(paths: list[str | Path], schema=None, allow_prefix: bool = False,
+                  assume_utc: bool = False, use_gpu: bool = False, date_order: str = "DMY",
+                  earliest_valid: str | None = None) -> T4Files:
+    """Route each file to the right T4 reader (0.2.1).
+
+    Files whose first line is a tab-separated header starting with TIME are
+    the T4 LAN module's own monitoring files (FTP ./Monitoring) and go to
+    t4_native.load_native_logs; everything else goes to load_t4_telemetry.
+    The two kinds are never merged: they have different channels and clocks
+    (MONIT rows use host receive times; native rows use the maser's UTC stamps).
+    """
+    import t4_native
+    paths = [Path(p) for p in paths]
+    native_paths = [p for p in paths if t4_native.is_native_log(p)]
+    monit_paths = [p for p in paths if p not in native_paths]
+    notes = []
+    monit = (load_t4_telemetry(monit_paths, schema, allow_prefix, assume_utc, use_gpu)
+             if monit_paths else None)
+    native = (t4_native.load_native_logs(native_paths, date_order,
+                                         earliest_valid or t4_native.DEFAULT_EARLIEST_VALID)
+              if native_paths else [])
+    if monit_paths and native_paths:
+        notes.append("MONIT telemetry and T4 monitoring files are kept separate (different clocks).")
+    return T4Files(monit, native, notes)
 
 
 # %% ===========================================================================

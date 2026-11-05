@@ -10,11 +10,11 @@
 ===============================================================================
  Title          : MHM2010 Scientific Analysis Core
  Filename       : maser_core.py
- Version        : 0.2.0 (Semantic Versioning 2.0.0)
+ Version        : 0.2.1 (Semantic Versioning 2.0.0)
  Author         : William W. Wallace
  Company        : NRAO/GBO
  Created        : 2026-11-03
- Modified       : 2026-11-03
+ Modified       : 2026-11-05
  Language       : Python 3.12
  Requires       : numpy, scipy, astropy
  Licence        : GPL-3.0-or-later; see LICENSE
@@ -25,6 +25,9 @@
                         the T4 manuals (Eq. 12, 39-bit synthesizer step,
                         documented ranges); stability factors run in
                         parallel threads.
+                  0.2.1 DRIFTCOMP note corrected: REBOOT "Reboot[s] the M&C
+                        software" (T4S-MAN-0015 Table 1, p. 8; Sec. 1.1.3,
+                        p. 13); no calculation changed.
 ===============================================================================
 References:
 [1] Microsemi, MHM-2010 User's Guide, 75666-201, rev. J, Oct. 2014.
@@ -45,7 +48,7 @@ import numpy as np
 from astropy.time import Time
 from maser_io import TimingSeries, Telemetry
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 MASER_KINDS = ("MHM2010", "T4")
 SECONDS_PER_DAY = 86400.0
 DDS_FACTOR = 2e-7
@@ -313,7 +316,8 @@ def t4_settings(fit: PhaseFit, apply_mjd: float, sign_multiplier=1, current_synt
         (the expected synthesizer change in Hz is reported).
     DRIFTCOMP: "A positive sign will generate a positive slope compensation"
     (T4S-MAN-0015 Sec. 1.1.3), so new = current - measured residual drift.
-    It needs a REBOOT of the LAN module to load (same section).
+    It needs a REBOOT to load (Sec. 1.1.3, p. 13); REBOOT restarts the M&C
+    software (Table 1, p. 8).
     """
     if sign_multiplier not in (-1, 1) or setfsrel_convention not in ("output", "phase"):
         raise ValueError("Invalid sign convention.")
@@ -347,7 +351,8 @@ def t4_settings(fit: PhaseFit, apply_mjd: float, sign_multiplier=1, current_synt
                        "current_driftcomp": current_driftcomp, "current_known": current_driftcomp is not None,
                        "new_driftcomp": new_driftcomp,
                        "command": f"DRIFTCOMP={new_driftcomp:+.2e};",
-                       "note": "Send REBOOT after DRIFTCOMP to load it (T4S-MAN-0015). Verify with RDREG=DRIFTCOMP;."}
+                       "note": "Send REBOOT after DRIFTCOMP to load it; REBOOT restarts the M&C software "
+                               "(T4S-MAN-0015 Table 1, Sec. 1.1.3). Verify with RDREG=DRIFTCOMP;."}
     return {
         "maser": "T4",
         "application_epoch_mjd_utc": apply_mjd,

@@ -10,11 +10,11 @@
 ===============================================================================
  Title          : T4 Telemetry Panel
  Filename       : gui_t4.py
- Version        : 0.0.1 (Semantic Versioning 2.0.0; first internal draft)
+ Version        : 0.0.2 (Semantic Versioning 2.0.0)
  Author         : William W. Wallace
  Company        : NRAO/GBO
  Created        : 2026-11-03
- Modified       : 2026-11-03
+ Modified       : 2026-11-05
  Language       : Python 3.12
  GUI            : qtpy (PySide6 default) + pyqtgraph
  Licence        : GPL-3.0-or-later; see LICENSE
@@ -24,6 +24,10 @@
                   RDFS/RDREG state read-back, unit-filtered plots with
                   in-place updates, value table, stale-data indicator, RAM
                   flush and pickle offload.
+                  0.0.2 Local port defaults to 14000 for a real T4 (vendor
+                  example; T4_Maser_Comms.py), ephemeral for the emulator;
+                  open-button tooltip names the T4 monitoring files (.dat),
+                  which open in the "T4 monitoring files" tab.
 ===============================================================================
 SAFETY: the only commands this panel can cause to be sent are the read-only
 queries in t4_protocol.READ_ONLY_QUERIES. A non-loopback endpoint needs the
@@ -41,7 +45,7 @@ from qtpy import QtCore, QtWidgets
 
 from t4_protocol import load_schema, synth_hz_from_reply
 
-__version__ = "0.0.1"
+__version__ = "0.0.2"
 PALETTE = ("#1f77b4", "#d62728", "#2ca02c", "#9467bd", "#ff7f0e", "#17becf", "#8c564b", "#e377c2",
            "#7f7f7f", "#bcbd22")
 
@@ -85,7 +89,9 @@ class T4TelemetryWidget(QtWidgets.QWidget):
         layout = QtWidgets.QVBoxLayout(self)
         top = QtWidgets.QHBoxLayout()
         open_button = QtWidgets.QPushButton("Open T4 telemetry files…")
-        open_button.setToolTip("Recorder t4_raw_frames.csv / t4_telemetry.csv, or text logs '<time> $<frame>'")
+        open_button.setToolTip("Recorder t4_raw_frames.csv / t4_telemetry.csv, text logs '<time> $<frame>', "
+                               "or the T4's own monitoring files (*.dat from FTP ./Monitoring; shown in the "
+                               "'T4 monitoring files' tab)")
         open_button.clicked.connect(self.openRequested.emit)
         export_button = QtWidgets.QPushButton("Export T4 telemetry…")
         export_button.clicked.connect(self.exportRequested.emit)
@@ -105,6 +111,9 @@ class T4TelemetryWidget(QtWidgets.QWidget):
         self.local_port = QtWidgets.QSpinBox()
         self.local_port.setRange(0, 65535)
         self.local_port.setSpecialValueText("ephemeral")
+        self.local_port.setValue(14000)
+        self.local_port.setToolTip("Local UDP port. The T4 probably answers to port 14000 (vendor example, "
+                                   "T4_Maser_Comms.py); 0 = ephemeral. Ignored for the loopback emulator.")
         self.interval = QtWidgets.QDoubleSpinBox()
         self.interval.setRange(0.5, 3600)
         self.interval.setValue(10)
@@ -271,7 +280,8 @@ class T4TelemetryWidget(QtWidgets.QWidget):
             port = self.port.value()
             if not host:
                 raise ValueError("Enter the T4 address, or use the loopback emulator.")
-        config = MonitorConfig(host, port, self.local_port.value() or None, self.timeout.value(), 3, 1.5,
+        local_port = None if emulator is not None else (self.local_port.value() or None)
+        config = MonitorConfig(host, port, local_port, self.timeout.value(), 3, 1.5,
                                self.interval.value(), self.allow_prefix.isChecked(), self.approve.isChecked())
         return config, emulator
 

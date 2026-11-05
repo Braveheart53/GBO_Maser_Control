@@ -10,11 +10,11 @@
 ===============================================================================
  Title          : Maser Results and Stable32 Export
  Filename       : maser_export.py
- Version        : 0.2.0 (Semantic Versioning 2.0.0)
+ Version        : 0.2.1 (Semantic Versioning 2.0.0)
  Author         : William W. Wallace
  Company        : NRAO/GBO
  Created        : 2026-11-03
- Modified       : 2026-11-03
+ Modified       : 2026-11-05
  Language       : Python 3.12
  Requires       : numpy, h5py, bundled vszh5_writer; maser_plots; t4_protocol
  Licence        : GPL-3.0-or-later; see LICENSE
@@ -24,6 +24,12 @@
                         residuals); maser identity (MHM2010/T4); T4 advisory;
                         T4 telemetry pages, decoded CSV with raw codes, and a
                         separate T4-only export.
+                  0.2.1 T4 native monitoring files (t4_native): pages per
+                        unit and a status page against MJD and local time
+                        (clock-valid records only), every record in CSV with
+                        its clock flag, a notes page; export_t4_only accepts
+                        MONIT telemetry, native logs or both. Review
+                        reference [5] commit corrected to c72244d.
 ===============================================================================
 Stable32 format follows W. J. Riley, Stable32 User Manual, ver. 1.54,
 2008, http://www.stable32.com/Manual154.pdf .
@@ -35,14 +41,16 @@ from pathlib import Path
 import json
 import shutil
 import tempfile
+import textwrap
 import numpy as np
 from maser_core import PhaseFit, uniform_samples
 from maser_io import TimingSeries, Telemetry, TimingCollection, overview_series, T4Telemetry
 from maser_plots import ReferenceSet, reference_pages_from_set, sans_serif_document
 from vszh5_writer import (VeuszWriter, VszDoc, Trace, Panel, xy_page, grid_page, local_time_axis,
-                          mjd_to_epoch, time_pair_pages, iso_local_strings, __version__ as WRITER_VERSION)
+                          mjd_to_epoch, time_pair_pages, iso_local_strings, text_page,
+                          __version__ as WRITER_VERSION)
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 APPLICATION = "MHM2010 / T4 Maser Timing Workbench"
 
 
@@ -149,23 +157,149 @@ def t4_pages(writer: VeuszWriter, document: VszDoc, t4: T4Telemetry, prefix: str
     return pages
 
 
-def export_t4_only(destination: str | Path, t4: T4Telemetry) -> Path:
-    """New folder with decoded CSV (values + raw codes), JSON and .vszh5."""
+# %% ===========================================================================
+#    T4 NATIVE MONITORING FILES (0.2.1)
+# =============================================================================
+def _native_prefix(log, number: int) -> str:
+    """Dataset prefix, e.g. 't4log0_monithcb'."""
+    return f"t4log{number}_" + "".join(ch for ch in log.name.lower() if ch.isalnum())
+
+
+def _padded_range(values) -> dict:
+    """ymin/ymax with 10 % padding; a constant series gets +/-0.5 (or 1 %).
+
+    Veusz's automatic range puts a constant series on the frame edge.
+    """
+    values = np.asarray(values, float)
+    values = values[np.isfinite(values)]
+    if not len(values):
+        return {}
+    low, high = float(values.min()), float(values.max())
+    pad = 0.1 * (high - low) if high > low else max(0.5, 0.01 * abs(high))
+    return {"ymin": low - pad, "ymax": high + pad}
+
+
+def t4_native_pages(writer: VeuszWriter, document: VszDoc, log, prefix: str, zone=None) -> list[str]:
+    """Pages for one T4 monitoring log: one per unit, one for status columns.
+
+    Only clock-valid records are plotted (records stamped before the
+    time-server sync would put 2006 and 2026 on one axis). Every record,
+    with its clock flag, is in the CSV. Time stamps are the maser's own UTC
+    times, so these pages may be compared with timing data directly.
+    """
+    mjd = log.valid_mjd
+    if len(mjd) == 0:
+        return []
+    writer.dataset_1d(f"{prefix}_mjd", mjd)
+    # Short logs: plot against MJD - MJD0 (as in the reference 1 PPS figures),
+    # so the axis is readable; the absolute MJD dataset is also written.
+    mjd0 = float(np.floor(mjd[0]))
+    writer.dataset_1d(f"{prefix}_mjd_rel", mjd - mjd0)
+    axis = _local_axis_dataset(writer, f"{prefix}_local", mjd, zone)
+    epoch = mjd_to_epoch(mjd)
+    writer.dataset_text(f"{prefix}_utc_iso",
+                        [f"{np.datetime_as_string(t, unit='s')}Z" for t in log.utc[log.clock_valid]])
+    writer.dataset_text(f"{prefix}_local_iso", iso_local_strings(epoch, zone))
+    pages: list[str] = []
+    mjd_label = f"MJD - {mjd0:.0f} (UTC, maser time stamps)"
+    for column in log.numeric_columns():
+        writer.dataset_1d(f"{prefix}_{column.key}", log.valid(column.key))
+    units = list(dict.fromkeys(c.unit for c in log.numeric_columns()))
+    for number, unit in enumerate(units):
+        # One panel per column so that each is scaled on its own (an unused
+        # sensor reading a constant 80 must not flatten a 21.5 set point).
+        members = [c for c in log.numeric_columns() if c.unit == unit]
+        for suffix, x, xlabel, xmode, fmt in (
+                ("_mjd", f"{prefix}_mjd_rel", mjd_label, "numeric", ""),
+                ("_local", f"{prefix}_local", axis.label, "datetime", axis.datetime_format)):
+            panels = [Panel([Trace(x, f"{prefix}_{c.key}", c.label, marker="circle", line=True)],
+                            xlabel=xlabel, ylabel=unit or "value", title=c.header, xmode=xmode,
+                            x_autorange="exact" if xmode == "datetime" else "next-tick",
+                            datetime_format=fmt, key=False, **_padded_range(log.valid(c.key)))
+                      for c in members]
+            name = f"{prefix}_unit{number}{suffix}"
+            grid_page(document, name, panels, title=f"T4 {log.name}: {unit or 'no unit'}", columns=1,
+                      height=f"{max(15, 6 * len(panels))}cm")
+            pages.append(name)
+    status = log.text_columns()
+    for column in status:
+        writer.dataset_1d(f"{prefix}_{column.key}_flag", log.status_flag(column.key)[log.clock_valid])
+        writer.dataset_text(f"{prefix}_{column.key}_text", [str(v) for v in log.valid(column.key)])
+    if status:
+        traces = [Trace(f"{prefix}_mjd", f"{prefix}_{c.key}_flag", f"{c.label} (0 = No error)",
+                        marker="circle", line=False) for c in status]
+        pages += time_pair_pages(document, f"{prefix}_status", traces, f"{prefix}_mjd_rel", f"{prefix}_local",
+                                 axis, title=f"T4 {log.name}: status (text kept in dataset "
+                                             f"{prefix}_<column>_text)",
+                                 ylabel="Status flag", mjd_label=mjd_label, ymin=-0.2, ymax=1.2)
+    stats = log.stats
+    lines = [f"T4 monitoring log {log.name} (reader t4_native; maser UTC time stamps)", "",
+             f"Records: {stats['records']}; clock-valid: {stats['clock_valid']}; "
+             f"clock not set: {stats['clock_not_set']}",
+             f"Clock-valid span: {stats.get('first_utc', '-')} to {stats.get('last_utc', '-')}"]
+    if "interval_s" in stats:
+        interval = stats["interval_s"]
+        lines.append(f"Record interval: median {interval['median']:.0f} s, mean {interval['mean']:.2f} s, "
+                     f"range {interval['min']:.0f} to {interval['max']:.0f} s")
+    for segment in stats.get("clock_not_set_segments", []):
+        lines.append(f"Clock not set: {segment['count']} record(s) from {segment['first']}, stamped "
+                     f"{segment['stamped_from']} to {segment['stamped_to']}")
+    lines += ["", "Notes:", *[f"- {note}" for note in log.notes], "", "Columns:"]
+    for header, meaning in stats.get("column_meaning", {}).items():
+        lines.append(f"- {header}: {meaning}")
+    lines += ["", "Files:", *[f"- {p['name']}  {p['bytes']} bytes  sha256 {p['sha256'][:16]}..."
+                              for p in log.provenance],
+              "", "[1] T4Science SA, T4S-MAN-0015, ver. 1.17, Jul. 19, 2022."]
+    wrapped = []
+    for line in lines:                      # text_page does not wrap
+        wrapped += textwrap.wrap(line, 100, subsequent_indent="  ") or [""]
+    pages += text_page(document, f"{prefix}_notes", f"T4 {log.name}: provenance and notes", wrapped)
+    return pages
+
+
+def write_native_csv(directory: Path, log, number: int) -> Path:
+    """Every record of one log, with clock flag and source line (UTF-8 with BOM for Excel)."""
+    target = directory / f"t4_{log.name.replace('+', '_')}_records.csv"
+    if target.exists():
+        target = directory / f"t4_{log.name.replace('+', '_')}_{number}_records.csv"
+    log.frame().to_csv(target, index=False, encoding="utf-8-sig", float_format="%.6g")
+    return target
+
+
+def export_t4_only(destination: str | Path, t4: T4Telemetry | None = None, native=()) -> Path:
+    """New folder with T4 MONIT telemetry and/or native monitoring logs.
+
+    MONIT: decoded CSV (values + raw codes). Native logs: every record with
+    its clock flag. Both: t4_telemetry.json and t4_telemetry.vszh5.
+    """
+    native = list(native or ())
+    if t4 is None and not native:
+        raise ValueError("Nothing to export: load T4 telemetry or T4 monitoring files first.")
     destination = Path(destination)
     if destination.exists():
         raise FileExistsError("Choose a new results directory; existing results are never overwritten.")
     destination.parent.mkdir(parents=True, exist_ok=True)
     temporary = Path(tempfile.mkdtemp(prefix=".t4-export-", dir=destination.parent))
     try:
-        t4.frame().assign(**{f"{c.short_name}_code": t4.codes[:, c.index] for c in t4.schema.channels}
-                          ).to_csv(temporary/"t4_telemetry_decoded.csv", index=False, float_format="%.6g")
-        (temporary/"t4_telemetry.json").write_text(json.dumps(
-            {"application": APPLICATION, "version": __version__, "created_utc": datetime.now(timezone.utc).isoformat(),
-             **t4_summary(t4)}, indent=2, default=json_safe), encoding="utf-8")
+        if t4 is not None:
+            t4.frame().assign(**{f"{c.short_name}_code": t4.codes[:, c.index] for c in t4.schema.channels}
+                              ).to_csv(temporary/"t4_telemetry_decoded.csv", index=False, float_format="%.6g")
+        csv_names = [write_native_csv(temporary, log, number).name for number, log in enumerate(native)]
+        summary = {"application": APPLICATION, "version": __version__,
+                   "created_utc": datetime.now(timezone.utc).isoformat(),
+                   "monit": None if t4 is None else t4_summary(t4),
+                   "native": [dict(log.summary(), csv=name) for log, name in zip(native, csv_names, strict=True)]}
+        if t4 is not None:
+            summary.update(t4_summary(t4))          # 0.2.0 keys kept at the top level
+        (temporary/"t4_telemetry.json").write_text(json.dumps(summary, indent=2, default=json_safe),
+                                                   encoding="utf-8")
         document = VszDoc(generator=f"{APPLICATION} {__version__}")
         sans_serif_document(document)
         with VeuszWriter(temporary/"t4_telemetry.vszh5") as writer:
-            t4_pages(writer, document, t4)
+            for number, log in enumerate(native):
+                t4_native_pages(writer, document, log, _native_prefix(log, number))
+            if t4 is not None:
+                t4_pages(writer, document, t4)
             writer.finish(document.text())
         temporary.rename(destination)
     except BaseException:
@@ -182,13 +316,16 @@ def export_bundle(destination: str | Path, series: TimingSeries, fit: PhaseFit,
                   stability_result=None, settings=None, stable32=False,
                   stable32_tolerance=0.01, collection: TimingCollection | None=None,
                   maser: str = "MHM2010", reference: ReferenceSet | None = None,
-                  t4: T4Telemetry | None = None, extra_overview: tuple[str, ...] = ()):
+                  t4: T4Telemetry | None = None, extra_overview: tuple[str, ...] = (),
+                  t4_native=()):
     """Write a NEW results directory or fail without replacing existing data.
 
     0.2.0: ``reference`` adds the two reference-style 1 PPS pages as the
     first pages of analysis.vszh5; ``maser`` records the maser under test;
     ``t4`` adds T4 telemetry datasets/pages and t4_telemetry_decoded.csv.
+    0.2.1: ``t4_native`` (T4 monitoring logs) adds their pages and CSVs.
     """
+    t4_native = list(t4_native or ())
     destination = Path(destination)
     if destination.exists():
         raise FileExistsError("Choose a new results directory; existing results are never overwritten.")
@@ -211,6 +348,7 @@ def export_bundle(destination: str | Path, series: TimingSeries, fit: PhaseFit,
                 "last_mjd": float(telemetry.frame.MJD.max())},
             "reference_plots": None if reference is None else reference.as_dict(),
             "t4_telemetry": None if t4 is None else t4_summary(t4),
+            "t4_native": [log.summary() for log in t4_native],
         }
         np.savetxt(temporary/"phase_and_fit.csv",
                    np.c_[series.mjd, series.phase_s, fit.predicted_s, fit.residual_s,
@@ -310,6 +448,9 @@ def export_bundle(destination: str | Path, series: TimingSeries, fit: PhaseFit,
                 t4_pages(writer, document, t4)
                 t4.frame().assign(**{f"{c.short_name}_code": t4.codes[:, c.index] for c in t4.schema.channels}
                                   ).to_csv(temporary/"t4_telemetry_decoded.csv", index=False, float_format="%.6g")
+            for number, log in enumerate(t4_native):
+                t4_native_pages(writer, document, log, _native_prefix(log, number))
+                write_native_csv(temporary, log, number)
             writer.finish(document.text())
         report = [
             f"# {'T4' if maser == 'T4' else 'MHM2010'} Analysis Review", "",
@@ -331,6 +472,10 @@ def export_bundle(destination: str | Path, series: TimingSeries, fit: PhaseFit,
                "Host receive times, not maser timestamps. Channel 40 is the LOCK 100 MHz voltage; "
                "channel 41 is the main PLL lock bit.", ""]
               if t4 is not None else []),
+            *(["## T4 monitoring files", "",
+               *[f"- {log.name}: {log.stats['clock_valid']} clock-valid of {log.stats['records']} records, "
+                 f"{log.stats.get('first_utc', '-')} to {log.stats.get('last_utc', '-')} (maser UTC stamps)."
+                 for log in t4_native], ""] if t4_native else []),
             "## Correction candidate", "```json",
             json.dumps(correction_result, indent=2, default=json_safe) if correction_result else
             "No correction candidate: current settings and signs must be supplied.",
@@ -344,7 +489,7 @@ def export_bundle(destination: str | Path, series: TimingSeries, fit: PhaseFit,
             "| [2] | W. J. Riley, Handbook of Frequency Stability Analysis, NIST SP 1065, Jul. 2008. | https://tf.nist.gov/general/pdf/2220.pdf |",
             "| [3] | W. J. Riley, Stable32 User Manual, ver. 1.54, 2008. Accessed Nov. 3, 2026. | http://www.stable32.com/Manual154.pdf |",
             "| [4] | Safran, iMaser 3000 datasheet, Mar. 11, 2024. Accessed Nov. 3, 2026. | https://safran-navigation-timing.com/wp-content/uploads/2024/03/SAFRAN_IMASER-3000_Datasheet_3-11-2024_US.pdf |",
-            "| [5] | W. W. Wallace, T4_Maser_Comms.py, GBO_Maser_Control, commit 9682a2f. Accessed Nov. 3, 2026. | https://raw.githubusercontent.com/Braveheart53/GBO_Maser_Control/main/T4_Maser_Comms.py |",
+            "| [5] | W. W. Wallace, T4_Maser_Comms.py, GBO_Maser_Control, commit c72244d. Accessed Nov. 3, 2026. | https://raw.githubusercontent.com/Braveheart53/GBO_Maser_Control/main/T4_Maser_Comms.py |",
             "", "Equations and sign derivations: see the supplied bookmarked user manual, Appendix A."]
         (temporary/"review.md").write_text("\n".join(report)+"\n", encoding="utf-8")
         temporary.rename(destination)

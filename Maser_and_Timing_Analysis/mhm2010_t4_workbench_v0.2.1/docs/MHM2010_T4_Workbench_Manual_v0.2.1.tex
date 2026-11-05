@@ -1,7 +1,10 @@
 % !TEX program = lualatex
 % MHM2010 Correction Workbench documentation
-% Version: 0.1.0 | Author: William W. Wallace | Created/Modified: 2026-11-03
+% Version: 0.2.1 | Author: William W. Wallace | Created: 2026-11-03 | Modified: 2026-11-05
 % Revision: 0.1.0 Initial operator manual, validation and equation appendix.
+%           0.2.0 T4 iMaser 3000, reference 1 PPS figures, MJD/local time axes.
+%           0.2.1 T4 monitoring files (FTP ./Monitoring), operator reboot
+%                 script, local UDP port 14000, REBOOT wording and page cites.
 % Build twice: lualatex -interaction=nonstopmode -halt-on-error <this file>
 \documentclass[11pt,a4paper]{article}
 \usepackage[margin=19mm,headheight=16pt]{geometry}
@@ -26,12 +29,12 @@
 \pagestyle{fancy}
 \fancyhf{}
 \fancyhead[L]{\sffamily\small MHM2010 / T4 MASER TIMING WORKBENCH}
-\fancyhead[R]{\sffamily\small 0.2.0}
+\fancyhead[R]{\sffamily\small 0.2.1}
 \fancyfoot[L]{\sffamily\footnotesize Engineering analysis; no maser writes}
 \fancyfoot[R]{\sffamily\footnotesize\thepage}
 \renewcommand{\headrulewidth}{0.4pt}
 \hypersetup{pdftitle={MHM2010 / T4 Maser Timing Workbench: Operator and Scientific Manual},
- pdfauthor={William W. Wallace},pdfsubject={Version 0.2.0, Python 3.12, MHM2010 and T4 iMaser 3000}}
+ pdfauthor={William W. Wallace},pdfsubject={Version 0.2.1, Python 3.12, MHM2010 and T4 iMaser 3000}}
 \lstset{basicstyle=\ttfamily\small,breaklines=true,frame=single,
  backgroundcolor=\color{light},rulecolor=\color{teal},columns=fullflexible}
 \newcommand{\manual}{\href{https://www.gb.nrao.edu/~fghigo/timer/MSMmaser/Maser_UG_75666-201_Rev_J.PDF}{[1]}}
@@ -54,14 +57,15 @@
 \rule{\linewidth}{1pt}
 \vspace{5mm}
 {\large FITS and Franks timing, reference 1 PPS figures, MHM2010 DDS/drift and\\
-T4 iMaser 3000 SETFSREL/DRIFTCOMP suggestions, T4 MONIT telemetry,\\
+T4 iMaser 3000 SETFSREL/DRIFTCOMP suggestions, T4 MONIT telemetry and\\
+the T4's own monitoring files,\\
 stability and native Veusz output against MJD and local ISO time.\par}
 \vspace{12mm}
 \begin{tabular}{@{}ll@{}}
-Application version & 0.2.0 (0.1.0 content retained below)\\
+Application version & 0.2.1 (0.2.0 and 0.1.0 content retained below)\\
 Bundled writer & \texttt{vszh5\_writer.py} 0.0.24 (built on master 0.0.23)\\
 Author & William W. Wallace\\
-Date & November 3, 2026\\
+Date & November 5, 2026\\
 Runtime & Python 3.12\\
 GUI & qtpy / PySide6 / pyqtgraph\\
 License & GPL-3.0-or-later\\
@@ -692,6 +696,19 @@ applying these equations; raw mode removes only a constant for numerical
 convenience.
 \clearpage
 
+\section{What is new in release 0.2.1}
+\begin{itemize}
+\item \textbf{T4 monitoring files}: the LAN module's own logs from FTP \texttt{./Monitoring}
+(e.g.\ \texttt{MonitHCB.dat}) are read by \texttt{t4\_native.py} 0.0.1, shown in a new tab
+``T4 monitoring files'', exported (CSV, JSON, \texttt{.vszh5} against MJD and local time) and
+added to analysis bundles. Format, time base and the clock-not-set rule are in the next sections.
+\item \textbf{Local UDP port 14000} by default for live T4 polling (GUI and command line).
+\item \textbf{Operator script} \texttt{tools/T4\_Reboot.py} 0.0.4 with loopback tests (it is not
+part of the workbench, which still sends no settings).
+\item \textbf{Corrections}: REBOOT restarts the M\&C software (\tfournet, Table~1, p.~8); manual
+section and page citations checked page by page.
+\end{itemize}
+
 \section{What is new in release 0.2.0}
 \begin{itemize}
 \item \textbf{T4 iMaser 3000}: maser selector; SETFSREL and DRIFTCOMP suggestions from the
@@ -796,7 +813,10 @@ its \texttt{t4\_telemetry.csv} (raw codes re-scaled), or text logs with one
 
 \textbf{Live polling} (T4 tab) sends only \texttt{MONIT;}, \texttt{RDFS;}, \texttt{GETID;} and
 \texttt{RDREG=\dots;} over UDP port 14000 \tfournet. Each attempt uses a fresh socket with bounded
-retries; datagrams from other peers are ignored. Raw replies are written before decoding, into a
+retries; datagrams from other peers are ignored. Since 0.2.1 the local UDP port defaults to
+14000 for a real T4: the vendor example and \texttt{T4\_Maser\_Comms.py} bind it (``seems one
+must bind the port to local port as well'' \tfoursrc), so the T4 probably answers to port 14000
+rather than to the sender's port; the manual does not say. The emulator uses an ephemeral port. Raw replies are written before decoding, into a
 folder stamped once at creation (\texttt{T4\_telemetry\_YYYYMMDDTHHMMSS±hhmm}). The preview buffer
 is bounded and can be flushed or offloaded to a pickle. A non-loopback address requires the
 approval box. ``Use loopback emulator'' serves the manual's example reply.
@@ -835,7 +855,8 @@ compensation'' \tfournet, so
 \texttt{DRIFTCOMP}_{\mathrm{new}}=\texttt{DRIFTCOMP}_{\mathrm{now}}-\sigma\,\dot y_{\mathrm{day}},
 \qquad 10^{-17}<|\texttt{DRIFTCOMP}|<8\times10^{-13},
 \]
-followed by REBOOT of the LAN module and \texttt{RDREG=DRIFTCOMP;} to verify. Neither command
+followed by REBOOT, which ``Reboot[s] the M\&C software'' (\tfournet, Table~1, p.~8), and
+\texttt{RDREG=DRIFTCOMP;} to verify. Neither command
 removes the 1~PPS time offset (ADJ1PPS/SYNCPPS).
 
 \begin{center}
@@ -858,6 +879,124 @@ Drift entry (current 0) & \texttt{DRIFTCOMP=+7.11e-16;}\\
 in the GUI (``Selected channel is the T4 comparison'') or with \texttt{--maser T4 --channel}.
 T4 settings stay blocked until the channel is designated.}
 
+\section{T4 monitoring files (FTP ./Monitoring)}
+\subsection{What the manual says}
+\texttt{RECMONIT=<s>;} records the monitoring ``in a file stored on the local SD memory card'';
+the file ``can be accessed by FTP under the directory ./Monitoring''; at 2~MB it ``is copied
+with a tag of the date and time, and the current file is reset'' (\tfournet, Sec.~1.1.3, p.~12;
+Sec.~6.5, p.~22). RECMONIT appears only in Sec.~1.1.3, not in the Table~1 command list. The web
+page shows only whether recording is ON or OFF (Sec.~1.1.3, p.~12; Sec.~4, p.~20). Each record
+is tagged with the module's date and time, set by NTP or \texttt{SETDATE}/\texttt{SETTIME}; without
+synchronisation at power-up the clock is not kept (pp.~12, 22). Option telemetry such as the HCB
+is recorded in these files although \texttt{MONIT} does not return it (p.~14). The FTP login is in
+Sec.~6.1 (p.~21). The manual does not document file names, columns or the record layout.
+
+\subsection{Format, as found in the GBO file}
+\begin{center}
+\small
+\begin{tabular}{@{}p{.25\linewidth}p{.69\linewidth}@{}}
+\toprule
+Property & \texttt{MonitHCB.dat}, GBO T4, received 2026-11-05\\
+\midrule
+Layout & Tab-separated; CR~LF; header \texttt{TIME} then \texttt{Label [unit]} per column\\
+Encoding & UTF-8; the degree sign arrived as U+FFFD (bytes EF BF BD) and is repaired to \textdegree\\
+Time & \texttt{DD/MM/YY HH:MM:SS}, UTC, 1~s resolution\\
+Records & 84: 10 before the time-server sync (3 stamped 2006-01-16, 7 stamped 2007-06-06), then 74
+from 17:13:09 to 18:25:39 UTC\\
+Interval & median 60~s, mean 59.59~s, range 59--62~s\\
+Columns & Set, Internal and External temperature [\textdegree C]; Alarm Status (text)\\
+\bottomrule
+\end{tabular}
+\end{center}
+\textbf{Date order.} \texttt{16/01/06} cannot be MM/DD (no month 16), and YY/MM/DD would date the
+newest records to 2005. The last record, 05/11/26 18:25:39, was 1.5~min before the file reached
+this computer (13:27 EST = 18:27 UTC), consistent with UTC as the operator stated. DMY is the
+default; the reader warns when another order would read every line that the chosen order cannot
+(a wrong order can still read most lines: \texttt{05/11/26} is a valid MM/DD/YY).
+
+\textbf{Time base.} With $t^{\mathrm{Unix}}$ the record time in seconds since 1970-01-01 UTC,
+\[
+\mathrm{MJD}=\frac{t^{\mathrm{Unix}}}{86400\ \mathrm{s}}+40587 ,
+\]
+so 2026-11-05 17:13:09 UTC is MJD $61349+\frac{62\,089}{86\,400}=61349.717465$. These are the
+maser's own stamps (unlike MONIT rows, which carry this computer's receive time) and may be
+compared with timing data directly.
+
+\subsection{Clock not set}
+A record is \emph{clock-valid} if $t_{\mathrm{min}}\le t\le t_{\mathrm{now}}+1$~d, with
+$t_{\mathrm{min}}$ = 2020-01-01 UTC by default (``Clock valid from'' in the tab,
+\texttt{--t4-earliest-valid} in batch). Other records are listed in the table and CSV (greyed,
+\texttt{clock\_valid}=0, with their file and line) but never plotted or analysed. Runs of such
+records are reported separately; a new run starts at a jump of more than 1~h or backwards. Interval
+statistics use clock-valid records only: for successive stamps $t_k$,
+$\Delta_k=t_{k+1}-t_k$, the median, mean, minimum and maximum of $\Delta_k$, the count of
+$\Delta_k<0$, and the count of $\Delta_k>1.5\,\mathrm{median}(\Delta)$ (gaps).
+
+\subsection{HCB columns}
+HCB is the Active Heater-Cooler-Box option (climatic chamber) [13]; the SMC unit sets the
+temperature of the liquid circulating in its tubes (\texttt{SETTEMPHCB}). The HTML page shows ``the
+setting of the temperature'', ``the internal temperature sensor used for regulation'', ``the
+external temperature sensor if used'' and ``the operation status normal or Alarm (the error code
+of the error will be displayed)'' (\tfournet, Sec.~1.1.3, p.~16). In the GBO file, set point and
+internal temperature are 21.5~\textdegree C throughout the clock-valid span (22~\textdegree C in the
+2006 pre-sync records), the external temperature is a constant 80~\textdegree C, and the status is
+``No error''. A constant 80~\textdegree C suggests that no external sensor is connected; this is an
+inference, not confirmed. Status text is kept as written and plotted as a flag: 0 for ``No error'',
+1 otherwise.
+
+\subsection{Reading several files}
+Files with the same header (the live file and its rolled, date-tagged copies) are merged in order of
+their latest record, so a pre-sync 2006 stamp cannot put the newest file first. Identical records
+(same time and values) are kept once; records with the same time but different values are kept and
+reported. Files with different headers stay separate logs. Files are read in parallel threads; at
+most 2~MB each \tfournet, they need no special memory handling, and ``Clear from RAM'' releases them.
+
+\subsection{Outputs and use}
+\begin{itemize}
+\item \textbf{GUI}: open with File $\rightarrow$ Open T4 telemetry or monitoring files (Ctrl+T), the
+T4 menu, or drag and drop; files are routed by content (a tab-separated header starting with
+\texttt{TIME}). The tab shows one x-linked plot per column against $\mathrm{MJD}-\mathrm{MJD}_0$,
+UTC or local date-time, the summary and notes, and every record.
+\item \textbf{Export}: \texttt{t4\_<layout>\_records.csv} (every record, clock flag, source line;
+UTF-8 with BOM), \texttt{t4\_telemetry.json}, and \texttt{t4\_telemetry.vszh5} with one panel per
+column (each with its own range, padded by 10\,\% or $\pm0.5$ when constant), a status page and a
+notes page, each against $\mathrm{MJD}-\mathrm{MJD}_0$ and against local ISO time.
+\item \textbf{Batch}: \texttt{analyze\_maser.py --t4-telemetry MonitHCB.dat \dots} adds the pages to
+\texttt{analysis.vszh5}; \texttt{python t4\_native.py MonitHCB.dat --output NEW\_DIR} exports only
+the monitoring files.
+\end{itemize}
+
+\begin{center}
+\includegraphics[width=.92\linewidth]{../validation/gui_t4_monitoring_light.png}\\
+{\small Tab ``T4 monitoring files'' (Light theme, local date-time axis) on the GBO
+\texttt{MonitHCB.dat}.}\\[6pt]
+\includegraphics[width=.7\linewidth]{../validation/veusz_render_v0.2.1/t4_telemetry_p01_t4log0_monithcb_unit0_local.png}\\
+{\small Veusz 3.6.2 render of the exported page against local ISO time (EST).}
+\end{center}
+
+\warning{The format is inferred from one HCB file. The main 40-channel monitoring file has not been
+seen; the reader is header-driven and should read it if it has the same layout, but this is
+untested. HCB alarm codes are not documented here.}
+
+\section{Operator script: tools/T4\_Reboot.py}
+The workbench sends no settings and no REBOOT. \texttt{tools/T4\_Reboot.py} 0.0.4 is a separate
+operator script that reboots the M\&C software after checks; it is untested on a real T4.
+\begin{enumerate}[leftmargin=6mm]
+\item Read-only checks \texttt{GETID;}, \texttt{RDFS;}, \texttt{RDREG=DRIFTCOMP;} from local port
+14000. Each answer must start with \texttt{\$} and the command; \texttt{!<command>} is a rejection
+(\tfournet, Sec.~1.1.2, p.~11). Any failure stops the script before REBOOT.
+\item The operator types \texttt{REBOOT}; the command is sent once. Table~1 lists no answer, so
+silence is the expected result; \texttt{!REBOOT} stops the script.
+\item After 30~s (the manual's wait after a front-panel reset, Sec.~6.7, p.~24; none is given for
+REBOOT) the checks are repeated and compared. RDFS may change on its own when drift compensation
+steps the synthesizer.
+\end{enumerate}
+Exit codes: 0 success or cancelled, 1 pre-check failed (nothing sent), 2 post-check failed,
+3 REBOOT rejected or not sent. The original 0.0.1 script waited for a reply to REBOOT and therefore
+ended with \texttt{TimeoutError} even when the reboot worked (reproduced on loopback). Sec.~1.1.3
+(p.~13) describes REBOOT as ``Reset the LAN module'' and Sec.~6.7 (p.~24) says the equivalent
+telnet reset ``will not affect the stability or the 1PPS generation''; confirm 1~PPS after a reboot.
+
 \section{MJD and local ISO 8601 time axes}
 Veusz stores dates as naive seconds from 2009-01-01; a local wall-clock axis is therefore
 \[
@@ -879,6 +1018,24 @@ reference figures keep the operator's $\mathrm{MJD}-\mathrm{MJD}_0$ axis and gai
 {\small Rendered by Veusz 3.6.2 from \texttt{analysis.vszh5}: fit page against
 $\mathrm{MJD}-\mathrm{MJD}_0$, and the deltas twin against local ISO time (EDT in June).}
 \end{center}
+
+\section{Validation of release 0.2.1}
+\begin{center}
+\small
+\begin{tabular}{@{}p{.42\linewidth}p{.5\linewidth}@{}}
+\toprule
+Check & Result\\
+\midrule
+Test suite (Python 3.12, PySide6 6.12.0, offscreen) & 103 passed: 79 from 0.2.0, 9 monitoring-file, 15 reboot-script (loopback)\\
+GBO \texttt{MonitHCB.dat} & 84 records; 74 clock-valid, 17:13:09--18:25:39 UTC; 10 pre-sync in 2 runs; interval 59--62~s\\
+Date order & DMY reads every line; MDY loses 3 lines and the reader warns\\
+Franks 2026 regression with the file added & unchanged: $N=644$, $a_1=-2.268\pm0.019$ ns/day, $-373$ counts\\
+Veusz 3.6.2 render of the monitoring export & 5 pages (per-column, status, notes; MJD and local)\\
+\bottomrule
+\end{tabular}
+\end{center}
+\textbf{Not validated:} the main 40-channel monitoring file, the reply port of the real T4, and the
+reboot script on the real T4.
 
 \section{Validation of release 0.2.0}
 \begin{center}
@@ -910,12 +1067,12 @@ import, and Veusz 4.2.1 for the new pages.
 \end{itemize}
 
 Release 0.2.0 adds the T4 iMaser 3000 (read-only telemetry and advisory
-settings). Site tests on the real T4 (captured MONIT replies, RDFS before and
-after a SETFSREL entry) and on Windows remain open; see Section ``Validation of
-release 0.2.0''.
+settings); 0.2.1 adds the T4's own monitoring files. Site tests on the real T4
+(captured MONIT replies, RDFS before and after a SETFSREL entry, the main
+monitoring file) and on Windows remain open; see the validation sections.
 
 \section{IEEE reference table}
-Online references were accessed November 3, 2026. The source URLs are retained
+Online references were accessed November 3--5, 2026. The source URLs are retained
 in full; absent DOIs or unverified publication details are not invented.
 
 \small
@@ -951,7 +1108,8 @@ User Manual}, doc. T4S-MAN-0012, issue 1.27, May 2, 2022, Secs. 9.4, 9.6, 9.12,
 9.13 (Table 6), pp. 35--49. Supplied by the operator.
 & Not publicly hosted; operator copy (PDF), Nov. 3, 2026.\\[5pt]
 [9] & T4Science SA, \textit{T4S-Monitoring Network Software User Manual},
-doc. T4S-MAN-0015, ver. 1.17, Jul. 19, 2022, Secs. 1.1.1--1.1.3.
+doc. T4S-MAN-0015, ver. 1.17, Jul. 19, 2022: Table~1 (pp.~8--10), Sec.~1.1.2 (p.~11),
+Sec.~1.1.3 (pp.~12--16), Sec.~4 (p.~20), Secs.~5--6.1 (p.~21), Secs.~6.3--6.5 (p.~22), Sec.~6.7 (p.~24).
 & Not publicly hosted; operator copy (PDF), Nov. 3, 2026.\\[5pt]
 [10] & W. W. Wallace, ``GBO\_Maser\_Control: T4\_Maser\_Comms.py,
 T4\_channel\_names.csv, T4\_fromOEM.py,'' GitHub repository, reviewed commit
@@ -961,7 +1119,10 @@ T4\_channel\_names.csv, T4\_fromOEM.py,'' GitHub repository, reviewed commit
 & \url{https://safran-navigation-timing.com/wp-content/uploads/2024/03/SAFRAN_IMASER-3000_Datasheet_3-11-2024_US.pdf}\\[5pt]
 [12] & ISO, \textit{Date and time --- Representations for information interchange ---
 Part 1: Basic rules}, ISO 8601-1:2019.
-& \url{https://www.iso.org/standard/70907.html}\\
+& \url{https://www.iso.org/standard/70907.html}\\[5pt]
+[13] & T4Science SA, ``iMaser 3000 Specifications,'' datasheet (option codes; HCB = Active
+Heater-Cooler-Box). Supplied by the operator.
+& Not publicly hosted; operator copy (PDF), Nov. 5, 2026.\\
 \bottomrule
 \end{longtable}
 \normalsize
