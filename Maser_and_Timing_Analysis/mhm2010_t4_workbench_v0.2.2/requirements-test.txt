@@ -1,6 +1,0 @@
--r requirements.txt
-pytest>=8,<10
-allantools>=2024.6
-pypdf>=5
-py7zr>=1
-psutil>=5
