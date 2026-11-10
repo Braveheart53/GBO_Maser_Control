@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 # SPDX-License-Identifier: GPL-3.0-or-later
 # %% ===========================================================================
-# Title: Tests for T4 native monitoring files (t4_native, exports, GUI tab) | Version: 0.0.1
+# Title: Tests for T4 native monitoring files (t4_native, exports, GUI tab) | Version: 0.0.2 (0.2.3 dataset names)
 # Author: William W. Wallace | Created/Modified: 2026-11-05 | Python: 3.12
 # Revision: 0.0.1 Real MonitHCB.dat regression (GBO T4, 2026-11-05: 84 records,
 #           74 clock-valid, two pre-sync runs, UTC stamps, DD/MM/YY), degree
@@ -136,7 +136,7 @@ def test_export_native_only(tmp_path):
     with h5py.File(target / "t4_telemetry.vszh5", "r") as handle:
         names = set(handle["Veusz"]["Data"]) if "Veusz" in handle else set(handle)
         text = json.dumps(sorted(names))
-    assert "t4log0_monithcb_set_temperature" in text and "t4log0_monithcb_local" in text
+    assert "T4log_MonitHCB_Set_temperature_degC" in text and "T4log_MonitHCB_time_local" in text
     with pytest.raises(ValueError):
         export_t4_only(tmp_path / "empty", None, [])
     with pytest.raises(FileExistsError):

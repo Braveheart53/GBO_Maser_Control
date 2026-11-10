@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 # SPDX-License-Identifier: GPL-3.0-or-later
 # %% ===========================================================================
-# Title: MHM2010 numerical regression tests | Version: 0.1.0
+# Title: MHM2010 numerical regression tests | Version: 0.1.1 (0.2.3 dataset names)
 # Author: William W. Wallace | Created/Modified: 2026-11-03 | Python: 3.12
 # Revision: 0.1.0 Analytic signals, independent allantools comparison, safeguards.
 # =============================================================================
@@ -172,7 +172,7 @@ def test_export_schema(tmp_path):
     destination = export_bundle(tmp_path/"run", series, fit_phase(series))
     assert (destination/"analysis.json").exists()
     with h5py.File(destination/"analysis.vszh5") as handle:
-        assert "phase_ns" in handle["Veusz/Data"]
+        assert "Selected_MicroSem_to_CNS_GPS1_phase_ns" in handle["Veusz/Data"]       # 0.2.3 names
 
 
 def test_invalid_dds():

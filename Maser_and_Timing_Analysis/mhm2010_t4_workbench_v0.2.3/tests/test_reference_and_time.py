@@ -2,11 +2,12 @@
 # -*- coding: utf-8 -*-
 # SPDX-License-Identifier: GPL-3.0-or-later
 # %% ===========================================================================
-# Title: Reference figures, Franks intake, time axes and export tests | Version: 0.0.1
-# Author: William W. Wallace | Created/Modified: 2026-11-03 | Python: 3.12
+# Title: Reference figures, Franks intake, time axes and export tests | Version: 0.0.2
+# Author: William W. Wallace | Created/Modified: 2026-11-10 | Python: 3.12
 # Revision: 0.0.1 OLS box values, synth lines, real 2026 Franks files,
 #           month-boundary repeats, gap bridging, writer 0.0.24 MJD/local
 #           ISO axes, export page layout and T4 pages.
+#           0.0.2 writer 0.0.27 (names from data); 0.2.3 page/dataset names.
 # =============================================================================
 from pathlib import Path
 import json
@@ -110,9 +111,9 @@ def test_fits_and_franks_kept_separate():
     assert "Franks: MSM-GPS" in view and "MicroSem vs CNS_GPS1 (direct)" in view
 
 
-# %% WRITER 0.0.24 TIME AXES
+# %% WRITER TIME AXES (0.0.24 helpers; bundled writer 0.0.27 or later)
 def test_writer_time_helpers(monkeypatch):
-    assert WRITER == "0.0.24"
+    assert tuple(int(part) for part in WRITER.split(".")) >= (0, 0, 27)
     assert mjd_to_epoch(40587.0) == 0.0 and mjd_to_veusz(54832.0) == pytest.approx(0.0)
     assert iso_offset_text(-18000) == "-05:00" and iso_offset_text(19800) == "+05:30"
     axis = local_time_axis(mjd_to_epoch(np.linspace(61347.0, 61348.0, 10)), zone="America/New_York")
@@ -138,9 +139,11 @@ def test_export_reference_first_and_time_pairs(tmp_path):
     out = export_bundle(tmp_path / "run", series, fit, reference=ref,
                         collection=TimingCollection({"MSM-GPS": series}, []))
     pages = page_names(out / "analysis.vszh5")
-    assert pages[:4] == ["pps_deltas", "pps_fit", "pps_deltas_local", "pps_fit_local"]
-    for name in ("timing_fit_mjd", "timing_fit_local", "fit_residual_mjd", "fit_residual_local"):
+    assert pages[:4] == ["Ref1PPS_MSM_GPS_deltas_MJD", "Ref1PPS_MSM_GPS_fit_MJD",
+                         "Ref1PPS_MSM_GPS_deltas_local", "Ref1PPS_MSM_GPS_fit_local"]
+    for name in ("Selected_MSM_GPS_phase_and_fit_mjd", "Selected_MSM_GPS_phase_and_fit_local",
+                 "Fit_MSM_GPS_residual_mjd", "Fit_MSM_GPS_residual_local"):
         assert name in pages
-    assert "local_time_iso" in dataset_names(out / "analysis.vszh5")
+    assert "Selected_MSM_GPS_time_local_ISO_text" in dataset_names(out / "analysis.vszh5")
     payload = json.loads((out / "analysis.json").read_text())
     assert payload["reference_plots"]["fit"]["num_points"] == 480

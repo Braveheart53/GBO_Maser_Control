@@ -1,0 +1,186 @@
+% !TEX program = lualatex
+% Author: William W. Wallace | Version 0.1.0 | Created/Modified 2026-11-03
+% Planning only; prepared after MHM2010 package delivery.
+\documentclass[11pt,a4paper]{article}
+\usepackage[margin=20mm]{geometry}
+\usepackage{fontspec}
+\setmainfont{TeX Gyre Pagella}
+\usepackage{amsmath,booktabs,longtable,array,xcolor,xurl}
+\usepackage[colorlinks=true,linkcolor=teal,urlcolor=teal,bookmarksopen=true]{hyperref}
+\usepackage{bookmark}
+\setcounter{secnumdepth}{0}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{6pt}
+\setlength{\emergencystretch}{2em}
+\hypersetup{pdftitle={Safran T4 i3000 Extension Plan 0.1.0},pdfauthor={Perplexity Computer}}
+\newcommand{\codecite}{\textsuperscript{\href{https://raw.githubusercontent.com/Braveheart53/GBO_Maser_Control/main/T4_Maser_Comms.py}{[1]}}}
+\newcommand{\datacite}{\textsuperscript{\href{https://safran-navigation-timing.com/wp-content/uploads/2024/03/SAFRAN_IMASER-3000_Datasheet_3-11-2024_US.pdf}{[2]}}}
+\newcommand{\repocite}{\textsuperscript{\href{https://github.com/Braveheart53/GBO_Maser_Control/tree/main}{[3]}}}
+\begin{document}
+\begin{center}
+{\LARGE\bfseries Safran T4 i3000 Extension Plan}\\[5pt]
+{\large Version 0.1.0 / November 3, 2026}\\[4pt]
+William W. Wallace
+\end{center}
+\section{Scope and evidence}
+This planning phase began only after MHM2010 Correction Workbench 0.1.0 was
+posted for download. No T4 implementation, live query, instrument adjustment
+or remote repository push was performed.
+
+The reviewed repository's T4 examples use IPv4 UDP, example port 14000, the
+command \texttt{MONIT;}\ followed by CRLF, and a dollar-prefixed 113-hex-character
+payload \codecite. Safran's datasheet describes Ethernet monitoring and remote
+functions, but not the complete MONIT protocol or the synthesizer/drift control
+transfer equations \datacite. The AB monitor source supplies useful qtpy and
+pyqtgraph patterns for bounded live previews and in-place updates \repocite.
+
+The reviewed commit is
+\texttt{9682a2ffbcd0b0df6612d4aef3619d7bdaf6cc66}. The T4 source refers to
+page 47 of an operation manual, but that manual has not been independently
+obtained and checked \codecite.
+
+\textbf{Boundary: do not reuse the MHM2010 DDS constants for T4.}
+Reuse timing fits, stability, provenance and export methods, while keeping
+the T4 actuator mapping disabled until the OEM relationship is verified.
+
+\section{Source review findings}
+These are static-code findings, not observed failures on the physical maser
+\codecite.
+\begin{longtable}{@{}p{.24\linewidth}p{.70\linewidth}@{}}
+\toprule
+Area & Finding and planned remedy\\
+\midrule
+Retries & A timeout closes the socket, then the loop attempts to reuse it.
+Use an explicit socket lifecycle and fault-injected retry tests.\\
+Response typing & Bytes/None are returned despite an optional-string annotation;
+the caller decodes before checking failure. Use structured results.\\
+Peer identity & The received address is not verified. Validate the intended
+peer and permitted reply port; isolate late and unrelated datagrams.\\
+Parser & Empty input, loose delimiters and ad hoc stripping require replacement
+with strict byte framing and typed exceptions.\\
+GUI/process exit & Decoder errors invoke Tk and exit. Keep the new parser pure;
+qtpy handles errors at the application boundary.\\
+Status 39/40 & An analog scale is applied to a lock-labeled byte; a one-bit
+comment conflicts with whole-nibble decoding. Preserve raw fields pending
+manual and known-state captures.\\
+Unavailable channels & NaN-gain channels are omitted. Retain identity and raw
+code with an unavailable flag and null engineering value.\\
+Import behavior & Companion examples query at import time. New modules must
+be inert on import and contain no fixed site endpoint.\\
+\bottomrule
+\end{longtable}
+\footnotetext[1]{T4 communication source: \url{https://raw.githubusercontent.com/Braveheart53/GBO_Maser_Control/main/T4_Maser_Comms.py}}
+\footnotetext[2]{Safran datasheet: \url{https://safran-navigation-timing.com/wp-content/uploads/2024/03/SAFRAN_IMASER-3000_Datasheet_3-11-2024_US.pdf}}
+\footnotetext[3]{GBO control repository: \url{https://github.com/Braveheart53/GBO_Maser_Control/tree/main}}
+\clearpage
+
+\section{Proposed architecture and staged files}
+\begin{itemize}
+\item \textbf{Pure decoder}: bytes plus a versioned schema produce raw codes,
+engineering values and quality flags. No network, file or GUI side effects.
+\item \textbf{Read-only acquisition}: a monitoring-only allowlist, request/receive
+UTC, monotonic round-trip timing, attempt count, raw frame and parse status.
+\item \textbf{Port ownership}: start with one owned listener and serialized
+queries; do not assume ephemeral local ports work. Multiple instruments must
+not compete to bind the same local port.
+\item \textbf{Persistence}: raw frames precede scaled data. Include schema hash,
+instrument identity, firmware, sequence and unavailable-channel masks.
+\item \textbf{GUI}: separate T4 tab, qtpy/PySide6 and pyqtgraph, in-place curves,
+bounded previews, linked axes and crosshair/value displays, following the
+AB exemplar \repocite.
+\item \textbf{Timing}: explicitly map a genuine T4/reference FITS pair. Do not
+assume a SigmaTau or MicroSem label identifies the T4.
+\item \textbf{Corrections}: a separate OEM-calibrated adapter, initially disabled.
+No state-changing command path in the first acquisition release.
+\end{itemize}
+
+The staged \texttt{t4\_channel\_schema\_draft\_v0.1.0.json} records all 41
+source-channel identities and provisional gains, without a host address or
+personal path. Status fields and unavailable channels are explicitly marked.
+It is not an approved calibration table.
+
+\section{Milestones and acceptance gates}
+\begin{longtable}{@{}p{.25\linewidth}p{.69\linewidth}@{}}
+\toprule
+Milestone & Required gate\\
+\midrule
+Protocol evidence & Actual manual, firmware identity, raw captures and OEM
+display comparisons resolve frame layout, scaling and status ambiguity.\\
+Offline parser & Captured valid frames agree exactly with the OEM display;
+empty, truncated, oversized, bad-hex and wrong-terminator frames fail safely.\\
+Read-only poller & Timeout/success, exhausted retries, wrong peer, late reply,
+duplicate, occupied port, cancellation and restart tests pass.\\
+Telemetry GUI & Bounded memory, zoom preservation, stale-state indication,
+worker cancellation and successful read-only site test.\\
+Timing integration & Verified T4 channel identity/sign, reference and telemetry
+overlap; gaps preserved; MHM2010 regressions remain unchanged.\\
+Correction advisory & OEM transfer gain, units, existing ramp, precision and
+epoch verified with independent synthetic tests.\\
+\bottomrule
+\end{longtable}
+
+Persistence tests must include disk failure, interrupted append and restart.
+Timing tests must include host-clock steps, timezone/DST display behavior and
+monotonic round-trip measurement. Host receive timestamps are not precision
+timestamps generated by the maser.
+\footnotetext[3]{GBO control repository: \url{https://github.com/Braveheart53/GBO_Maser_Control/tree/main}}
+\clearpage
+
+\section{Evidence needed before implementation}
+\begin{itemize}
+\item \textbf{Manual}: operation/remote-command manual, the channel table
+referenced as page 47, lock-bit definitions and frequency/drift control sections.
+\item \textbf{Identity}: installed firmware/software and screenshots of current
+field names, units, values and enabled modes.
+\item \textbf{Telemetry}: unedited MONIT replies with matching displays,
+including known lock states and installed-option differences if available.
+\item \textbf{Timing}: actual FITS names for the T4 and its reference, with an
+overlapping recording.
+\item \textbf{Access}: connected bracca for the authorized staging directory;
+separate explicit approval of a read-only endpoint before any network test.
+\end{itemize}
+
+No timeline or credit estimate is assumed. These evidence and acceptance
+gates govern readiness.
+
+\section{Appendix: Proposed equations}
+The repository's provisional analog conversion and payload accounting are
+\codecite:
+\[
+v_i=g_i c_i,\qquad L_{\mathrm{hex}}=32(3)+8(2)+1=113.
+\]
+Neither the gains nor status semantics become OEM-verified merely because
+they appear in the source.
+
+For a future actuator variable \(u\), define a locally verified fractional
+gain \(G\). A small-signal advisory model could then use:
+\[
+G=\frac{\partial\ln f_{\mathrm{out}}}{\partial u},\qquad
+\Delta u\simeq-\frac{y}{G},\qquad
+\Delta\dot u\simeq-\frac{r}{G},\qquad
+r=\frac{dy}{d(\mathrm{day})}.
+\]
+These are generic local relationships, not T4 firmware equations. No numerical
+gain is assigned. Nonlinear gain, existing steering, discrete updates and
+saturation require the actual T4 model.
+
+\section{IEEE reference table}
+\small
+\begin{longtable}{@{}p{.05\linewidth}p{.51\linewidth}p{.36\linewidth}@{}}
+\toprule
+Ref. & Bibliographic entry & DOI or URL\\
+\midrule
+{[1]} & W. W. Wallace, ``T4\_Maser\_Comms.py,'' GBO\_Maser\_Control,
+version comments through 1.0.1, last-edit header Jun. 5, 2025. Reviewed commit
+\nolinkurl{9682a2ffbcd0b0df6612d4aef3619d7bdaf6cc66}. Accessed Nov. 3, 2026.
+& \url{https://raw.githubusercontent.com/Braveheart53/GBO_Maser_Control/main/T4_Maser_Comms.py}\\[4pt]
+{[2]} & Safran, ``iMaser 3000,'' product datasheet, Mar. 11, 2024.
+Accessed Nov. 3, 2026.
+& \url{https://safran-navigation-timing.com/wp-content/uploads/2024/03/SAFRAN_IMASER-3000_Datasheet_3-11-2024_US.pdf}\\[4pt]
+{[3]} & W. W. Wallace, ``GBO\_Maser\_Control,'' including AB Power Meter
+Monitor 1.7.0 and \texttt{ab\_live\_plots.py} 0.1.0, GitHub.
+Reviewed commit as above. Accessed Nov. 3, 2026.
+& \url{https://github.com/Braveheart53/GBO_Maser_Control/tree/main}\\
+\bottomrule
+\end{longtable}
+\end{document}
