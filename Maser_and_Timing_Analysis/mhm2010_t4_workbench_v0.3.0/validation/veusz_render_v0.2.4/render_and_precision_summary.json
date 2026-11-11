@@ -1,0 +1,64 @@
+{
+ "exp1": {
+  "pages": 24,
+  "pngs": 24,
+  "pdf": true,
+  "datasets": 116,
+  "bad_names": [],
+  "iso_text_datasets": 1,
+  "iso_samples": {
+   "Selected_MSM_GPS_time_local_ISO_text": [
+    "2025-12-31T19:30:06.624-05:00",
+    "2025-12-31T20:33:06.624-05:00"
+   ]
+  },
+  "phase_and_fit.csv": {
+   "numeric_cells": 26010,
+   "not_repr_text": 0
+  }
+ },
+ "exp2": {
+  "pages": 16,
+  "pngs": 16,
+  "pdf": true,
+  "datasets": 102,
+  "bad_names": [],
+  "iso_text_datasets": 2,
+  "iso_samples": {
+   "HMD_time_local_ISO_text": [
+    "2025-10-14T20:02:07.008-04:00",
+    "2025-10-14T20:03:06.9696-04:00"
+   ],
+   "Selected_MSM_GPS_time_local_ISO_text": [
+    "2025-10-14T20:00:00-04:00",
+    "2025-10-14T20:59:59.9999997696-04:00"
+   ]
+  },
+  "phase_and_fit.csv": {
+   "numeric_cells": 4320,
+   "not_repr_text": 0
+  },
+  "telemetry_overlap.csv": {
+   "numeric_cells": 1597586,
+   "not_repr_text": 0
+  }
+ },
+ "exp3": {
+  "pages": 5,
+  "pngs": 5,
+  "pdf": true,
+  "datasets": 10,
+  "bad_names": [],
+  "iso_text_datasets": 1,
+  "iso_samples": {
+   "T4log_MonitHCB_time_local_ISO_text": [
+    "2026-11-05T12:13:09-05:00",
+    "2026-11-05T12:14:08-05:00"
+   ]
+  },
+  "t4_MonitHCB_records.csv": {
+   "numeric_cells": 420,
+   "not_repr_text": 0
+  }
+ }
+}
